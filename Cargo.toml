@@ -11,3 +11,4 @@ keywords = ["backup", "compression"]
 tar = "0.4"
 zstd = "0.6"
 clap = "2.33"
+yaml-rust = "0.4"
