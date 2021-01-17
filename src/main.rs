@@ -16,7 +16,6 @@ fn arg_include<'a>(name: &'a str) -> Arg<'a, 'a> {
         .help("A path (file or directory) to include in the backup")
         .takes_value(true)
         .multiple(true)
-        .required(true)
 }
 
 fn arg_exclude<'a>(name: &'a str) -> Arg<'a, 'a> {
@@ -93,15 +92,22 @@ fn arg_dry<'a>(name: &'a str) -> Arg<'a, 'a> {
     Arg::with_name(name)
         .short("d")
         .long("dry")
-        .help("Only display the output, don't create any backup")
+        .help("Only display the output, don't write anything to disk.")
 }
 
 fn arg_conffile<'a>(name: &'a str) -> Arg<'a, 'a> {
     Arg::with_name(name)
         .value_name("CONFIG_FILE")
-        .help("The path of the config file")
+        .help("The path to the config file")
         .takes_value(true)
         .required(true)
+        .validator(|v| {
+            if v.ends_with(".yml") {
+                Ok(())
+            } else {
+                Err("The filename for the config file must end in `.yml`".to_string())
+            }
+        })
 }
 
 fn arg_<'a>(name: &'a str) -> Arg<'a, 'a> {
@@ -124,34 +130,47 @@ fn main() {
         .arg(arg_dry("dry"))
         .subcommand(
             SubCommand::with_name("backup")
-                .about("Backup using a config file")
+                .about("Backup using arguments from a config file")
                 .arg(arg_conffile("file"))
-                .arg(arg_force("force"))
-                .arg(arg_verbose("verbose"))
                 .arg(arg_dry("dry")),
         )
         .subcommand(SubCommand::with_name("restore").about("Restore from a backup"))
         .subcommand(SubCommand::with_name("browse").about("List file in a backup"))
         .subcommand(SubCommand::with_name("gui").about("Start a graphical user interface"))
-        .subcommand(SubCommand::with_name("config").about("Create a config file"))
+        .subcommand(
+            SubCommand::with_name("config")
+                .about("Create a config file. The flags and options are added to the config file")
+                .arg(arg_conffile("file"))
+                .arg(arg_include("include"))
+                .arg(arg_exclude("exclude"))
+                .arg(arg_output("output"))
+                .arg(arg_name("name"))
+                .arg(arg_force("force"))
+                .arg(arg_verbose("verbose"))
+                .arg(arg_regex("regex"))
+                .arg(arg_threads("threads"))
+                .arg(arg_dry("dry")),
+        )
         .get_matches();
 
     if let Some(matches) = matches.subcommand_matches("restore") {
         panic!("Restoring is not yet implemented");
     } else if let Some(matches) = matches.subcommand_matches("browse") {
-        panic!("Restoring is not yet implemented");
+        panic!("Browsing is not yet implemented");
     } else if let Some(matches) = matches.subcommand_matches("gui") {
         panic!("GUI is not yet implemented");
     } else if let Some(matches) = matches.subcommand_matches("backup") {
         let mut config = Config::from_yaml(matches.value_of("file").unwrap());
-        config.dry = config.dry || matches.is_present("dry");
-        config.force = config.force || matches.is_present("force");
-        config.verbose = config.verbose || matches.is_present("verbose");
-        backup(&config);
+        backup(&config, matches.is_present("dry"));
     } else if let Some(matches) = matches.subcommand_matches("config") {
-        panic!("Config files are not yet implemented");
+        let config = Config::from_args(&matches);
+        if matches.is_present("dry") {
+            println!("{}", config.to_yaml());
+        } else {
+            config.write_yaml(matches.value_of("file").unwrap());
+        }
     } else {
         let config = Config::from_args(&matches);
-        backup(&config);
+        backup(&config, matches.is_present("dry"));
     }
 }

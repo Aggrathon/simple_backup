@@ -2,9 +2,11 @@ use std::convert::TryFrom;
 use std::{convert, fs};
 
 use clap::{ArgMatches, Values};
-use fs::read_to_string;
-use yaml_rust::{Yaml, YamlLoader};
+use fs::{read_to_string, File};
+use serde::{Deserialize, Serialize};
+use yaml_rust::{Yaml, YamlEmitter, YamlLoader};
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub includes: Vec<String>,
     pub excludes: Vec<String>,
@@ -14,7 +16,6 @@ pub struct Config {
     pub threads: u32,
     pub verbose: bool,
     pub force: bool,
-    pub dry: bool,
 }
 
 impl Config {
@@ -28,7 +29,6 @@ impl Config {
             threads: 4,
             verbose: false,
             force: false,
-            dry: false,
         }
     }
 
@@ -58,76 +58,46 @@ impl Config {
                 .unwrap_or(4),
             verbose: args.is_present("verbose"),
             force: args.is_present("force"),
-            dry: args.is_present("dry"),
         }
+    }
+
+    pub fn override_args(&mut self, args: &ArgMatches) {
+        if args.is_present("include") {
+            self.includes
+                .extend(args.values_of("include").unwrap().map(|x| x.to_string()));
+        }
+        if args.is_present("exclude") {
+            self.excludes
+                .extend(args.values_of("exclude").unwrap().map(|x| x.to_string()));
+        }
+        if args.is_present("regex") {
+            self.regex
+                .extend(args.values_of("regex").unwrap().map(|x| x.to_string()));
+        }
+        if args.is_present("output") {
+            self.output = args.value_of("output").unwrap_or(".").to_string();
+        }
+        if args.is_present("name") {
+            self.output = args.value_of("name").unwrap_or("backup").to_string();
+        }
+        if args.is_present("threads") {
+            self.threads = args.value_of("threads").unwrap().parse::<u32>().unwrap()
+        }
+        self.force = self.force || args.is_present("force");
+        self.verbose = self.verbose || args.is_present("verbose");
     }
 
     pub fn from_yaml(path: &str) -> Self {
-        let yaml = fs::read_to_string(path).expect("Could not read the config file");
-        let docs = YamlLoader::load_from_str(&yaml).expect("Could not parse the config file");
-        Config {
-            includes: yaml_values(&docs, "include"),
-            excludes: yaml_values(&docs, "exclude"),
-            regex: yaml_values(&docs, "regex"),
-            output: yaml_value_str(&docs, "output", ".").to_string(),
-            name: yaml_value_str(&docs, "name", "backup").to_string(),
-            threads: yaml_value_u32(&docs, "threads", 4),
-            verbose: yaml_value_bool(&docs, "verbose", false),
-            force: yaml_value_bool(&docs, "force", false),
-            dry: yaml_value_bool(&docs, "dry", false),
-        }
+        let reader = File::open(path).expect("Could not open the config file");
+        serde_yaml::from_reader(reader).expect("Could not read config file")
     }
-}
 
-fn yaml_values(docs: &Vec<Yaml>, key: &str) -> Vec<String> {
-    let tmp = &docs[0][key];
-    if !tmp.is_badvalue() {
-        if tmp.is_array() {
-            return tmp
-                .as_vec()
-                .unwrap()
-                .iter()
-                .map(|x| x.as_str().unwrap().to_string())
-                .collect();
-        } else if !tmp.is_null() {
-            return vec![tmp.as_str().unwrap().to_string()];
-        }
+    pub fn write_yaml(&self, path: &str) {
+        let writer = File::create(path).expect("Could not create the config file");
+        serde_yaml::to_writer(writer, &self).expect("Could not serialise config");
     }
-    vec![]
-}
 
-fn yaml_value_bool(docs: &Vec<Yaml>, key: &str, default: bool) -> bool {
-    let tmp = &docs[0][key];
-    if !tmp.is_badvalue() {
-        tmp.as_bool()
-            .expect(&format!("\"{}\": {:#?} is not a boolean!", key, tmp))
-    } else {
-        default
-    }
-}
-
-fn yaml_value_u32(docs: &Vec<Yaml>, key: &str, default: u32) -> u32 {
-    let tmp = &docs[0][key];
-    if !tmp.is_badvalue() {
-        let out = tmp.as_i64().expect(&format!(
-            "\"{}\": {:#?} is not a positive integer!",
-            key, tmp
-        ));
-        u32::try_from(out).expect(&format!(
-            "\"{}\": {:#?} is not a positive integer!",
-            key, tmp
-        ))
-    } else {
-        default
-    }
-}
-
-fn yaml_value_str<'a>(docs: &'a Vec<Yaml>, key: &'a str, default: &'a str) -> &'a str {
-    let tmp = &docs[0][key];
-    if !tmp.is_badvalue() {
-        tmp.as_str()
-            .expect(&format!("\"{}\": {:#?} is not a string!", key, tmp))
-    } else {
-        default
+    pub fn to_yaml(&self) -> String {
+        serde_yaml::to_string(&self).expect("Could not serialise config")
     }
 }
