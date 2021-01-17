@@ -5,12 +5,12 @@ A minimal application for doing backups.
 ## TODO
 
 ### Interfaces
-- [ ] Commandline interface
-- [ ] Config file interface
+- [x] Commandline interface
+- [x] Config file interface
 - [ ] GUI interface?
 
 ### Backup
-- [ ] Parsing files
+- [x] Parsing files
 - [ ] Compression
 - [ ] Incremental Backups
 
