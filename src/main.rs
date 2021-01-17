@@ -95,7 +95,7 @@ fn arg_threads<'a>() -> Arg<'a, 'a> {
         .default_value("4")
         .validator(|v: String| match v.parse::<u32>() {
             Ok(_) => Ok(()),
-            Err(_) => Err(String::from("The value must be a number")),
+            Err(_) => Err(String::from("The value must be a positive number")),
         })
 }
 
@@ -131,7 +131,7 @@ fn arg_source<'a>() -> Arg<'a, 'a> {
 
 fn arg_flatten<'a>() -> Arg<'a, 'a> {
     Arg::with_name("flatten")
-        .short("p")
+        .short("F")
         .long("flatten")
         .help("Remove the paths and restore all files to the same directory")
         .requires("output")
@@ -139,7 +139,7 @@ fn arg_flatten<'a>() -> Arg<'a, 'a> {
 
 fn arg_incremental<'a>() -> Arg<'a, 'a> {
     Arg::with_name("incremental")
-        .short("c")
+        .short("I")
         .long("incremental")
         .help("Do an incremental backup (only backup files that have been changed)")
 }
@@ -162,6 +162,27 @@ fn arg_all<'a>() -> Arg<'a, 'a> {
         .help("Restore all files, not just the ones present during the last backup")
 }
 
+fn arg_level<'a>() -> Arg<'a, 'a> {
+    Arg::with_name("level")
+        .short("L")
+        .long("level")
+        .value_name("LEVEL")
+        .help("Which compression level (1-21) should be used for zstd")
+        .takes_value(true)
+        .default_value("1")
+        .validator(|v: String| match v.parse::<i32>() {
+            Ok(_) => Ok(()),
+            Err(_) => Err(String::from("The value must be a number")),
+        })
+}
+
+fn arg_local<'a>() -> Arg<'a, 'a> {
+    Arg::with_name("local")
+        .short("l")
+        .long("local")
+        .help("Use local (relative) paths instead of absolute in the backup")
+}
+
 fn main() {
     let matches = App::new(crate_name!())
         // .author(crate_authors!())
@@ -174,14 +195,16 @@ fn main() {
         .arg(arg_name())
         .arg(arg_incremental())
         .arg(arg_time(true))
+        .arg(arg_local())
         .arg(arg_force())
         .arg(arg_verbose())
         .arg(arg_threads())
+        .arg(arg_level())
         .arg(arg_dry())
         .subcommand(
             SubCommand::with_name("backup")
                 .version(crate_version!())
-                .about("Backup using arguments from a config file.")
+                .about("Backup using arguments from a config file")
                 .arg(arg_conffile())
                 .arg(arg_time(false))
                 .arg(arg_dry()),
@@ -207,11 +230,11 @@ fn main() {
                 .arg(arg_source())
                 .arg(arg_regex(2)),
         )
-        .subcommand(SubCommand::with_name("gui").about("Start a graphical user interface."))
+        .subcommand(SubCommand::with_name("gui").about("Start a graphical user interface"))
         .subcommand(
             SubCommand::with_name("config")
                 .version(crate_version!())
-                .about("Create a config file. The flags and options are added to the config file.")
+                .about("Create a config file. The flags and options are added to the config file")
                 .arg(arg_conffile())
                 .arg(arg_include())
                 .arg(arg_exclude())
@@ -219,9 +242,11 @@ fn main() {
                 .arg(arg_output(true))
                 .arg(arg_name())
                 .arg(arg_incremental())
+                .arg(arg_local())
                 .arg(arg_force())
                 .arg(arg_verbose())
                 .arg(arg_threads())
+                .arg(arg_level())
                 .arg(arg_dry()),
         )
         .get_matches();

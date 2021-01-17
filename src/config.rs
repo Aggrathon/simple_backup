@@ -1,3 +1,5 @@
+use crate::utils::parse_date;
+use chrono::NaiveDateTime;
 use clap::{ArgMatches, Values};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -13,6 +15,10 @@ pub struct Config {
     pub verbose: bool,
     pub force: bool,
     pub incremental: bool,
+    pub level: i32,
+    pub local: bool,
+    #[serde(with = "parse_date")]
+    pub time: NaiveDateTime,
 }
 
 impl Config {
@@ -28,6 +34,9 @@ impl Config {
             verbose: false,
             force: false,
             incremental: false,
+            level: 1,
+            local: false,
+            time: NaiveDateTime::from_timestamp(0, 0),
         }
     }
 
@@ -52,12 +61,20 @@ impl Config {
             name: args.value_of("name").unwrap_or("backup").to_string(),
             threads: args
                 .value_of("threads")
-                .unwrap_or("4")
-                .parse::<u32>()
+                .and_then(|v| Some(v.parse::<u32>().expect("Could not parse number")))
                 .unwrap_or(4),
             verbose: args.is_present("verbose"),
             force: args.is_present("force"),
             incremental: args.is_present("incremental"),
+            level: args
+                .value_of("level")
+                .and_then(|v| Some(v.parse::<i32>().expect("Could not parse number")))
+                .unwrap_or(1),
+            local: args.is_present("local"),
+            time: args
+                .value_of("time")
+                .and_then(|v| Some(parse_date::try_parse(v).expect("Could not parse time")))
+                .unwrap_or(NaiveDateTime::from_timestamp(0, 0)),
         }
     }
 
