@@ -4,8 +4,8 @@ use std::fs::File;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
-    pub includes: Vec<String>,
-    pub excludes: Vec<String>,
+    pub include: Vec<String>,
+    pub exclude: Vec<String>,
     pub regex: Vec<String>,
     pub output: String,
     pub name: String,
@@ -19,8 +19,8 @@ impl Config {
     #[allow(dead_code)]
     fn new() -> Self {
         Config {
-            includes: vec![],
-            excludes: vec![],
+            include: vec![],
+            exclude: vec![],
             regex: vec![],
             output: ".".to_string(),
             name: "backup".to_string(),
@@ -33,12 +33,12 @@ impl Config {
 
     pub fn from_args(args: &ArgMatches) -> Self {
         Config {
-            includes: args
+            include: args
                 .values_of("include")
                 .unwrap_or(Values::default())
                 .map(|x| x.to_string())
                 .collect(),
-            excludes: args
+            exclude: args
                 .values_of("exclude")
                 .unwrap_or(Values::default())
                 .map(|x| x.to_string())
@@ -66,12 +66,19 @@ impl Config {
         serde_yaml::from_reader(reader).expect("Could not read config file")
     }
 
-    pub fn write_yaml(&self, path: &str) {
+    pub fn write_yaml(&mut self, path: &str) {
+        self.sort();
         let writer = File::create(path).expect("Could not create the config file");
         serde_yaml::to_writer(writer, &self).expect("Could not serialise config");
     }
 
-    pub fn to_yaml(&self) -> String {
+    pub fn to_yaml(&mut self) -> String {
+        self.sort();
         serde_yaml::to_string(&self).expect("Could not serialise config")
+    }
+
+    pub fn sort(&mut self) {
+        self.include.sort();
+        self.exclude.sort();
     }
 }

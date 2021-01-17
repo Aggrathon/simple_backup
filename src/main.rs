@@ -263,7 +263,7 @@ fn main() {
             backup::get_previous_time(&config, matches.value_of("time").unwrap_or("")),
         );
     } else if let Some(matches) = matches.subcommand_matches("config") {
-        let config = Config::from_args(&matches);
+        let mut config = Config::from_args(&matches);
         if matches.is_present("dry") {
             println!("{}", config.to_yaml());
         } else {
