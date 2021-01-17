@@ -1,9 +1,8 @@
-use core::panic;
-use std::{collections::VecDeque, path::PathBuf};
-
-use chrono::NaiveDateTime;
-
 use crate::config::Config;
+use chrono::NaiveDateTime;
+use core::panic;
+use regex::Regex;
+use std::{collections::VecDeque, path::PathBuf};
 
 #[allow(unused_variables)]
 pub fn backup(config: &Config, dry: bool, time: NaiveDateTime) {
@@ -48,7 +47,7 @@ pub fn browse(source: &str, regex: Vec<&str>) {
 struct FileCrawler {
     include: Vec<PathBuf>,
     exclude: Vec<PathBuf>,
-    regex: Vec<String>,
+    regex: Vec<Regex>,
     stack: VecDeque<PathBuf>,
 }
 
@@ -82,10 +81,12 @@ impl Iterator for FileCrawler {
                                         break;
                                     }
                                 }
-                                // self.regex.iter().for_each(|r| {
-                                //     // TODO: REGEX
-                                // });
-                                if !filtered {
+                                if !filtered
+                                    && !self
+                                        .regex
+                                        .iter()
+                                        .any(|r| r.is_match(&path.to_string_lossy()))
+                                {
                                     self.stack.push_front(path);
                                     count += 1;
                                 }
@@ -121,7 +122,10 @@ impl FileCrawler {
         include.sort_unstable_by(|a, b| b.cmp(a));
         let mut exclude: Vec<PathBuf> = exclude.iter().map(|s| PathBuf::from(s)).collect();
         exclude.sort_unstable_by(|a, b| b.cmp(a));
-        let regex = regex.iter().map(|s| String::from(s)).collect();
+        let regex = regex
+            .iter()
+            .map(|s| Regex::new(s).expect("Could not parse regex"))
+            .collect();
 
         Self {
             include,
@@ -142,9 +146,10 @@ mod tests {
         let files: Vec<PathBuf> = FileCrawler::new(
             &vec!["src".to_string()],
             &vec!["src/main.rs".to_string()],
-            &vec![],
+            &vec!["config.*".to_string()],
         )
         .collect();
+        dbg!(&files);
         files
             .iter()
             .take(files.len() - 1)
@@ -153,6 +158,9 @@ mod tests {
         files
             .iter()
             .for_each(|f| assert_ne!(*f, PathBuf::from("src/main.rs")));
+        files
+            .iter()
+            .for_each(|f| assert_ne!(*f, PathBuf::from("src/config.rs")));
         assert_eq!(
             files
                 .iter()
