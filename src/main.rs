@@ -4,6 +4,7 @@ extern crate clap;
 mod backup;
 mod config;
 mod gui;
+mod utils;
 
 use clap::{App, Arg, SubCommand, Values};
 use config::Config;
