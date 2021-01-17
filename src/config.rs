@@ -1,10 +1,6 @@
-use std::convert::TryFrom;
-use std::{convert, fs};
-
 use clap::{ArgMatches, Values};
-use fs::{read_to_string, File};
 use serde::{Deserialize, Serialize};
-use yaml_rust::{Yaml, YamlEmitter, YamlLoader};
+use std::fs::File;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -16,9 +12,11 @@ pub struct Config {
     pub threads: u32,
     pub verbose: bool,
     pub force: bool,
+    pub incremental: bool,
 }
 
 impl Config {
+    #[allow(dead_code)]
     fn new() -> Self {
         Config {
             includes: vec![],
@@ -29,6 +27,7 @@ impl Config {
             threads: 4,
             verbose: false,
             force: false,
+            incremental: false,
         }
     }
 
@@ -58,33 +57,8 @@ impl Config {
                 .unwrap_or(4),
             verbose: args.is_present("verbose"),
             force: args.is_present("force"),
+            incremental: args.is_present("incremental"),
         }
-    }
-
-    pub fn override_args(&mut self, args: &ArgMatches) {
-        if args.is_present("include") {
-            self.includes
-                .extend(args.values_of("include").unwrap().map(|x| x.to_string()));
-        }
-        if args.is_present("exclude") {
-            self.excludes
-                .extend(args.values_of("exclude").unwrap().map(|x| x.to_string()));
-        }
-        if args.is_present("regex") {
-            self.regex
-                .extend(args.values_of("regex").unwrap().map(|x| x.to_string()));
-        }
-        if args.is_present("output") {
-            self.output = args.value_of("output").unwrap_or(".").to_string();
-        }
-        if args.is_present("name") {
-            self.output = args.value_of("name").unwrap_or("backup").to_string();
-        }
-        if args.is_present("threads") {
-            self.threads = args.value_of("threads").unwrap().parse::<u32>().unwrap()
-        }
-        self.force = self.force || args.is_present("force");
-        self.verbose = self.verbose || args.is_present("verbose");
     }
 
     pub fn from_yaml(path: &str) -> Self {

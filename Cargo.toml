@@ -3,7 +3,7 @@ name = "simple-backup"
 version = "0.1.0"
 authors = ["Aggrathon <antonbjo@gmail.com>"]
 edition = "2018"
-description = "A minimal application for doing backups"
+description = "A minimal application for doing backups."
 readme = "README.md"
 keywords = ["backup", "compression"]
 
@@ -14,3 +14,4 @@ clap = "2.33"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
 yaml-rust = "0.4"
+chrono = "0.4"
