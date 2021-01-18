@@ -2,6 +2,7 @@
 extern crate clap;
 
 mod backup;
+mod compression;
 mod config;
 mod gui;
 mod utils;
@@ -92,7 +93,7 @@ fn arg_threads<'a>() -> Arg<'a, 'a> {
         .value_name("NUM")
         .help("How many threads should be used for compression")
         .takes_value(true)
-        .default_value("4")
+        .default_value("0")
         .validator(|v: String| match v.parse::<u32>() {
             Ok(_) => Ok(()),
             Err(_) => Err(String::from("The value must be a positive number")),
@@ -180,7 +181,7 @@ fn arg_local<'a>() -> Arg<'a, 'a> {
     Arg::with_name("local")
         .short("l")
         .long("local")
-        .help("Use local (relative) paths instead of absolute in the backup")
+        .help("Keep local (relative) paths instead of using absolute paths in the backup")
 }
 
 fn main() {
@@ -271,6 +272,7 @@ fn main() {
             matches.is_present("dry"),
         );
     } else if let Some(matches) = matches.subcommand_matches("browse") {
+        // TODO: Possibly load config from an earlier backup
         backup::browse(
             matches.value_of("source").unwrap(),
             matches
@@ -281,12 +283,8 @@ fn main() {
     } else if let Some(_) = matches.subcommand_matches("gui") {
         gui::gui();
     } else if let Some(matches) = matches.subcommand_matches("backup") {
-        let config = Config::from_yaml(matches.value_of("file").unwrap());
-        backup::backup(
-            &config,
-            matches.is_present("dry"),
-            backup::get_previous_time(&config, matches.value_of("time").unwrap_or("")),
-        );
+        let mut config = Config::read_yaml(matches.value_of("file").unwrap());
+        backup::backup(&mut config, matches.is_present("dry"));
     } else if let Some(matches) = matches.subcommand_matches("config") {
         let mut config = Config::from_args(&matches);
         if matches.is_present("dry") {
@@ -295,11 +293,7 @@ fn main() {
             config.write_yaml(matches.value_of("file").unwrap());
         }
     } else {
-        let config = Config::from_args(&matches);
-        backup::backup(
-            &config,
-            matches.is_present("dry"),
-            backup::get_previous_time(&config, matches.value_of("time").unwrap_or("")),
-        );
+        let mut config = Config::from_args(&matches);
+        backup::backup(&mut config, matches.is_present("dry"));
     }
 }

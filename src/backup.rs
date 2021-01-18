@@ -1,16 +1,70 @@
 use crate::config::Config;
-use chrono::NaiveDateTime;
+use crate::{compression::Compression, utils};
+use chrono::{offset::TimeZone, DateTime, Local, NaiveDateTime};
 use core::panic;
+use path_absolutize::Absolutize;
 use regex::Regex;
-use std::{collections::VecDeque, path::PathBuf};
+use std::{collections::VecDeque, path::PathBuf, time::SystemTime};
+use utils::ProgressBar;
 
-#[allow(unused_variables)]
-pub fn backup(config: &Config, dry: bool, time: NaiveDateTime) {
-    if config.verbose {
+pub fn backup(config: &mut Config, dry: bool) {
+    let mut files_all: Vec<PathBuf> = if config.local {
         FileCrawler::new(&config.include, &config.exclude, &config.regex)
+            .map(|p| {
+                if p.is_absolute() {
+                    p
+                } else {
+                    p.absolutize()
+                        .expect("Could not absolutise path")
+                        .to_path_buf()
+                }
+            })
+            .collect()
+    } else {
+        FileCrawler::new(&config.include, &config.exclude, &config.regex).collect()
+    };
+    files_all.sort();
+    let files_list: String = files_all
+        .iter()
+        .map(|f| f.to_string_lossy() + "\n")
+        .collect();
+
+    if config.incremental {
+        let time_prev: SystemTime = Local.from_local_datetime(&config.time).unwrap().into();
+        files_all = files_all
+            .into_iter()
+            .filter(|path| {
+                path.metadata()
+                    .and_then(|m| m.accessed())
+                    .and_then(|t| Ok(t > time_prev))
+                    .unwrap_or(false)
+            })
+            .collect();
+    }
+
+    if config.verbose {
+        println!("Files to backup:");
+        files_all
+            .iter()
             .for_each(|f| println! {"{}", f.to_string_lossy()});
     }
-    panic!("Backupping is not yet implemented");
+
+    if !dry {
+        config.time = DateTime::<Local>::from(SystemTime::now()).naive_local();
+        let output = config.get_output();
+        if output.exists() && !config.force {
+            panic!("Backup already exists at '{}'", output.to_string_lossy());
+        }
+        let mut comp = Compression::create(&output, config.threads, config.level);
+        comp.append_data("config.yml", &config.to_yaml());
+        comp.append_data("files.txt", &files_list);
+        let mut bar = ProgressBar::start(files_all.len(), 80, "Backing up files");
+        for path in files_all.iter() {
+            comp.append_file(path);
+            bar.progress();
+        }
+        comp.finish();
+    }
 }
 
 pub fn get_previous_time<'a>(config: &Config, time: &str) -> NaiveDateTime {
@@ -97,6 +151,7 @@ impl Iterator for FileCrawler {
                         }),
                         Err(e) => eprint!("Could not read directory: {}", e),
                     };
+                    // Reverse the order of the added items to preserve lexicographic ordering
                     if count > 1 {
                         for i in 0..(count / 2) {
                             self.stack.swap(i, count - i - 1);

@@ -1,8 +1,11 @@
 use crate::utils::parse_date;
-use chrono::NaiveDateTime;
+use chrono::{Local, NaiveDateTime};
 use clap::{ArgMatches, Values};
 use serde::{Deserialize, Serialize};
-use std::fs::File;
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -30,7 +33,7 @@ impl Config {
             regex: vec![],
             output: ".".to_string(),
             name: "backup".to_string(),
-            threads: 4,
+            threads: 0,
             verbose: false,
             force: false,
             incremental: false,
@@ -62,7 +65,7 @@ impl Config {
             threads: args
                 .value_of("threads")
                 .and_then(|v| Some(v.parse::<u32>().expect("Could not parse number")))
-                .unwrap_or(4),
+                .unwrap_or(0),
             verbose: args.is_present("verbose"),
             force: args.is_present("force"),
             incremental: args.is_present("incremental"),
@@ -75,10 +78,11 @@ impl Config {
                 .value_of("time")
                 .and_then(|v| Some(parse_date::try_parse(v).expect("Could not parse time")))
                 .unwrap_or(NaiveDateTime::from_timestamp(0, 0)),
+            // TODO: Check existing backups for times if not given
         }
     }
 
-    pub fn from_yaml(path: &str) -> Self {
+    pub fn read_yaml(path: &str) -> Self {
         let reader = File::open(path).expect("Could not open the config file");
         serde_yaml::from_reader(reader).expect("Could not read config file")
     }
@@ -89,6 +93,10 @@ impl Config {
         serde_yaml::to_writer(writer, &self).expect("Could not serialise config");
     }
 
+    pub fn from_yaml(yaml: &str) -> Self {
+        serde_yaml::from_str(yaml).expect("Could not read config")
+    }
+
     pub fn to_yaml(&mut self) -> String {
         self.sort();
         serde_yaml::to_string(&self).expect("Could not serialise config")
@@ -97,5 +105,17 @@ impl Config {
     pub fn sort(&mut self) {
         self.include.sort();
         self.exclude.sort();
+    }
+
+    pub fn get_output(&self) -> PathBuf {
+        if self.output.ends_with(".tar.zstd") {
+            PathBuf::from(&self.output)
+        } else {
+            Path::new(&self.output).join(format!(
+                "{}_{}.tar.zstd",
+                self.name,
+                Local::now().format("%Y-%m-%d-%H-%m-%s")
+            ))
+        }
     }
 }
