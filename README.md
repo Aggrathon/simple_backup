@@ -13,7 +13,7 @@ A minimal application for doing backups.
 ### Backup
 
 - [x] Parsing files
-- [ ] Compression
+- [x] Compression
 - [ ] Incremental Backups
 
 ### Restore
