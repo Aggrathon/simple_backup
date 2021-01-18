@@ -30,7 +30,8 @@ pub fn backup(config: &mut Config, dry: bool) {
         .collect();
 
     if config.incremental {
-        let time_prev: SystemTime = Local.from_local_datetime(&config.time).unwrap().into();
+        let time_prev = get_previous_time(&config);
+        let time_prev: SystemTime = Local.from_local_datetime(&time_prev).unwrap().into();
         files_all = files_all
             .into_iter()
             .filter(|path| {
@@ -55,7 +56,7 @@ pub fn backup(config: &mut Config, dry: bool) {
         if output.exists() && !config.force {
             panic!("Backup already exists at '{}'", output.to_string_lossy());
         }
-        let mut comp = Compression::create(&output, config.threads, config.level);
+        let mut comp = Compression::create(&output, config.quality);
         comp.append_data("config.yml", &config.to_yaml());
         comp.append_data("files.txt", &files_list);
         let mut bar = ProgressBar::start(files_all.len(), 80, "Backing up files");
@@ -67,14 +68,13 @@ pub fn backup(config: &mut Config, dry: bool) {
     }
 }
 
-pub fn get_previous_time<'a>(config: &Config, time: &str) -> NaiveDateTime {
+pub fn get_previous_time<'a>(config: &Config) -> NaiveDateTime {
     if !config.incremental {
         NaiveDateTime::from_timestamp(0, 0)
-    } else if time == "" {
+    } else if config.time.timestamp() == 0 {
         panic!("Incremental backup is not implemented");
     } else {
-        panic!("Incremental backup is not implemented");
-        // TODO: NaiveDateTime::parse_from_str
+        config.time
     }
 }
 
@@ -87,7 +87,6 @@ pub fn restore(
     force: bool,
     verbose: bool,
     flatten: bool,
-    threads: u32,
     dry: bool,
 ) {
     panic!("Restoring is not implemented");

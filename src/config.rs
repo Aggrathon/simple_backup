@@ -14,11 +14,10 @@ pub struct Config {
     pub regex: Vec<String>,
     pub output: String,
     pub name: String,
-    pub threads: u32,
     pub verbose: bool,
     pub force: bool,
     pub incremental: bool,
-    pub level: i32,
+    pub quality: u32,
     pub local: bool,
     #[serde(with = "parse_date")]
     pub time: NaiveDateTime,
@@ -33,11 +32,10 @@ impl Config {
             regex: vec![],
             output: ".".to_string(),
             name: "backup".to_string(),
-            threads: 0,
             verbose: false,
             force: false,
             incremental: false,
-            level: 1,
+            quality: 11,
             local: false,
             time: NaiveDateTime::from_timestamp(0, 0),
         }
@@ -62,17 +60,13 @@ impl Config {
                 .collect(),
             output: args.value_of("output").unwrap_or(".").to_string(),
             name: args.value_of("name").unwrap_or("backup").to_string(),
-            threads: args
-                .value_of("threads")
-                .and_then(|v| Some(v.parse::<u32>().expect("Could not parse number")))
-                .unwrap_or(0),
             verbose: args.is_present("verbose"),
             force: args.is_present("force"),
             incremental: args.is_present("incremental"),
-            level: args
-                .value_of("level")
-                .and_then(|v| Some(v.parse::<i32>().expect("Could not parse number")))
-                .unwrap_or(1),
+            quality: args
+                .value_of("quality")
+                .and_then(|v| Some(v.parse::<u32>().expect("Could not parse number")))
+                .unwrap_or(11),
             local: args.is_present("local"),
             time: args
                 .value_of("time")
@@ -93,6 +87,7 @@ impl Config {
         serde_yaml::to_writer(writer, &self).expect("Could not serialise config");
     }
 
+    #[allow(dead_code)]
     pub fn from_yaml(yaml: &str) -> Self {
         serde_yaml::from_str(yaml).expect("Could not read config")
     }
@@ -108,13 +103,13 @@ impl Config {
     }
 
     pub fn get_output(&self) -> PathBuf {
-        if self.output.ends_with(".tar.zstd") {
+        if self.output.ends_with(".tar.br") {
             PathBuf::from(&self.output)
         } else {
             Path::new(&self.output).join(format!(
-                "{}_{}.tar.zstd",
+                "{}_{}.tar.br",
                 self.name,
-                Local::now().format("%Y-%m-%d-%H-%m-%s")
+                Local::now().format("%Y-%m-%d_%H-%M-%S")
             ))
         }
     }

@@ -38,7 +38,7 @@ fn arg_output<'a>(backup: bool) -> Arg<'a, 'a> {
         .takes_value(true);
     if backup {
         arg.help(
-            "Where should the backup be stored (either a direcory or a file ending in `.tar.zstd`)",
+            "Where should the backup be stored (either a direcory or a file ending in `.tar.br`)",
         )
         .default_value(".")
     } else {
@@ -84,20 +84,6 @@ fn arg_regex<'a>(variant: u32) -> Arg<'a, 'a> {
     } else {
         arg.help("Use regex to specify exclusion filters")
     }
-}
-
-fn arg_threads<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("threads")
-        .short("t")
-        .long("threads")
-        .value_name("NUM")
-        .help("How many threads should be used for compression")
-        .takes_value(true)
-        .default_value("0")
-        .validator(|v: String| match v.parse::<u32>() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(String::from("The value must be a positive number")),
-        })
 }
 
 fn arg_dry<'a>() -> Arg<'a, 'a> {
@@ -163,17 +149,23 @@ fn arg_all<'a>() -> Arg<'a, 'a> {
         .help("Restore all files, not just the ones present during the last backup")
 }
 
-fn arg_level<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("level")
-        .short("L")
-        .long("level")
-        .value_name("LEVEL")
-        .help("Which compression level (1-21) should be used for zstd")
+fn arg_quality<'a>() -> Arg<'a, 'a> {
+    Arg::with_name("quality")
+        .short("q")
+        .long("quality")
+        .value_name("quality")
+        .help("Compression quality (1-11)")
         .takes_value(true)
-        .default_value("1")
-        .validator(|v: String| match v.parse::<i32>() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(String::from("The value must be a number")),
+        .default_value("11")
+        .validator(|v: String| match v.parse::<u32>() {
+            Ok(v) => {
+                if v >= 1 && v <= 11 {
+                    Ok(())
+                } else {
+                    Err(String::from("The value must be a number between 1-11"))
+                }
+            }
+            Err(_) => Err(String::from("The value must be a number between 1-11")),
         })
 }
 
@@ -199,8 +191,7 @@ fn main() {
         .arg(arg_local())
         .arg(arg_force())
         .arg(arg_verbose())
-        .arg(arg_threads())
-        .arg(arg_level())
+        .arg(arg_quality())
         .arg(arg_dry())
         .subcommand(
             SubCommand::with_name("backup")
@@ -221,7 +212,6 @@ fn main() {
                 .arg(arg_flatten())
                 .arg(arg_force())
                 .arg(arg_verbose())
-                .arg(arg_threads())
                 .arg(arg_dry()),
         )
         .subcommand(
@@ -246,8 +236,7 @@ fn main() {
                 .arg(arg_local())
                 .arg(arg_force())
                 .arg(arg_verbose())
-                .arg(arg_threads())
-                .arg(arg_level())
+                .arg(arg_quality())
                 .arg(arg_dry()),
         )
         .get_matches();
@@ -264,11 +253,6 @@ fn main() {
             matches.is_present("force"),
             matches.is_present("verbose"),
             matches.is_present("flatten"),
-            matches
-                .value_of("threads")
-                .unwrap_or("4")
-                .parse::<u32>()
-                .unwrap_or(4),
             matches.is_present("dry"),
         );
     } else if let Some(matches) = matches.subcommand_matches("browse") {

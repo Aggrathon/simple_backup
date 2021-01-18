@@ -1,18 +1,16 @@
+use brotli::CompressorWriter;
 use path_clean::PathClean;
 use std::{fs::File, path::PathBuf};
 use tar::{Builder, Header};
-use zstd::Encoder;
-pub struct Compression<'a> {
-    archive: Builder<Encoder<'a, File>>,
+
+pub struct Compression {
+    archive: Builder<CompressorWriter<File>>,
 }
 
-impl<'a> Compression<'a> {
-    pub fn create(path: &PathBuf, threads: u32, level: i32) -> Self {
+impl Compression {
+    pub fn create(path: &PathBuf, quality: u32) -> Self {
         let file = File::create(path).expect("Could not create file");
-        let mut encoder = Encoder::new(file, level).expect("Could not start compression");
-        encoder
-            .multithread(threads)
-            .expect("Could not start multithreading");
+        let encoder = CompressorWriter::new(file, 16384, quality, 24);
         let archive = Builder::new(encoder);
         Compression { archive }
     }
@@ -21,8 +19,9 @@ impl<'a> Compression<'a> {
         self.archive
             .into_inner()
             .expect("Could not create the archive")
-            .finish()
-            .expect("Could not complete the compression");
+            .into_inner()
+            .sync_all()
+            .expect("Could not close the backup file");
     }
 
     pub fn append_file(&mut self, file: &PathBuf) {
@@ -49,6 +48,7 @@ fn path_to_archive(path: &PathBuf) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn path_from_archive(path: &String) -> PathBuf {
     if path.starts_with("rel/") {
         PathBuf::from(&path[4..])

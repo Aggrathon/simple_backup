@@ -9,7 +9,6 @@ keywords = ["backup", "compression"]
 
 [dependencies]
 tar = "0.4"
-zstd = "0.6"
 clap = "2.33"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
@@ -18,3 +17,4 @@ chrono = "0.4"
 regex = "1.4"
 path-clean = "0.1"
 path-absolutize = "3.0"
+brotli = { version="3.3", features=["std"] }
