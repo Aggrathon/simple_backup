@@ -68,6 +68,7 @@ pub struct ProgressBar {
     max: usize,
     current: usize,
     steps: usize,
+    progress: usize,
 }
 
 #[allow(dead_code)]
@@ -88,18 +89,25 @@ impl ProgressBar {
         Self {
             max: size,
             current: 0,
-            steps: steps - 1,
+            steps: steps,
+            progress: 1,
         }
     }
 
     pub fn progress(&mut self) {
         if self.current < self.max {
             self.current += 1;
-            if self.current == self.max {
-                println!("#");
-            } else if self.current * self.steps % self.max < self.steps {
-                print!("#");
-                std::io::stdout().flush().unwrap();
+            let blocks = self.current * self.steps / self.max;
+            if blocks > self.progress {
+                while blocks > self.progress {
+                    print!("#");
+                    self.progress += 1;
+                }
+                if self.current == self.max {
+                    println!("");
+                } else {
+                    std::io::stdout().flush().unwrap();
+                }
             }
         }
     }
@@ -119,7 +127,7 @@ mod tests {
                         count += 1
                     }
                 }
-                assert_eq!(*s, count + 1);
+                assert_eq!(*s, count);
             }
         }
     }
