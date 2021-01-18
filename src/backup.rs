@@ -30,17 +30,18 @@ pub fn backup(config: &mut Config, dry: bool) {
         .collect();
 
     if config.incremental {
-        let time_prev = get_previous_time(&config);
-        let time_prev: SystemTime = Local.from_local_datetime(&time_prev).unwrap().into();
-        files_all = files_all
-            .into_iter()
-            .filter(|path| {
-                path.metadata()
-                    .and_then(|m| m.accessed())
-                    .and_then(|t| Ok(t > time_prev))
-                    .unwrap_or(false)
-            })
-            .collect();
+        if let Some(time_prev) = get_previous_time(&config) {
+            let time_prev: SystemTime = Local.from_local_datetime(&time_prev).unwrap().into();
+            files_all = files_all
+                .into_iter()
+                .filter(|path| {
+                    path.metadata()
+                        .and_then(|m| m.modified())
+                        .and_then(|t| Ok(t > time_prev))
+                        .unwrap_or(false)
+                })
+                .collect();
+        }
     }
 
     if config.verbose {
@@ -51,7 +52,7 @@ pub fn backup(config: &mut Config, dry: bool) {
     }
 
     if !dry {
-        config.time = DateTime::<Local>::from(SystemTime::now()).naive_local();
+        config.time = Some(DateTime::<Local>::from(SystemTime::now()).naive_local());
         let output = config.get_output();
         if output.exists() && !config.force {
             panic!("Backup already exists at '{}'", output.to_string_lossy());
@@ -68,13 +69,13 @@ pub fn backup(config: &mut Config, dry: bool) {
     }
 }
 
-pub fn get_previous_time<'a>(config: &Config) -> NaiveDateTime {
+pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
     if !config.incremental {
-        NaiveDateTime::from_timestamp(0, 0)
-    } else if config.time.timestamp() == 0 {
-        panic!("Incremental backup is not implemented");
+        None
+    } else if let Some(t) = config.time {
+        Some(t)
     } else {
-        config.time
+        todo!("Incremental backup is not implemented");
     }
 }
 

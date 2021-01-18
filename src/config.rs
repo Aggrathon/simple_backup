@@ -20,7 +20,7 @@ pub struct Config {
     pub quality: u32,
     pub local: bool,
     #[serde(with = "parse_date")]
-    pub time: NaiveDateTime,
+    pub time: Option<NaiveDateTime>,
 }
 
 impl Config {
@@ -37,7 +37,7 @@ impl Config {
             incremental: false,
             quality: 11,
             local: false,
-            time: NaiveDateTime::from_timestamp(0, 0),
+            time: None,
         }
     }
 
@@ -71,8 +71,7 @@ impl Config {
             time: args
                 .value_of("time")
                 .and_then(|v| Some(parse_date::try_parse(v).expect("Could not parse time")))
-                .unwrap_or(NaiveDateTime::from_timestamp(0, 0)),
-            // TODO: Check existing backups for times if not given
+                .unwrap_or(None),
         }
     }
 
