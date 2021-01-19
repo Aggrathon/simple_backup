@@ -1,22 +1,24 @@
-use brotli::CompressorWriter;
-use path_absolutize::Absolutize;
+use brotli::{CompressorWriter, Decompressor};
 use path_clean::PathClean;
-use std::{fs::File, path::PathBuf};
-use tar::{Builder, Header};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
+use tar::{Archive, Builder, Entries, Entry, Header};
 
-pub struct Compression {
+pub struct CompressionEncoder {
     archive: Builder<CompressorWriter<File>>,
 }
 
-impl Compression {
+impl CompressionEncoder {
     pub fn create(path: &PathBuf, quality: u32) -> Self {
         let file = File::create(path).expect("Could not create file");
-        let encoder = CompressorWriter::new(file, 16384, quality, 24);
+        let encoder = CompressorWriter::new(file, 16384, quality, 23);
         let archive = Builder::new(encoder);
-        Compression { archive }
+        CompressionEncoder { archive }
     }
 
-    pub fn finish(self) {
+    pub fn close(self) {
         self.archive
             .into_inner()
             .expect("Could not create the archive")
@@ -48,37 +50,63 @@ impl Compression {
     }
 }
 
-fn path_to_archive(path: &PathBuf) -> String {
-    if path.is_relative() {
-        let clean = path.clean();
-        let string = clean.to_string_lossy();
-        if string.starts_with("..") {
-            eprint!(
-                "Invalid local path (requires parent directory): {}",
-                path.to_string_lossy()
-            );
-            path_to_archive(&path.absolutize().unwrap().to_path_buf())
-        } else {
-            "rel/".to_string() + &string
-        }
-    } else {
-        let string = &path.to_string_lossy();
-        if string.starts_with("/") {
-            "abs".to_string() + string
-        } else {
-            "abs/".to_string() + string
-        }
+pub struct CompressionDecoder {
+    archive: Archive<Decompressor<File>>,
+}
+
+impl CompressionDecoder {
+    pub fn read(path: &PathBuf) -> std::io::Result<Self> {
+        let file = File::open(path)?;
+        let decoder = brotli::Decompressor::new(file, 16384);
+        let mut archive = Archive::new(decoder);
+        archive.set_unpack_xattrs(true);
+        Ok(Self { archive })
+    }
+
+    pub fn entries(&mut self) -> Result<CompressionEntries, std::io::Error> {
+        Ok(CompressionEntries {
+            entries: self.archive.entries()?,
+        })
     }
 }
 
-#[allow(dead_code)]
-fn path_from_archive(path: &String) -> PathBuf {
+pub struct CompressionEntries<'a> {
+    entries: Entries<'a, Decompressor<File>>,
+}
+
+impl<'a> Iterator for CompressionEntries<'a> {
+    type Item = Result<(PathBuf, Entry<'a, Decompressor<File>>), std::io::Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let entry = self.entries.next()?;
+        if let Err(e) = entry {
+            return Some(Err(e));
+        }
+        let entry = entry.unwrap();
+        let path = entry.header().path();
+        if let Err(e) = path {
+            return Some(Err(e));
+        }
+        Some(Ok((path_from_archive(&path.unwrap()), entry)))
+    }
+}
+
+fn path_to_archive(path: &PathBuf) -> String {
+    if path.is_relative() {
+        "rel/".to_string() + &path.clean().to_string_lossy()
+    } else {
+        "abs/".to_string() + &path.to_string_lossy()
+    }
+}
+
+fn path_from_archive(path: &Path) -> PathBuf {
+    let path = path.to_string_lossy();
     if path.starts_with("rel/") {
         PathBuf::from(&path[4..])
     } else if path.starts_with("abs/") {
         PathBuf::from(&path[4..])
     } else {
-        PathBuf::from(&path)
+        PathBuf::from(&path[0..])
     }
 }
 
@@ -93,7 +121,7 @@ mod tests {
     fn paths() {
         let dir = PathBuf::from(".").absolutize().unwrap().to_path_buf();
         let pia = path_to_archive(&dir);
-        let out = path_from_archive(&pia);
+        let out = path_from_archive(&PathBuf::from(pia));
         assert_eq!(dir, out);
     }
 }

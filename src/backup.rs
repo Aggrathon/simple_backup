@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::{compression::Compression, utils};
+use crate::{compression::CompressionEncoder, utils};
 use chrono::{offset::TimeZone, DateTime, Local, NaiveDateTime};
 use core::panic;
 use path_absolutize::Absolutize;
@@ -57,7 +57,7 @@ pub fn backup(config: &mut Config, dry: bool) {
         if output.exists() && !config.force {
             panic!("Backup already exists at '{}'", output.to_string_lossy());
         }
-        let mut comp = Compression::create(&output, config.quality);
+        let mut comp = CompressionEncoder::create(&output, config.quality);
         comp.append_data("config.yml", &config.to_yaml());
         comp.append_data("files.txt", &files_list);
         let mut bar = ProgressBar::start(files_all.len(), 80, "Backing up files");
@@ -65,7 +65,7 @@ pub fn backup(config: &mut Config, dry: bool) {
             comp.append_file(path);
             bar.progress();
         }
-        comp.finish();
+        comp.close();
     }
 }
 
