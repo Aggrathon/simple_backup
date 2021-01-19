@@ -1,6 +1,5 @@
 use std::{
-    io::ErrorKind,
-    io::Read,
+    io::{ErrorKind, Read},
     path::{Path, PathBuf},
 };
 

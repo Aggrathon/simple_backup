@@ -1,9 +1,10 @@
-use brotli::{CompressorWriter, Decompressor};
-use path_clean::PathClean;
 use std::{
     fs::File,
     path::{Path, PathBuf},
 };
+
+use brotli::{CompressorWriter, Decompressor};
+use path_clean::PathClean;
 use tar::{Archive, Builder, Entries, Entry, Header};
 
 pub struct CompressionEncoder {
@@ -107,8 +108,9 @@ fn path_from_archive<P: AsRef<Path>>(path: P) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use path_absolutize::Absolutize;
     use std::{io::Cursor, path::PathBuf};
+
+    use path_absolutize::Absolutize;
     use tar::{Archive, Builder, Header};
 
     use super::{path_from_archive, path_to_archive};

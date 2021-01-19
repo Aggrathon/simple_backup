@@ -8,9 +8,10 @@ mod gui;
 mod restore;
 mod utils;
 
+use std::path::PathBuf;
+
 use clap::{App, Arg, SubCommand, Values};
 use config::Config;
-use std::path::PathBuf;
 
 fn arg_include<'a>() -> Arg<'a, 'a> {
     Arg::with_name("include")

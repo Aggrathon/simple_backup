@@ -1,11 +1,15 @@
-use crate::{
-    compression::CompressionEncoder, config::Config, restore::get_config_from_backup, utils,
-};
+use std::{cmp::max, collections::VecDeque, path::PathBuf, time::SystemTime};
+
 use chrono::{offset::TimeZone, DateTime, Local, NaiveDateTime};
 use path_absolutize::Absolutize;
 use regex::Regex;
-use std::{cmp::max, collections::VecDeque, path::PathBuf, time::SystemTime};
-use utils::ProgressBar;
+
+use crate::{
+    compression::CompressionEncoder,
+    config::Config,
+    restore::get_config_from_backup,
+    utils::ProgressBar,
+};
 
 /// Backup files
 pub fn backup(config: &mut Config, dry: bool) {
@@ -281,9 +285,11 @@ impl Iterator for FileCrawler {
 
 #[cfg(test)]
 mod tests {
-    use super::FileCrawler;
-    use path_absolutize::Absolutize;
     use std::path::PathBuf;
+
+    use path_absolutize::Absolutize;
+
+    use super::FileCrawler;
 
     #[test]
     fn file_crawler_abs() {

@@ -1,0 +1,12 @@
+# These settings currently requires nightly rustfmt
+# i.e., run with `cargo +nightly fmt`
+
+unstable_features = true
+blank_lines_lower_bound = 0
+imports_layout = "HorizontalVertical"
+group_imports = "StdExternalCrate"
+overflow_delimited_expr = true
+use_try_shorthand = true
+# This replaces `merge_imports = true` at some point:
+# imports_granularity = "Module"
+merge_imports = true

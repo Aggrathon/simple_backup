@@ -1,5 +1,4 @@
-use std::cmp::max;
-use std::io::Write;
+use std::{cmp::max, io::Write};
 
 pub mod parse_date {
     use chrono::NaiveDateTime;

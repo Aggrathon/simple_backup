@@ -1,11 +1,13 @@
-use crate::utils::parse_date;
-use chrono::{Local, NaiveDateTime};
-use clap::{ArgMatches, Values};
-use serde::{Deserialize, Serialize};
 use std::{
     fs::{File, ReadDir},
     path::{Path, PathBuf},
 };
+
+use chrono::{Local, NaiveDateTime};
+use clap::{ArgMatches, Values};
+use serde::{Deserialize, Serialize};
+
+use crate::utils::parse_date;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
