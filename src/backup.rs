@@ -1,56 +1,104 @@
 use crate::{compression::CompressionDecoder, config::Config};
 use crate::{compression::CompressionEncoder, utils};
 use chrono::{offset::TimeZone, DateTime, Local, NaiveDateTime};
-use core::panic;
 use path_absolutize::Absolutize;
 use regex::Regex;
 use std::{cmp::max, collections::VecDeque, io::Read, path::PathBuf, time::SystemTime};
 use utils::ProgressBar;
 
+/// Backup files
 pub fn backup(config: &mut Config, dry: bool) {
-    let mut files_all: Vec<PathBuf> = FileCrawler::new(
-        &config.include,
-        &config.exclude,
-        &config.regex,
-        config.local,
-    )
-    .collect();
-    let files_list: String = files_all
-        .iter()
-        .map(|f| f.to_string_lossy() + "\n")
-        .collect();
+    // Check for overwrite and collect timestamp
+    let current_time = DateTime::<Local>::from(SystemTime::now()).naive_local();
+    let output = config.get_output();
+    if output.exists() && !config.force {
+        eprintln!(
+            "Backup already exists at '{}' (use --force to overwrite)",
+            output.to_string_lossy()
+        );
+        return;
+    }
 
+    // Prepare lists of files
+    let mut files_string = String::new();
+    files_string.reserve(10_000);
+    if config.verbose {
+        println!("Files to backup:");
+    } else {
+        println!("Crawling for files...");
+    }
+    let mut files_all: Vec<PathBuf> = vec![];
+
+    // Crawl for incremental files
     if config.incremental {
         if let Some(time_prev) = get_previous_time(&config) {
             let time_prev: SystemTime = Local.from_local_datetime(&time_prev).unwrap().into();
-            files_all = files_all
-                .into_iter()
-                .filter(|path| {
-                    path.metadata()
-                        .and_then(|m| m.modified())
-                        .and_then(|t| Ok(t > time_prev))
-                        .unwrap_or(false)
-                })
-                .collect();
+            files_all = FileCrawler::new(
+                &config.include,
+                &config.exclude,
+                &config.regex,
+                config.local,
+            )
+            .into_iter()
+            .filter(|path| {
+                path.metadata()
+                    .and_then(|m| m.modified())
+                    .and_then(|t| {
+                        let fresh = t > time_prev;
+                        if config.verbose || !dry {
+                            let string = &path.to_string_lossy();
+                            if !dry {
+                                files_string.push(if fresh { '1' } else { '0' });
+                                files_string.push(',');
+                                files_string.push_str(&string);
+                                files_string.push('\n');
+                            }
+                            if config.verbose && fresh {
+                                println!("{}", &string);
+                            }
+                        }
+                        Ok(fresh)
+                    })
+                    .unwrap_or(false)
+            })
+            .collect();
         }
     }
-
-    if config.verbose {
-        println!("Files to backup:");
-        files_all
-            .iter()
-            .for_each(|f| println! {"{}", f.to_string_lossy()});
+    // Crawl for all files
+    if files_all.is_empty() {
+        files_all = FileCrawler::new(
+            &config.include,
+            &config.exclude,
+            &config.regex,
+            config.local,
+        )
+        .map(|path| {
+            if config.verbose || !dry {
+                let string = &path.to_string_lossy();
+                if !dry {
+                    files_string.push('1');
+                    files_string.push(',');
+                    files_string.push_str(&string);
+                    files_string.push('\n');
+                }
+                if config.verbose {
+                    println!("{}", &string);
+                }
+            }
+            path
+        })
+        .collect();
     }
 
+    // Perform the backup
     if !dry {
-        config.time = Some(DateTime::<Local>::from(SystemTime::now()).naive_local());
-        let output = config.get_output();
-        if output.exists() && !config.force {
-            panic!("Backup already exists at '{}'", output.to_string_lossy());
+        if config.verbose {
+            println!("");
         }
+        config.time = Some(current_time);
         let mut comp = CompressionEncoder::create(&output, config.quality);
         comp.append_data("config.yml", &config.to_yaml());
-        comp.append_data("files.txt", &files_list);
+        comp.append_data("files.csv", &files_string);
         let mut bar = ProgressBar::start(files_all.len(), 80, "Backing up files");
         for path in files_all.iter() {
             comp.append_file(path);
@@ -60,6 +108,7 @@ pub fn backup(config: &mut Config, dry: bool) {
     }
 }
 
+/// Check the config (arguments) or previous backups for a time limit in case of an incremental backup
 pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
     if !config.incremental {
         None
@@ -146,77 +195,12 @@ pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
     }
 }
 
+/// Iterator for crawling through files to backup
 struct FileCrawler {
     include: Vec<PathBuf>,
     exclude: Vec<PathBuf>,
     regex: Vec<Regex>,
     stack: VecDeque<PathBuf>,
-}
-
-impl Iterator for FileCrawler {
-    type Item = PathBuf;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            while let Some(item) = self.stack.pop_front() {
-                if item.is_dir() {
-                    let mut count: usize = 0;
-                    match item.read_dir() {
-                        Ok(dir) => dir.for_each(|f| match f {
-                            Ok(entry) => {
-                                let path = entry.path();
-                                let mut filtered = false;
-                                while let Some(p) = self.include.last() {
-                                    if *p <= path {
-                                        self.include.pop().unwrap();
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                while let Some(p) = self.exclude.last() {
-                                    if *p == path {
-                                        self.exclude.pop().unwrap();
-                                        filtered = true;
-                                    } else if *p < path {
-                                        self.exclude.pop().unwrap();
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                if !filtered
-                                    && !self
-                                        .regex
-                                        .iter()
-                                        .any(|r| r.is_match(&path.to_string_lossy()))
-                                {
-                                    self.stack.push_front(path);
-                                    count += 1;
-                                }
-                            }
-                            Err(e) => {
-                                eprint!("Could not read file: {}", e)
-                            }
-                        }),
-                        Err(e) => eprint!("Could not read directory: {}", e),
-                    };
-                    // Reverse the order of the added items to preserve lexicographic ordering
-                    if count > 1 {
-                        for i in 0..(count / 2) {
-                            self.stack.swap(i, count - i - 1);
-                        }
-                    }
-                } else if item.is_file() {
-                    return Some(item);
-                }
-            }
-            if self.include.len() > 0 {
-                self.stack.push_back(self.include.pop().unwrap());
-            } else {
-                break;
-            }
-        }
-        None
-    }
 }
 
 impl FileCrawler {
@@ -261,6 +245,70 @@ impl FileCrawler {
             regex,
             stack: VecDeque::new(),
         }
+    }
+}
+
+impl Iterator for FileCrawler {
+    type Item = PathBuf;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            while let Some(item) = self.stack.pop_front() {
+                if item.is_dir() {
+                    let mut count: usize = 0;
+                    match item.read_dir() {
+                        Ok(dir) => dir.for_each(|f| match f {
+                            Ok(entry) => {
+                                let path = entry.path();
+                                let mut filtered = false;
+                                while let Some(p) = self.include.last() {
+                                    if *p <= path {
+                                        self.include.pop().unwrap();
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                while let Some(p) = self.exclude.last() {
+                                    if *p == path {
+                                        self.exclude.pop().unwrap();
+                                        filtered = true;
+                                    } else if *p < path {
+                                        self.exclude.pop().unwrap();
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                if !filtered {
+                                    let string = path.to_string_lossy();
+                                    if !self.regex.iter().any(|r| r.is_match(&string)) {
+                                        self.stack.push_front(path);
+                                        count += 1;
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprint!("Could not read file: {}", e)
+                            }
+                        }),
+                        Err(e) => eprint!("Could not read directory: {}", e),
+                    };
+                    // Reverse the order of the added items to preserve lexicographic ordering
+                    if count > 1 {
+                        for i in 0..(count / 2) {
+                            self.stack.swap(i, count - i - 1);
+                        }
+                    }
+                } else if item.is_file() {
+                    return Some(item);
+                }
+            }
+            if self.include.len() > 0 {
+                self.stack.push_back(self.include.pop().unwrap());
+            } else {
+                break;
+            }
+        }
+        None
     }
 }
 
