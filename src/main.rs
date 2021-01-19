@@ -5,6 +5,7 @@ mod backup;
 mod compression;
 mod config;
 mod gui;
+mod restore;
 mod utils;
 
 use clap::{App, Arg, SubCommand, Values};
@@ -173,7 +174,7 @@ fn arg_local<'a>() -> Arg<'a, 'a> {
     Arg::with_name("local")
         .short("l")
         .long("local")
-        .help("Keep local (relative) paths instead of using absolute paths in the backup")
+        .help("Preserve relative (local) paths instead of converting to absolute paths")
 }
 
 fn main() {
@@ -242,7 +243,7 @@ fn main() {
         .get_matches();
 
     if let Some(matches) = matches.subcommand_matches("restore") {
-        backup::restore(
+        restore::restore(
             matches.value_of("source").unwrap(),
             matches.value_of("output").unwrap_or(""),
             matches
@@ -257,7 +258,7 @@ fn main() {
         );
     } else if let Some(matches) = matches.subcommand_matches("browse") {
         // TODO: Possibly load config from an earlier backup
-        backup::browse(
+        restore::browse(
             matches.value_of("source").unwrap(),
             matches
                 .values_of("regex")

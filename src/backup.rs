@@ -1,29 +1,20 @@
-use crate::config::Config;
+use crate::{compression::CompressionDecoder, config::Config};
 use crate::{compression::CompressionEncoder, utils};
 use chrono::{offset::TimeZone, DateTime, Local, NaiveDateTime};
 use core::panic;
 use path_absolutize::Absolutize;
 use regex::Regex;
-use std::{collections::VecDeque, path::PathBuf, time::SystemTime};
+use std::{cmp::max, collections::VecDeque, io::Read, path::PathBuf, time::SystemTime};
 use utils::ProgressBar;
 
 pub fn backup(config: &mut Config, dry: bool) {
-    let mut files_all: Vec<PathBuf> = if config.local {
-        FileCrawler::new(&config.include, &config.exclude, &config.regex)
-            .map(|p| {
-                if p.is_absolute() {
-                    p
-                } else {
-                    p.absolutize()
-                        .expect("Could not absolutise path")
-                        .to_path_buf()
-                }
-            })
-            .collect()
-    } else {
-        FileCrawler::new(&config.include, &config.exclude, &config.regex).collect()
-    };
-    files_all.sort();
+    let mut files_all: Vec<PathBuf> = FileCrawler::new(
+        &config.include,
+        &config.exclude,
+        &config.regex,
+        config.local,
+    )
+    .collect();
     let files_list: String = files_all
         .iter()
         .map(|f| f.to_string_lossy() + "\n")
@@ -69,6 +60,7 @@ pub fn backup(config: &mut Config, dry: bool) {
     }
 }
 
+#[allow(unreachable_code)]
 pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
     if !config.incremental {
         None
@@ -76,26 +68,33 @@ pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
         Some(t)
     } else {
         todo!("Incremental backup is not implemented");
+        todo!("Make these warnings instead of panics");
+        todo!("Iterate through all possible earlier backups");
+        let mut time = config.time;
+        let mut dec = CompressionDecoder::read(&PathBuf::from("")).expect("Could not open backup");
+        let mut entries = dec.entries().expect("Could not read backup");
+        let mut entry = entries
+            .next()
+            .expect("The backup is empty")
+            .expect("Could not open config");
+        if entry.0 != PathBuf::from("config.yml") {
+            panic!("The first file is not a config");
+        }
+        let mut s = String::new();
+        entry
+            .1
+            .read_to_string(&mut s)
+            .expect("Could not read config");
+        let conf = Config::from_yaml(&s);
+        if let Some(t1) = time {
+            if let Some(t2) = conf.time {
+                time = Some(max(t1, t2))
+            }
+        } else if let Some(t) = conf.time {
+            time = Some(t)
+        }
+        time
     }
-}
-
-#[allow(unused_variables)]
-pub fn restore(
-    source: &str,
-    output: &str,
-    regex: Vec<&str>,
-    all: bool,
-    force: bool,
-    verbose: bool,
-    flatten: bool,
-    dry: bool,
-) {
-    panic!("Restoring is not implemented");
-}
-
-#[allow(unused_variables)]
-pub fn browse(source: &str, regex: Vec<&str>) {
-    panic!("Browsing is not implemented");
 }
 
 struct FileCrawler {
@@ -172,19 +171,44 @@ impl Iterator for FileCrawler {
 }
 
 impl FileCrawler {
-    fn new(include: &Vec<String>, exclude: &Vec<String>, regex: &Vec<String>) -> Self {
-        let mut include: Vec<PathBuf> = include.iter().map(|s| PathBuf::from(s)).collect();
-        include.sort_unstable_by(|a, b| b.cmp(a));
-        let mut exclude: Vec<PathBuf> = exclude.iter().map(|s| PathBuf::from(s)).collect();
-        exclude.sort_unstable_by(|a, b| b.cmp(a));
+    fn new(include: &Vec<String>, exclude: &Vec<String>, regex: &Vec<String>, local: bool) -> Self {
+        let mut inc: Vec<PathBuf>;
+        let mut exc: Vec<PathBuf>;
+        if local {
+            inc = include.iter().map(|s| PathBuf::from(s)).collect();
+            exc = exclude.iter().map(|s| PathBuf::from(s)).collect();
+        } else {
+            inc = include
+                .iter()
+                .filter_map(|s| match PathBuf::from(s).absolutize() {
+                    Ok(p) => Some(p.to_path_buf()),
+                    Err(e) => {
+                        eprintln!("Could not convert to absolute path: {}", e);
+                        None
+                    }
+                })
+                .collect();
+            exc = exclude
+                .iter()
+                .filter_map(|s| match PathBuf::from(s).absolutize() {
+                    Ok(p) => Some(p.to_path_buf()),
+                    Err(e) => {
+                        eprintln!("Could not convert to absolute path: {}", e);
+                        None
+                    }
+                })
+                .collect();
+        }
+        inc.sort_unstable_by(|a, b| b.cmp(a));
+        exc.sort_unstable_by(|a, b| b.cmp(a));
         let regex = regex
             .iter()
             .map(|s| Regex::new(s).expect("Could not parse regex"))
             .collect();
 
         Self {
-            include,
-            exclude,
+            include: inc,
+            exclude: exc,
             regex,
             stack: VecDeque::new(),
         }
@@ -194,17 +218,46 @@ impl FileCrawler {
 #[cfg(test)]
 mod tests {
     use super::FileCrawler;
+    use path_absolutize::Absolutize;
     use std::path::PathBuf;
 
     #[test]
-    fn file_crawler() {
+    fn file_crawler_abs() {
         let files: Vec<PathBuf> = FileCrawler::new(
             &vec!["src".to_string()],
             &vec!["src/main.rs".to_string()],
             &vec!["config.*".to_string()],
+            false,
         )
         .collect();
-        dbg!(&files);
+        files
+            .iter()
+            .take(files.len() - 1)
+            .zip(files.iter().skip(1))
+            .for_each(|(a, b)| assert!(a < b));
+        files
+            .iter()
+            .for_each(|f| assert_ne!(*f, PathBuf::from("src/main.rs").absolutize().unwrap()));
+        files
+            .iter()
+            .for_each(|f| assert_ne!(*f, PathBuf::from("src/config.rs").absolutize().unwrap()));
+        assert_eq!(
+            files
+                .iter()
+                .filter(|f| **f == PathBuf::from("src/backup.rs").absolutize().unwrap())
+                .count(),
+            1
+        );
+    }
+    #[test]
+    fn file_crawler_rel() {
+        let files: Vec<PathBuf> = FileCrawler::new(
+            &vec!["src".to_string()],
+            &vec!["src/main.rs".to_string()],
+            &vec!["config.*".to_string()],
+            true,
+        )
+        .collect();
         files
             .iter()
             .take(files.len() - 1)
