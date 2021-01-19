@@ -28,6 +28,7 @@ pub fn backup(config: &mut Config, dry: bool) {
         println!("Crawling for files...");
     }
     let mut files_all: Vec<PathBuf> = vec![];
+    let mut listed = false;
 
     // Crawl for incremental files
     if config.incremental {
@@ -62,10 +63,11 @@ pub fn backup(config: &mut Config, dry: bool) {
                     .unwrap_or(false)
             })
             .collect();
+            listed = true;
         }
     }
     // Crawl for all files
-    if files_all.is_empty() {
+    if !listed {
         files_all = FileCrawler::new(
             &config.include,
             &config.exclude,
@@ -90,21 +92,35 @@ pub fn backup(config: &mut Config, dry: bool) {
         .collect();
     }
 
+    if files_all.len() == 0 {
+        println!("Nothing to backup!");
+        return;
+    }
+
     // Perform the backup
     if !dry {
         if config.verbose {
             println!("");
         }
         config.time = Some(current_time);
-        let mut comp = CompressionEncoder::create(&output, config.quality);
-        comp.append_data("config.yml", &config.to_yaml());
-        comp.append_data("files.csv", &files_string);
+        let mut comp = CompressionEncoder::create(&output, config.quality)
+            .expect("Could not create backup file");
+        comp.append_data("config.yml", &config.to_yaml())
+            .expect("Could not write to the backup");
+        comp.append_data("files.csv", &files_string)
+            .expect("Could not write to the backup");
         let mut bar = ProgressBar::start(files_all.len(), 80, "Backing up files");
         for path in files_all.iter() {
-            comp.append_file(path);
+            comp.append_file(path).unwrap_or_else(|e| {
+                eprintln!(
+                    "Could not add '{}' to the backup: {}",
+                    path.to_string_lossy(),
+                    e
+                )
+            });
             bar.progress();
         }
-        comp.close();
+        comp.close().expect("Could not store the backup");
     }
 }
 

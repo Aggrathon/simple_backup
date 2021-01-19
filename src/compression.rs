@@ -11,44 +11,34 @@ pub struct CompressionEncoder {
 }
 
 impl CompressionEncoder {
-    pub fn create<P: AsRef<Path>>(path: P, quality: u32) -> Self {
-        let file = File::create(path).expect("Could not create file");
+    pub fn create<P: AsRef<Path>>(path: P, quality: u32) -> std::io::Result<Self> {
+        let file = File::create(path)?;
         let encoder = CompressorWriter::new(file, 16384, quality, 23);
         let archive = Builder::new(encoder);
-        CompressionEncoder { archive }
+        Ok(CompressionEncoder { archive })
     }
 
-    pub fn close(self) {
-        self.archive
-            .into_inner()
-            .expect("Could not create the archive")
-            .into_inner()
-            .sync_all()
-            .expect("Could not close the backup file");
+    pub fn close(self) -> std::io::Result<()> {
+        self.archive.into_inner()?.into_inner().sync_all()?;
+        Ok(())
     }
 
-    pub fn append_file(&mut self, file: &PathBuf) {
+    pub fn append_file(&mut self, file: &PathBuf) -> std::io::Result<()> {
         let name = path_to_archive(&file);
-        if let Err(e) = self.archive.append_path_with_name(&file, name) {
-            eprintln!(
-                "Could not add '{}' to archive: {}",
-                file.to_string_lossy(),
-                e
-            );
-        }
+        self.archive.append_path_with_name(&file, name)?;
+        Ok(())
     }
 
-    pub fn append_data<P: AsRef<Path>, B: AsRef<[u8]>>(&mut self, name: P, content: B) {
+    pub fn append_data<P: AsRef<Path>, B: AsRef<[u8]>>(
+        &mut self,
+        name: P,
+        content: B,
+    ) -> std::io::Result<()> {
         let content = content.as_ref();
         let mut header = Header::new_gnu();
         header.set_size(content.len() as u64);
-        if let Err(e) = self.archive.append_data(&mut header, &name, content) {
-            eprintln!(
-                "Could not add '{}' to archive: {}",
-                name.as_ref().to_string_lossy(),
-                e
-            );
-        }
+        self.archive.append_data(&mut header, &name, content)?;
+        Ok(())
     }
 }
 
