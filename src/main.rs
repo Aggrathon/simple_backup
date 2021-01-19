@@ -10,6 +10,7 @@ mod utils;
 
 use clap::{App, Arg, SubCommand, Values};
 use config::Config;
+use std::path::PathBuf;
 
 fn arg_include<'a>() -> Arg<'a, 'a> {
     Arg::with_name("include")
@@ -96,15 +97,26 @@ fn arg_dry<'a>() -> Arg<'a, 'a> {
 
 fn arg_conffile<'a>() -> Arg<'a, 'a> {
     Arg::with_name("file")
-        .value_name("CONFIG_FILE")
-        .help("The path to the config file")
+        .value_name("PATH")
+        .help("The path to the config file, previous backup, or directory with previous backups")
         .takes_value(true)
         .required(true)
         .validator(|v| {
-            if v.ends_with(".yml") {
-                Ok(())
+            let path = PathBuf::from(&v);
+            if path.exists() {
+                if path.is_dir() {
+                    Ok(())
+                } else if path.is_file() {
+                    if v.ends_with(".yml") || v.ends_with(".tar.br"){
+                        Ok(())
+                    } else {
+                        Err("The file must be either a config file (ends with '.yml') or a previous backup (ends with `.tar.br`)".to_string())
+                    }
+                } else {
+                    Err("The path to the config file is broken".to_string())
+                }
             } else {
-                Err("The filename for the config file must end in `.yml`".to_string())
+                Err("File does not exist".to_string())
             }
         })
 }
@@ -135,7 +147,12 @@ fn arg_incremental<'a>() -> Arg<'a, 'a> {
 fn arg_time<'a>(req: bool) -> Arg<'a, 'a> {
     let arg = Arg::with_name("time")
         .long("time")
-        .help("If doing an incremental backup, override the previous time");
+        .help("If doing an incremental backup, override the previous time")
+        .validator(|v| {
+            utils::parse_date::try_parse(&v)
+                .map_err(String::from)
+                .map(|_| ())
+        });
     if req {
         arg.requires("incremental")
     } else {
@@ -147,7 +164,7 @@ fn arg_all<'a>() -> Arg<'a, 'a> {
     Arg::with_name("all")
         .short("a")
         .long("all")
-        .help("Restore all files, not just the ones present during the last backup")
+        .help("Restore all files (even ones deleted in the last backup)")
 }
 
 fn arg_quality<'a>() -> Arg<'a, 'a> {
@@ -163,10 +180,10 @@ fn arg_quality<'a>() -> Arg<'a, 'a> {
                 if v >= 1 && v <= 11 {
                     Ok(())
                 } else {
-                    Err(String::from("The value must be a number between 1-11"))
+                    Err(String::from("Must be a number between 1-11"))
                 }
             }
-            Err(_) => Err(String::from("The value must be a number between 1-11")),
+            Err(_) => Err(String::from("Must be a number between 1-11")),
         })
 }
 
@@ -268,6 +285,7 @@ fn main() {
     } else if let Some(_) = matches.subcommand_matches("gui") {
         gui::gui();
     } else if let Some(matches) = matches.subcommand_matches("backup") {
+        // TODO: Handle config file being a directory or a previous backup
         let mut config = Config::read_yaml(matches.value_of("file").unwrap());
         backup::backup(&mut config, matches.is_present("dry"));
     } else if let Some(matches) = matches.subcommand_matches("config") {

@@ -6,7 +6,7 @@ pub mod parse_date {
     use serde::{de::Error, Deserialize, Deserializer, Serializer};
 
     const FORMAT: &'static str = "%Y-%m-%d %H:%M:%S";
-    const FORMATS: [&'static str; 18] = [
+    const FORMATS: [&'static str; 19] = [
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d %H:%M",
         "%Y-%m-%d",
@@ -25,6 +25,7 @@ pub mod parse_date {
         "%y%m%d%H%M%S",
         "%y%m%d%H%M",
         "%y%m%d",
+        "%y-%m-%d_%H-%M-%S",
     ];
 
     pub fn serialize<S>(date: &Option<NaiveDateTime>, serializer: S) -> Result<S::Ok, S::Error>
@@ -60,7 +61,7 @@ pub mod parse_date {
                 return Ok(Some(t));
             }
         }
-        Err("Unknown date format, try, e.g., `YYMMDD`")
+        Err("Unknown time format, try, e.g., `YYMMDD`")
     }
 }
 
