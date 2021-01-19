@@ -92,36 +92,71 @@ impl<'a> Iterator for CompressionEntries<'a> {
 }
 
 fn path_to_archive(path: &PathBuf) -> String {
-    if path.is_relative() {
-        "rel/".to_string() + &path.clean().to_string_lossy()
+    if path.has_root() {
+        "abs".to_string() + &path.to_string_lossy()
     } else {
-        "abs/".to_string() + &path.to_string_lossy()
+        "rel/".to_string() + &path.clean().to_string_lossy()
     }
 }
 
 fn path_from_archive(path: &Path) -> PathBuf {
-    let path = path.to_string_lossy();
-    if path.starts_with("rel/") {
-        PathBuf::from(&path[4..])
-    } else if path.starts_with("abs/") {
-        PathBuf::from(&path[4..])
+    let string = path.to_string_lossy();
+    if string.starts_with("rel/") {
+        PathBuf::from(&string[4..])
+    } else if string.starts_with("abs") {
+        PathBuf::from(&string[3..])
+    } else if string == "rel" {
+        PathBuf::from(".")
     } else {
-        PathBuf::from(&path[0..])
+        PathBuf::from(path)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use path_absolutize::Absolutize;
-    use std::path::PathBuf;
+    use std::{io::Cursor, path::PathBuf};
+    use tar::{Archive, Builder, Header};
 
     use super::{path_from_archive, path_to_archive};
 
     #[test]
-    fn paths() {
+    fn paths_abs() {
         let dir = PathBuf::from(".").absolutize().unwrap().to_path_buf();
-        let pia = path_to_archive(&dir);
-        let out = path_from_archive(&PathBuf::from(pia));
+        let pta = path_to_archive(&dir);
+        let out = path_from_archive(&PathBuf::from(&pta));
+        assert_eq!(dir, out);
+
+        let tmp: Vec<u8> = vec![];
+        let mut tar = Builder::new(tmp);
+        let mut header = Header::new_gnu();
+        header.set_size(2);
+        tar.append_data(&mut header, pta, "ab".as_bytes()).unwrap();
+        let tmp = tar.into_inner().unwrap();
+        let mut tar = Archive::new(Cursor::new(tmp));
+        let entry = tar.entries().unwrap().next().unwrap().unwrap();
+        let pia = entry.header().path().unwrap();
+        let out = path_from_archive(&pia);
+        assert_eq!(dir, out);
+    }
+
+    #[test]
+    fn paths_rel() {
+        let dir = PathBuf::from(".");
+        let pta = path_to_archive(&dir);
+        let out = path_from_archive(&PathBuf::from(&pta));
+        assert_eq!(dir, out);
+
+        let tmp: Vec<u8> = vec![];
+        let mut tar = Builder::new(tmp);
+        let mut header = Header::new_gnu();
+        header.set_size(2);
+        tar.append_data(&mut header, pta, "ab".as_bytes()).unwrap();
+        let tmp = tar.into_inner().unwrap();
+        let mut tar = Archive::new(Cursor::new(tmp));
+        let entry = tar.entries().unwrap().next().unwrap().unwrap();
+        let pia = entry.header().path().unwrap();
+        let out = path_from_archive(&pia);
         assert_eq!(dir, out);
     }
 }
