@@ -1,4 +1,12 @@
-use std::{cmp::max, io::Write};
+use std::{
+    cmp::{max, min},
+    fs::ReadDir,
+    io::{Error, ErrorKind, Write},
+    path::{Path, PathBuf},
+};
+
+use chrono::NaiveDateTime;
+use regex::Regex;
 
 pub mod parse_date {
     use chrono::NaiveDateTime;
@@ -64,7 +72,112 @@ pub mod parse_date {
     }
 }
 
-#[allow(dead_code)]
+enum BackupIteratorPattern {
+    None,
+    Fullstamp(String),
+    Endstamp(String),
+    Regex(Regex),
+}
+
+pub struct BackupIterator {
+    constant: Option<std::io::Result<PathBuf>>,
+    dir: Option<ReadDir>,
+    pattern: BackupIteratorPattern,
+}
+
+impl BackupIterator {
+    #[allow(dead_code)]
+    pub fn with_timestamp<P: AsRef<Path>>(dir: P) -> Self {
+        Self::new(
+            dir,
+            BackupIteratorPattern::Endstamp("_%Y-%m-%d_%H-%M-%S.tar.br".to_string()),
+        )
+    }
+
+    pub fn with_name<P: AsRef<Path>, S: AsRef<str>>(dir: P, name: S) -> Self {
+        Self::new(
+            dir,
+            BackupIteratorPattern::Fullstamp(format!("{}_%Y-%m-%d_%H-%M-%S.tar.br", name.as_ref())),
+        )
+    }
+
+    #[allow(dead_code)]
+    pub fn with_ending<P: AsRef<Path>>(dir: P) -> Self {
+        match Regex::new(".*.tar.br") {
+            Err(e) => BackupIterator {
+                constant: Some(Err(Error::new(ErrorKind::Other, e))),
+                dir: None,
+                pattern: BackupIteratorPattern::None,
+            },
+            Ok(r) => Self::new(dir, BackupIteratorPattern::Regex(r)),
+        }
+    }
+
+    pub fn exact(path: PathBuf) -> Self {
+        BackupIterator {
+            constant: Some(path.metadata().map(|_| path)),
+            dir: None,
+            pattern: BackupIteratorPattern::None,
+        }
+    }
+
+    fn new<P: AsRef<Path>>(dir: P, pattern: BackupIteratorPattern) -> Self {
+        match dir.as_ref().read_dir() {
+            Err(e) => BackupIterator {
+                constant: Some(Err(e)),
+                dir: None,
+                pattern: BackupIteratorPattern::None,
+            },
+            Ok(d) => BackupIterator {
+                constant: None,
+                dir: Some(d),
+                pattern,
+            },
+        }
+    }
+}
+
+impl Iterator for BackupIterator {
+    type Item = std::io::Result<PathBuf>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.constant.is_some() {
+            std::mem::replace(&mut self.constant, None)
+        } else if let Some(dir) = &mut self.dir {
+            for entry in dir {
+                if entry.is_err() {
+                    return Some(entry.map(|e| e.path()));
+                }
+                let entry = entry.unwrap();
+                let filename = entry.file_name();
+                let string = filename.to_string_lossy();
+                match &self.pattern {
+                    BackupIteratorPattern::Fullstamp(pattern) => {
+                        if NaiveDateTime::parse_from_str(&string, &pattern).is_ok() {
+                            return Some(Ok(entry.path()));
+                        }
+                    }
+                    BackupIteratorPattern::Endstamp(pattern) => {
+                        let start = string.len() - min(string.len(), pattern.len());
+                        if NaiveDateTime::parse_from_str(&string[start..], &pattern).is_ok() {
+                            return Some(Ok(entry.path()));
+                        }
+                    }
+                    BackupIteratorPattern::Regex(regex) => {
+                        if regex.is_match(&string) {
+                            return Some(Ok(entry.path()));
+                        }
+                    }
+                    BackupIteratorPattern::None => {}
+                }
+            }
+            None
+        } else {
+            None
+        }
+    }
+}
+
 pub struct ProgressBar {
     max: usize,
     current: usize,
@@ -72,7 +185,6 @@ pub struct ProgressBar {
     progress: usize,
 }
 
-#[allow(dead_code)]
 impl ProgressBar {
     pub fn start(size: usize, steps: usize, title: &str) -> Self {
         let length = title.chars().count();

@@ -1,5 +1,6 @@
 use std::{
-    fs::{File, ReadDir},
+    fs::File,
+    io::{Error, ErrorKind},
     path::{Path, PathBuf},
 };
 
@@ -7,7 +8,7 @@ use chrono::{Local, NaiveDateTime};
 use clap::{ArgMatches, Values};
 use serde::{Deserialize, Serialize};
 
-use crate::utils::parse_date;
+use crate::utils::{parse_date, BackupIterator};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -77,9 +78,9 @@ impl Config {
         }
     }
 
-    pub fn read_yaml(path: &str) -> Self {
-        let reader = File::open(path).expect("Could not open the config file");
-        serde_yaml::from_reader(reader).expect("Could not read config file")
+    pub fn read_yaml(path: &str) -> std::io::Result<Self> {
+        let reader = File::open(path)?;
+        Ok(serde_yaml::from_reader(reader).map_err(|e| Error::new(ErrorKind::InvalidData, e))?)
     }
 
     pub fn write_yaml(&mut self, path: &str) {
@@ -88,8 +89,8 @@ impl Config {
         serde_yaml::to_writer(writer, &self).expect("Could not serialise config");
     }
 
-    pub fn from_yaml(yaml: &str) -> Result<Self, serde_yaml::Error> {
-        serde_yaml::from_str(yaml)
+    pub fn from_yaml<S: AsRef<str>>(yaml: S) -> Result<Self, serde_yaml::Error> {
+        serde_yaml::from_str(yaml.as_ref())
     }
 
     pub fn to_yaml(&mut self) -> String {
@@ -114,73 +115,36 @@ impl Config {
         }
     }
 
-    pub fn get_previous(&self) -> PreviousIterator {
+    pub fn get_previous(&self) -> BackupIterator {
         if self.output.ends_with(".tar.br") {
-            PreviousIterator {
-                output: Some(self.get_output()),
-                error: None,
-                dir: None,
-                pattern: String::new(),
-            }
+            BackupIterator::exact(PathBuf::from(&self.output))
         } else {
-            match Path::new(&self.output).read_dir() {
-                Err(e) => PreviousIterator {
-                    output: None,
-                    error: Some(e),
-                    dir: None,
-                    pattern: String::new(),
-                },
-                Ok(d) => PreviousIterator {
-                    output: None,
-                    error: None,
-                    dir: Some(d),
-                    pattern: [self.name.as_str(), "_%Y-%m-%d_%H-%M-%S.tar.br"]
-                        .iter()
-                        .map(|s| *s)
-                        .collect(),
-                },
-            }
+            BackupIterator::with_name(Path::new(&self.output), &self.name)
         }
     }
 }
 
-pub struct PreviousIterator {
-    output: Option<PathBuf>,
-    error: Option<std::io::Error>,
-    dir: Option<ReadDir>,
-    pattern: String,
-}
+#[cfg(test)]
+mod tests {
+    use super::Config;
 
-impl Iterator for PreviousIterator {
-    type Item = std::io::Result<PathBuf>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(e) = std::mem::replace(&mut self.error, None) {
-            Some(Err(e))
-        } else if let Some(p) = std::mem::replace(&mut self.output, None) {
-            if p.exists() {
-                Some(Ok(p))
-            } else {
-                Some(Err(p.metadata().unwrap_err()))
-            }
-        } else if let Some(dir) = &mut self.dir {
-            for entry in dir {
-                if entry.is_err() {
-                    return Some(entry.map(|e| e.path()));
-                }
-                let entry = entry.unwrap();
-                if NaiveDateTime::parse_from_str(
-                    &entry.file_name().to_string_lossy(),
-                    &self.pattern,
-                )
-                .is_ok()
-                {
-                    return Some(Ok(entry.path()));
-                }
-            }
-            None
-        } else {
-            None
-        }
+    #[test]
+    fn yaml() {
+        let mut config = Config::new();
+        let yaml = config.to_yaml();
+        let mut config2 = Config::from_yaml(&yaml).unwrap();
+        let yaml2 = config2.to_yaml();
+        assert_eq!(config.include, config2.include);
+        assert_eq!(config.exclude, config2.exclude);
+        assert_eq!(config.regex, config2.regex);
+        assert_eq!(config.output, config2.output);
+        assert_eq!(config.name, config2.name);
+        assert_eq!(config.verbose, config2.verbose);
+        assert_eq!(config.force, config2.force);
+        assert_eq!(config.incremental, config2.incremental);
+        assert_eq!(config.quality, config2.quality);
+        assert_eq!(config.local, config2.local);
+        assert_eq!(config.time, config2.time);
+        assert_eq!(yaml, yaml2);
     }
 }

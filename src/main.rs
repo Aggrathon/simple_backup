@@ -12,6 +12,8 @@ use std::path::PathBuf;
 
 use clap::{App, Arg, SubCommand, Values};
 use config::Config;
+use restore::get_config_from_backup;
+use utils::BackupIterator;
 
 fn arg_include<'a>() -> Arg<'a, 'a> {
     Arg::with_name("include")
@@ -261,6 +263,7 @@ fn main() {
         .get_matches();
 
     if let Some(matches) = matches.subcommand_matches("restore") {
+        // Restore backed up files
         restore::restore(
             matches.value_of("source").unwrap(),
             matches.value_of("output").unwrap_or(""),
@@ -275,6 +278,7 @@ fn main() {
             matches.is_present("dry"),
         );
     } else if let Some(matches) = matches.subcommand_matches("browse") {
+        // List files from backups
         // TODO: Possibly load config from an earlier backup
         restore::browse(
             matches.value_of("source").unwrap(),
@@ -284,12 +288,49 @@ fn main() {
                 .collect(),
         );
     } else if let Some(_) = matches.subcommand_matches("gui") {
+        // Start a graphical user interface
         gui::gui();
     } else if let Some(matches) = matches.subcommand_matches("backup") {
-        // TODO: Handle config file being a directory or a previous backup
-        let mut config = Config::read_yaml(matches.value_of("file").unwrap());
+        // Backup using an existing config
+        let path = matches.value_of("file").unwrap();
+        let mut config = if path.ends_with(".yml") {
+            Config::read_yaml(&path).expect("Could not get config from file")
+        } else if path.ends_with(".tar.br") {
+            get_config_from_backup(&path).expect("Could not get config from previous backup")
+        } else {
+            let mut config: Option<Config> = None;
+            let mut selected = PathBuf::new();
+            for path in BackupIterator::with_ending(path) {
+                if let Err(e) = &path {
+                    eprintln!("Could not find backups: {}", e);
+                }
+                let path = path.unwrap();
+                let new = get_config_from_backup(&path);
+                if let Err(e) = &new {
+                    eprintln!("Could not get config from backup: {}", e);
+                }
+                let new = new.unwrap();
+                if let Some(old) = config {
+                    if old.time < new.time {
+                        config = Some(new);
+                        selected = path;
+                    } else {
+                        config = Some(old);
+                    }
+                } else {
+                    selected = path;
+                    config = Some(new);
+                }
+            }
+            if config.is_none() {
+                panic!("Could not find a config from an earlier backup");
+            }
+            println!("Using the config from '{}'", selected.to_string_lossy());
+            config.unwrap()
+        };
         backup::backup(&mut config, matches.is_present("dry"));
     } else if let Some(matches) = matches.subcommand_matches("config") {
+        // Create a config file
         let mut config = Config::from_args(&matches);
         if matches.is_present("dry") {
             println!("{}", config.to_yaml());
@@ -297,6 +338,7 @@ fn main() {
             config.write_yaml(matches.value_of("file").unwrap());
         }
     } else {
+        // Backup using arguments
         let mut config = Config::from_args(&matches);
         backup::backup(&mut config, matches.is_present("dry"));
     }

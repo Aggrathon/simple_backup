@@ -5,9 +5,7 @@ use path_absolutize::Absolutize;
 use regex::Regex;
 
 use crate::{
-    compression::CompressionEncoder,
-    config::Config,
-    restore::get_config_from_backup,
+    compression::CompressionEncoder, config::Config, restore::get_config_from_backup,
     utils::ProgressBar,
 };
 
@@ -27,17 +25,17 @@ pub fn backup(config: &mut Config, dry: bool) {
     // Prepare lists of files
     let mut files_string = String::new();
     files_string.reserve(10_000);
-    if config.verbose {
-        println!("Files to backup:");
-    } else {
-        println!("Crawling for files...");
-    }
     let mut files_all: Vec<PathBuf> = vec![];
     let mut listed = false;
 
     // Crawl for incremental files
     if config.incremental {
         if let Some(time_prev) = get_previous_time(&config) {
+            if config.verbose {
+                println!("Updated files to backup:");
+            } else {
+                println!("Crawling for updated files...");
+            }
             let time_prev: SystemTime = Local.from_local_datetime(&time_prev).unwrap().into();
             files_all = FileCrawler::new(
                 &config.include,
@@ -73,6 +71,11 @@ pub fn backup(config: &mut Config, dry: bool) {
     }
     // Crawl for all files
     if !listed {
+        if config.verbose {
+            println!("Files to backup:");
+        } else {
+            println!("Crawling for files...");
+        }
         files_all = FileCrawler::new(
             &config.include,
             &config.exclude,
