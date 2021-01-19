@@ -14,12 +14,14 @@ A minimal application for doing backups.
 
 - [x] Parsing files
 - [x] Compression
-- [ ] Incremental Backups
+- [x] Incremental Backups
 
 ### Restore
 
-- [ ] Restoring
+- [ ] Iterate files in multiple backups
 - [ ] Browsing
+- [ ] Restoring
+- [ ] Special restoring
 
 ### Other
 
