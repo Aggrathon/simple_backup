@@ -60,38 +60,87 @@ pub fn backup(config: &mut Config, dry: bool) {
     }
 }
 
-#[allow(unreachable_code)]
 pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
     if !config.incremental {
         None
     } else if let Some(t) = config.time {
         Some(t)
     } else {
-        todo!("Incremental backup is not implemented");
-        todo!("Make these warnings instead of panics");
-        todo!("Iterate through all possible earlier backups");
-        let mut time = config.time;
-        let mut dec = CompressionDecoder::read(&PathBuf::from("")).expect("Could not open backup");
-        let mut entries = dec.entries().expect("Could not read backup");
-        let mut entry = entries
-            .next()
-            .expect("The backup is empty")
-            .expect("Could not open config");
-        if entry.0 != PathBuf::from("config.yml") {
-            panic!("The first file is not a config");
-        }
-        let mut s = String::new();
-        entry
-            .1
-            .read_to_string(&mut s)
-            .expect("Could not read config");
-        let conf = Config::from_yaml(&s);
-        if let Some(t1) = time {
-            if let Some(t2) = conf.time {
-                time = Some(max(t1, t2))
+        let mut time = None;
+        for path in config.get_previous() {
+            if path.is_err() {
+                eprintln!("Could not find previous backup: {}", path.unwrap_err());
+                continue;
             }
-        } else if let Some(t) = conf.time {
-            time = Some(t)
+            let path = path.unwrap();
+            let dec = CompressionDecoder::read(&path);
+            if dec.is_err() {
+                eprintln!(
+                    "Could not open previous backup '{}': {}",
+                    path.to_string_lossy(),
+                    dec.err().unwrap()
+                );
+                continue;
+            }
+            let mut dec = dec.unwrap();
+            let entries = dec.entries();
+            if entries.is_err() {
+                eprintln!(
+                    "Could not read previous backup '{}': {}",
+                    path.to_string_lossy(),
+                    entries.err().unwrap()
+                );
+                continue;
+            }
+            let entry = entries.unwrap().next();
+            if entry.is_none() {
+                eprintln!("The previous backup is empty: {}", path.to_string_lossy());
+                continue;
+            }
+            let entry = entry.unwrap();
+            if entry.is_err() {
+                eprintln!(
+                    "Could not open the config for '{}': {}",
+                    path.to_string_lossy(),
+                    entry.err().unwrap()
+                );
+                continue;
+            }
+            let mut entry = entry.unwrap();
+            if entry.0 != PathBuf::from("config.yml") {
+                eprintln!(
+                    "The first file in the previous backup is not a config: {}",
+                    path.to_string_lossy(),
+                );
+                continue;
+            }
+            let mut s = String::new();
+            let res = entry.1.read_to_string(&mut s);
+            if res.is_err() {
+                eprintln!(
+                    "Could not read config in previous backup '{}': {}",
+                    path.to_string_lossy(),
+                    res.unwrap_err()
+                );
+                continue;
+            }
+            let conf = Config::from_yaml(&s);
+            if conf.is_err() {
+                eprintln!(
+                    "Could not parse config in previous backup '{}': {}",
+                    path.to_string_lossy(),
+                    conf.unwrap_err()
+                );
+                continue;
+            }
+            let conf = conf.unwrap();
+            if let Some(t1) = time {
+                if let Some(t2) = conf.time {
+                    time = Some(max(t1, t2))
+                }
+            } else if let Some(t) = conf.time {
+                time = Some(t)
+            }
         }
         time
     }

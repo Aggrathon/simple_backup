@@ -3,7 +3,7 @@ use chrono::{Local, NaiveDateTime};
 use clap::{ArgMatches, Values};
 use serde::{Deserialize, Serialize};
 use std::{
-    fs::File,
+    fs::{File, ReadDir},
     path::{Path, PathBuf},
 };
 
@@ -86,9 +86,8 @@ impl Config {
         serde_yaml::to_writer(writer, &self).expect("Could not serialise config");
     }
 
-    #[allow(dead_code)]
-    pub fn from_yaml(yaml: &str) -> Self {
-        serde_yaml::from_str(yaml).expect("Could not read config")
+    pub fn from_yaml(yaml: &str) -> Result<Self, serde_yaml::Error> {
+        serde_yaml::from_str(yaml)
     }
 
     pub fn to_yaml(&mut self) -> String {
@@ -110,6 +109,76 @@ impl Config {
                 self.name,
                 Local::now().format("%Y-%m-%d_%H-%M-%S")
             ))
+        }
+    }
+
+    pub fn get_previous(&self) -> PreviousIterator {
+        if self.output.ends_with(".tar.br") {
+            PreviousIterator {
+                output: Some(self.get_output()),
+                error: None,
+                dir: None,
+                pattern: String::new(),
+            }
+        } else {
+            match Path::new(&self.output).read_dir() {
+                Err(e) => PreviousIterator {
+                    output: None,
+                    error: Some(e),
+                    dir: None,
+                    pattern: String::new(),
+                },
+                Ok(d) => PreviousIterator {
+                    output: None,
+                    error: None,
+                    dir: Some(d),
+                    pattern: [self.name.as_str(), "_%Y-%m-%d_%H-%M-%S.tar.br"]
+                        .iter()
+                        .map(|s| *s)
+                        .collect(),
+                },
+            }
+        }
+    }
+}
+
+pub struct PreviousIterator {
+    output: Option<PathBuf>,
+    error: Option<std::io::Error>,
+    dir: Option<ReadDir>,
+    pattern: String,
+}
+
+impl Iterator for PreviousIterator {
+    type Item = std::io::Result<PathBuf>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(e) = std::mem::replace(&mut self.error, None) {
+            Some(Err(e))
+        } else if let Some(p) = std::mem::replace(&mut self.output, None) {
+            if p.exists() {
+                Some(Ok(p))
+            } else {
+                Some(Err(p.metadata().unwrap_err()))
+            }
+        } else if let Some(dir) = &mut self.dir {
+            for entry in dir {
+                if entry.is_err() {
+                    return Some(entry.map(|e| e.path()));
+                }
+                let entry = entry.unwrap();
+                if NaiveDateTime::parse_from_str(
+                    &entry.file_name().to_string_lossy(),
+                    &self.pattern,
+                )
+                .is_ok()
+                {
+                    return Some(Ok(entry.path()));
+                }
+            }
+            None
+        } else {
+            None
         }
     }
 }

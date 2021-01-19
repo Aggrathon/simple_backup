@@ -7,6 +7,7 @@ pub mod parse_date {
 
     const FORMAT: &'static str = "%Y-%m-%d %H:%M:%S";
     const FORMATS: [&'static str; 19] = [
+        "%Y-%m-%d_%H-%M-%S",
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d %H:%M",
         "%Y-%m-%d",
@@ -25,7 +26,6 @@ pub mod parse_date {
         "%y%m%d%H%M%S",
         "%y%m%d%H%M",
         "%y%m%d",
-        "%y-%m-%d_%H-%M-%S",
     ];
 
     pub fn serialize<S>(date: &Option<NaiveDateTime>, serializer: S) -> Result<S::Ok, S::Error>
