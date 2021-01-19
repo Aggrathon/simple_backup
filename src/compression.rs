@@ -11,7 +11,7 @@ pub struct CompressionEncoder {
 }
 
 impl CompressionEncoder {
-    pub fn create(path: &PathBuf, quality: u32) -> Self {
+    pub fn create<P: AsRef<Path>>(path: P, quality: u32) -> Self {
         let file = File::create(path).expect("Could not create file");
         let encoder = CompressorWriter::new(file, 16384, quality, 23);
         let archive = Builder::new(encoder);
@@ -38,14 +38,16 @@ impl CompressionEncoder {
         }
     }
 
-    pub fn append_data(&mut self, name: &str, content: &str) {
+    pub fn append_data<P: AsRef<Path>, B: AsRef<[u8]>>(&mut self, name: P, content: B) {
+        let content = content.as_ref();
         let mut header = Header::new_gnu();
         header.set_size(content.len() as u64);
-        if let Err(e) = self
-            .archive
-            .append_data(&mut header, name, content.as_bytes())
-        {
-            eprintln!("Could not add '{}' to archive: {}", name, e);
+        if let Err(e) = self.archive.append_data(&mut header, &name, content) {
+            eprintln!(
+                "Could not add '{}' to archive: {}",
+                name.as_ref().to_string_lossy(),
+                e
+            );
         }
     }
 }
@@ -55,7 +57,7 @@ pub struct CompressionDecoder {
 }
 
 impl CompressionDecoder {
-    pub fn read(path: &PathBuf) -> std::io::Result<Self> {
+    pub fn read<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let file = File::open(path)?;
         let decoder = brotli::Decompressor::new(file, 16384);
         let mut archive = Archive::new(decoder);
@@ -99,7 +101,8 @@ fn path_to_archive(path: &PathBuf) -> String {
     }
 }
 
-fn path_from_archive(path: &Path) -> PathBuf {
+fn path_from_archive<P: AsRef<Path>>(path: P) -> PathBuf {
+    let path = path.as_ref();
     let string = path.to_string_lossy();
     if string.starts_with("rel/") {
         PathBuf::from(&string[4..])
