@@ -1,9 +1,10 @@
-use crate::{compression::CompressionDecoder, config::Config};
-use crate::{compression::CompressionEncoder, utils};
+use crate::{
+    compression::CompressionEncoder, config::Config, restore::get_config_from_backup, utils,
+};
 use chrono::{offset::TimeZone, DateTime, Local, NaiveDateTime};
 use path_absolutize::Absolutize;
 use regex::Regex;
-use std::{cmp::max, collections::VecDeque, io::Read, path::PathBuf, time::SystemTime};
+use std::{cmp::max, collections::VecDeque, path::PathBuf, time::SystemTime};
 use utils::ProgressBar;
 
 /// Backup files
@@ -133,78 +134,28 @@ pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
     } else {
         let mut time = None;
         for path in config.get_previous() {
-            if path.is_err() {
-                eprintln!("Could not find previous backup: {}", path.unwrap_err());
-                continue;
-            }
-            let path = path.unwrap();
-            let dec = CompressionDecoder::read(&path);
-            if dec.is_err() {
-                eprintln!(
-                    "Could not open previous backup '{}': {}",
-                    path.to_string_lossy(),
-                    dec.err().unwrap()
-                );
-                continue;
-            }
-            let mut dec = dec.unwrap();
-            let entries = dec.entries();
-            if entries.is_err() {
-                eprintln!(
-                    "Could not read previous backup '{}': {}",
-                    path.to_string_lossy(),
-                    entries.err().unwrap()
-                );
-                continue;
-            }
-            let entry = entries.unwrap().next();
-            if entry.is_none() {
-                eprintln!("The previous backup is empty: {}", path.to_string_lossy());
-                continue;
-            }
-            let entry = entry.unwrap();
-            if entry.is_err() {
-                eprintln!(
-                    "Could not open the config for '{}': {}",
-                    path.to_string_lossy(),
-                    entry.err().unwrap()
-                );
-                continue;
-            }
-            let mut entry = entry.unwrap();
-            if entry.0 != PathBuf::from("config.yml") {
-                eprintln!(
-                    "The first file in the previous backup is not a config: {}",
-                    path.to_string_lossy(),
-                );
-                continue;
-            }
-            let mut s = String::new();
-            let res = entry.1.read_to_string(&mut s);
-            if res.is_err() {
-                eprintln!(
-                    "Could not read config in previous backup '{}': {}",
-                    path.to_string_lossy(),
-                    res.unwrap_err()
-                );
-                continue;
-            }
-            let conf = Config::from_yaml(&s);
-            if conf.is_err() {
-                eprintln!(
-                    "Could not parse config in previous backup '{}': {}",
-                    path.to_string_lossy(),
-                    conf.unwrap_err()
-                );
-                continue;
-            }
-            let conf = conf.unwrap();
-            if let Some(t1) = time {
-                if let Some(t2) = conf.time {
-                    time = Some(max(t1, t2))
+            match path {
+                Err(e) => {
+                    eprintln!("Could not find previous backup: {}", e);
                 }
-            } else if let Some(t) = conf.time {
-                time = Some(t)
+                Ok(path) => match get_config_from_backup(&path) {
+                    Err(e) => {
+                        eprintln!(
+                            "Could not get time from '{}': {}",
+                            path.to_string_lossy(),
+                            e
+                        );
+                    }
+                    Ok(conf) => {
+                        if let Some(t1) = time {
+                            if let Some(t2) = conf.time {
+                                time = Some(max(t1, t2))
+                            }
+                        } else if let Some(t) = conf.time {
+                            time = Some(t)
+                        }
+                    }
+                },
             }
         }
         time
