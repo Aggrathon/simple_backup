@@ -8,10 +8,30 @@ use std::{
 use chrono::NaiveDateTime;
 use regex::Regex;
 
+const PATTERN_LENGTH: usize = "_2020-20-20_20-20-20.tar.br".len();
+
+macro_rules! try_some {
+    ($value:expr) => {
+        match $value {
+            Ok(v) => v,
+            Err(e) => return Some(Err(e)),
+        }
+    };
+}
+
+macro_rules! try_some_box {
+    ($value:expr) => {
+        match $value {
+            Ok(v) => v,
+            Err(e) => return Some(Err(Box::new(e))),
+        }
+    };
+}
+
 enum BackupIteratorPattern {
     None,
     Fullstamp(String),
-    Endstamp(String),
+    Endstamp,
     Regex(Regex),
 }
 
@@ -24,20 +44,13 @@ pub struct BackupIterator {
 impl BackupIterator {
     #[allow(dead_code)]
     pub fn with_timestamp<P: AsRef<Path>>(dir: P) -> Self {
-        Self::new(
-            dir,
-            BackupIteratorPattern::Endstamp("_%Y-%m-%d_%H-%M-%S.tar.br".to_string()),
-        )
+        Self::new(dir, BackupIteratorPattern::Endstamp)
     }
 
-    pub fn with_name<P: AsRef<Path>, S: AsRef<str>>(dir: P, name: S) -> Self {
-        Self::new(
-            dir,
-            BackupIteratorPattern::Fullstamp(format!("{}_%Y-%m-%d_%H-%M-%S.tar.br", name.as_ref())),
-        )
+    pub fn with_name<P: AsRef<Path>>(dir: P, name: String) -> Self {
+        Self::new(dir, BackupIteratorPattern::Fullstamp(name))
     }
 
-    #[allow(dead_code)]
     pub fn with_ending<P: AsRef<Path>>(dir: P) -> Self {
         match Regex::new(".*.tar.br") {
             Err(e) => BackupIterator {
@@ -71,6 +84,36 @@ impl BackupIterator {
             },
         }
     }
+
+    pub fn get_latest(&mut self, pattern: bool) -> Option<PathBuf> {
+        if pattern {
+            // Select latest based on timestamps in the filename
+            self.filter_map(|res| res.ok())
+                .filter(|p| p.file_name().is_some())
+                .map(|p| {
+                    let f = p.file_name().unwrap().to_string_lossy();
+                    let s = if f.len() >= PATTERN_LENGTH {
+                        f[(f.len() - PATTERN_LENGTH)..].to_string()
+                    } else {
+                        f.to_string()
+                    };
+                    (p, s)
+                })
+                .max_by(|(_, f1), (_, f2)| f1.cmp(&f2))
+                .map(|(p, _)| p)
+        } else {
+            // Select latest based on the modified metadata
+            self.filter_map(|res| {
+                res.ok().and_then(|p| {
+                    p.metadata()
+                        .ok()
+                        .and_then(|md| md.modified().ok().and_then(|t| Some((p, t))))
+                })
+            })
+            .max_by(|(_, t1), (_, t2)| t1.cmp(t2))
+            .and_then(|(p, _)| Some(p))
+        }
+    }
 }
 
 impl Iterator for BackupIterator {
@@ -81,27 +124,37 @@ impl Iterator for BackupIterator {
             std::mem::replace(&mut self.constant, None)
         } else if let Some(dir) = &mut self.dir {
             for entry in dir {
-                if entry.is_err() {
-                    return Some(entry.map(|e| e.path()));
+                let path = try_some!(entry.map(|e| e.path()));
+                if !try_some!(path.metadata()).is_file() {
+                    continue;
                 }
-                let entry = entry.unwrap();
-                let filename = entry.file_name();
-                let string = filename.to_string_lossy();
+                let string = path.file_name().unwrap().to_string_lossy();
                 match &self.pattern {
-                    BackupIteratorPattern::Fullstamp(pattern) => {
-                        if NaiveDateTime::parse_from_str(&string, &pattern).is_ok() {
-                            return Some(Ok(entry.path()));
+                    BackupIteratorPattern::Fullstamp(name) => {
+                        if string.starts_with(name)
+                            && NaiveDateTime::parse_from_str(
+                                &string[name.len()..],
+                                "_%Y-%m-%d_%H-%M-%S.tar.br",
+                            )
+                            .is_ok()
+                        {
+                            return Some(Ok(path));
                         }
                     }
-                    BackupIteratorPattern::Endstamp(pattern) => {
-                        let start = string.len() - min(string.len(), pattern.len());
-                        if NaiveDateTime::parse_from_str(&string[start..], &pattern).is_ok() {
-                            return Some(Ok(entry.path()));
+                    BackupIteratorPattern::Endstamp => {
+                        let start = string.len() - min(string.len(), PATTERN_LENGTH);
+                        if NaiveDateTime::parse_from_str(
+                            &string[start..],
+                            "_%Y-%m-%d_%H-%M-%S.tar.br",
+                        )
+                        .is_ok()
+                        {
+                            return Some(Ok(path));
                         }
                     }
                     BackupIteratorPattern::Regex(regex) => {
                         if regex.is_match(&string) {
-                            return Some(Ok(entry.path()));
+                            return Some(Ok(path));
                         }
                     }
                     BackupIteratorPattern::None => {}

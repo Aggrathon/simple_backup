@@ -8,7 +8,11 @@ use chrono::{Local, NaiveDateTime};
 use clap::{ArgMatches, Values};
 use serde::{Deserialize, Serialize};
 
-use crate::{parse_date, utils::BackupIterator};
+use crate::{
+    backup::{Backup, BackupError},
+    parse_date,
+    utils::BackupIterator,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -119,7 +123,24 @@ impl Config {
         if self.output.ends_with(".tar.br") {
             BackupIterator::exact(PathBuf::from(&self.output))
         } else {
-            BackupIterator::with_name(Path::new(&self.output), &self.name)
+            BackupIterator::with_name(Path::new(&self.output), self.name.to_string())
+        }
+    }
+
+    pub fn from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn std::error::Error>> {
+        let path = path.as_ref();
+        if path.ends_with(".yml") {
+            Ok(Config::read_yaml(path)?)
+        } else {
+            let path = PathBuf::from(path);
+            if path.metadata()?.is_file() {
+                Backup::read(path)?.get_config()
+            } else {
+                match BackupIterator::with_timestamp(&path).get_latest(true) {
+                    None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
+                    Some(path) => Backup::read(path)?.get_config(),
+                }
+            }
         }
     }
 }

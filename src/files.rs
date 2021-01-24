@@ -10,15 +10,6 @@ use regex::Regex;
 
 use crate::parse_date;
 
-macro_rules! some_box_try {
-    ($value:expr) => {
-        match $value {
-            Ok(v) => v,
-            Err(e) => return Some(Err(Box::new(e))),
-        }
-    };
-}
-
 pub enum PathString {
     Path(PathBuf),
     String(String),
@@ -235,14 +226,14 @@ impl Iterator for FileCrawler {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             while let Some(mut item) = self.stack.pop_front() {
-                let md = some_box_try!(item.get_path().metadata());
+                let md = try_some_box!(item.get_path().metadata());
                 if md.is_file() {
                     return Some(Ok(item));
                 } else {
                     let mut count: usize = 0;
-                    let dir = some_box_try!(item.get_path().read_dir());
+                    let dir = try_some_box!(item.get_path().read_dir());
                     for f in dir {
-                        let entry = some_box_try!(f);
+                        let entry = try_some_box!(f);
                         let path = entry.path();
                         let mut filtered = false;
                         while let Some(p) = self.include.last() {
@@ -266,7 +257,7 @@ impl Iterator for FileCrawler {
                             let string = path.to_string_lossy();
                             if !self.regex.iter().any(|r| r.is_match(&string)) {
                                 let string = string.to_string();
-                                let fi = some_box_try!(FileInfo::from_file2(path, string));
+                                let fi = try_some_box!(FileInfo::from_file2(path, string));
                                 self.stack.push_front(fi);
                                 count += 1;
                             }

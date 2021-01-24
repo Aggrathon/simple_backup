@@ -5,7 +5,7 @@ use std::{
 
 use brotli::{CompressorWriter, Decompressor};
 use path_clean::PathClean;
-use tar::{Archive, Builder, Entries, Entry, Header};
+use tar::{Archive, Builder, Entry, Header};
 
 pub struct CompressionEncoder {
     archive: Builder<CompressorWriter<File>>,
@@ -44,43 +44,31 @@ impl CompressionEncoder {
 }
 
 pub struct CompressionDecoder {
-    archive: Archive<Decompressor<File>>,
+    pub archive: Archive<Decompressor<File>>,
+    pub path: PathBuf,
 }
 
 impl CompressionDecoder {
     pub fn read<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
-        let file = File::open(path)?;
+        let file = File::open(&path)?;
         let decoder = brotli::Decompressor::new(file, 16384);
         let mut archive = Archive::new(decoder);
         archive.set_unpack_xattrs(true);
-        Ok(Self { archive })
-    }
-
-    pub fn entries(&mut self) -> Result<CompressionEntries, std::io::Error> {
-        Ok(CompressionEntries {
-            entries: self.archive.entries()?,
+        Ok(Self {
+            archive,
+            path: path.as_ref().to_path_buf(),
         })
     }
-}
 
-pub struct CompressionEntries<'a> {
-    entries: Entries<'a, Decompressor<File>>,
-}
-
-impl<'a> Iterator for CompressionEntries<'a> {
-    type Item = Result<(PathBuf, Entry<'a, Decompressor<File>>), std::io::Error>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let entry = self.entries.next()?;
-        if let Err(e) = entry {
-            return Some(Err(e));
-        }
-        let entry = entry.unwrap();
-        let path = entry.header().path();
-        if let Err(e) = path {
-            return Some(Err(e));
-        }
-        Some(Ok((path_from_archive(&path.unwrap()), entry)))
+    pub fn entries(
+        &mut self,
+    ) -> std::io::Result<impl Iterator<Item = std::io::Result<(PathBuf, Entry<Decompressor<File>>)>>>
+    {
+        Ok(self.archive.entries()?.map(|entry| {
+            let entry = entry?;
+            let path = entry.header().path()?;
+            Ok((path_from_archive(&path), entry))
+        }))
     }
 }
 
