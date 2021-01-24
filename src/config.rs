@@ -8,7 +8,7 @@ use chrono::{Local, NaiveDateTime};
 use clap::{ArgMatches, Values};
 use serde::{Deserialize, Serialize};
 
-use crate::utils::{parse_date, BackupIterator};
+use crate::{parse_date, utils::BackupIterator};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {

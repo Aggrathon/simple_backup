@@ -4,7 +4,9 @@ extern crate clap;
 mod backup;
 mod compression;
 mod config;
+mod files;
 mod gui;
+mod parse_date;
 mod restore;
 mod utils;
 
@@ -151,11 +153,7 @@ fn arg_time<'a>(req: bool) -> Arg<'a, 'a> {
     let arg = Arg::with_name("time")
         .long("time")
         .help("If doing an incremental backup, override the previous time")
-        .validator(|v| {
-            utils::parse_date::try_parse(&v)
-                .map_err(String::from)
-                .map(|_| ())
-        });
+        .validator(|v| parse_date::try_parse(&v).map_err(String::from).map(|_| ()));
     if req {
         arg.requires("incremental")
     } else {
