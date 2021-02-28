@@ -174,6 +174,12 @@ impl BackupReader {
         })
     }
 
+    pub fn read_config_only<P: AsRef<Path>>(path: P) -> Result<Config, Box<dyn Error>> {
+        let mut br = BackupReader::read(path)?;
+        br.read_config()?;
+        Ok(br.config.unwrap())
+    }
+
     pub fn read_config(&mut self) -> Result<&Config, Box<dyn Error>> {
         let entry = self.decoder.entries()?.next();
         if entry.is_none() {

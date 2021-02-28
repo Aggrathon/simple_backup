@@ -33,6 +33,32 @@ macro_rules! try_some_box {
     };
 }
 
+enum ConfigPathType<P: AsRef<Path>> {
+    Dir(P),
+    Backup(P),
+    Config(P),
+}
+
+impl<P: AsRef<Path>> ConfigPathType<P> {
+    pub fn parse(path: P) -> std::io::Result<Self> {
+        let p = path.as_ref();
+        let md = p.metadata()?;
+        if md.is_dir() {
+            return Ok(Self::Dir(path));
+        } else if md.is_file() {
+            if p.ends_with(".yml") {
+                return Ok(Self::Config(path));
+            } else if p.ends_with(".tar.br") {
+                return Ok(Self::Backup(path));
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "The path must be either a config (.yml), a backup (.tar.br), or a directory containing backups",
+        ))
+    }
+}
+
 enum BackupIteratorPattern {
     None,
     Fullstamp(String),
@@ -173,23 +199,13 @@ impl Iterator for BackupIterator {
 }
 
 pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn std::error::Error>> {
-    let path = path.as_ref();
-    if path.ends_with(".yml") {
-        Ok(Config::read_yaml(path)?)
-    } else {
-        let path = PathBuf::from(path);
-        if path.metadata()?.is_file() {
-            let mut br = BackupReader::read(path)?;
-            br.read_config()?;
-            Ok(br.config.unwrap())
-        } else {
+    match ConfigPathType::parse(Path::new(path.as_ref()))? {
+        ConfigPathType::Dir(path) => Ok(Config::read_yaml(path)?),
+        ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
+        ConfigPathType::Config(path) => {
             match BackupIterator::with_timestamp(&path).get_latest(true) {
                 None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
-                Some(path) => {
-                    let mut br = BackupReader::read(path)?;
-                    br.read_config()?;
-                    Ok(br.config.unwrap())
-                }
+                Some(path) => BackupReader::read_config_only(path),
             }
         }
     }
@@ -198,14 +214,10 @@ pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn st
 pub fn get_backup_from_path<S: AsRef<str>>(
     path: S,
 ) -> Result<BackupReader, Box<dyn std::error::Error>> {
-    let path = path.as_ref();
-    if path.ends_with(".yml") {
-        Ok(BackupReader::from_config(Config::read_yaml(path)?)?)
-    } else {
-        let path = PathBuf::from(path);
-        if path.metadata()?.is_file() {
-            Ok(BackupReader::read(path)?)
-        } else {
+    match ConfigPathType::parse(Path::new(path.as_ref()))? {
+        ConfigPathType::Dir(path) => Ok(BackupReader::from_config(Config::read_yaml(path)?)?),
+        ConfigPathType::Backup(path) => Ok(BackupReader::read(path)?),
+        ConfigPathType::Config(path) => {
             match BackupIterator::with_timestamp(&path).get_latest(true) {
                 None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
                 Some(path) => Ok(BackupReader::read(path)?),

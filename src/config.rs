@@ -82,11 +82,11 @@ impl Config {
         }
     }
 
-    pub fn read_yaml(path: &str) -> std::io::Result<Self> {
-        let reader = File::open(path)?;
+    pub fn read_yaml<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+        let reader = File::open(&path)?;
         let mut conf: Config =
             serde_yaml::from_reader(reader).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
-        conf.origin = Some(path.to_string());
+        conf.origin = Some(path.as_ref().to_string_lossy().to_string());
         Ok(conf)
     }
 

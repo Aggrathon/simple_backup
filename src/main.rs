@@ -16,7 +16,7 @@ use std::path::PathBuf;
 // use backup::get_backup_config;
 use clap::{App, Arg, SubCommand, Values};
 use config::Config;
-use utils::get_config_from_path;
+use utils::{get_backup_from_path, get_config_from_path};
 
 fn arg_include<'a>() -> Arg<'a, 'a> {
     Arg::with_name("include")
@@ -278,7 +278,9 @@ fn main() {
         );
     } else if let Some(matches) = matches.subcommand_matches("browse") {
         // List files from backups
-        // TODO: Possibly load config from an earlier backup
+        let backup = get_backup_from_path(matches.value_of("source").unwrap())
+            .expect("Could not locate backup");
+        // TODO Use the backup located above
         cli::browse(
             matches.value_of("source").unwrap(),
             matches
