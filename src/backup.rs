@@ -58,12 +58,12 @@ pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
                 continue;
             }
             let path = path.unwrap();
-            let bp = Backup::read(&path);
+            let bp = BackupReader::read(&path);
             if let Err(e) = bp {
                 eprintln!("Could not open backup: {}", e);
                 continue;
             }
-            match bp.unwrap().get_config() {
+            match bp.unwrap().read_config() {
                 Err(e) => {
                     eprintln!(
                         "Could not get time from '{}': {}",
@@ -143,93 +143,120 @@ pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
 //     Ok(config)
 // }
 
-pub struct Backup(CompressionDecoder);
+pub struct BackupReader {
+    decoder: CompressionDecoder,
+    pub path: PathBuf,
+    pub config: Option<Config>,
+    pub list: Option<String>,
+}
 
-impl Backup {
+impl BackupReader {
     pub fn read<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
-        Ok(Backup {
-            0: CompressionDecoder::read(path)?,
+        Ok(BackupReader {
+            path: path.as_ref().to_path_buf(),
+            decoder: CompressionDecoder::read(path)?,
+            list: None,
+            config: None,
         })
     }
 
-    pub fn get_config(&mut self) -> Result<Config, Box<dyn Error>> {
-        // SAFETY: self.0.path is never modified (when entries is accessed) so this just avoids a memory allocation
-        let path: *const PathBuf = unsafe { &self.0.path };
-        let entry = self.0.entries()?.next();
+    pub fn from_config(config: Config) -> std::io::Result<Self> {
+        let prev = config
+            .get_previous()
+            .get_latest(true)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Backup not found"))?;
+        let decoder = CompressionDecoder::read(prev.as_path())?;
+        Ok(BackupReader {
+            path: prev,
+            decoder,
+            config: Some(config),
+            list: None,
+        })
+    }
+
+    pub fn read_config(&mut self) -> Result<&Config, Box<dyn Error>> {
+        let entry = self.decoder.entries()?.next();
         if entry.is_none() {
-            return Err(Box::new(BackupError::NoConfig(unsafe { (*path).clone() })));
+            return Err(Box::new(BackupError::NoConfig(self.path.clone())));
         }
         let mut entry = entry.unwrap()?;
         if entry.0.as_os_str() != "config.yml" {
-            return Err(Box::new(BackupError::NoConfig(unsafe { (*path).clone() })));
+            return Err(Box::new(BackupError::NoConfig(self.path.clone())));
         }
         let mut s = String::new();
         entry.1.read_to_string(&mut s)?;
-        Ok(Config::from_yaml(&s)?)
+        let mut conf: Config = Config::from_yaml(&s)?;
+        conf.origin = Some(self.path.to_string_lossy().to_string());
+        self.config = Some(conf);
+        Ok(self.config.as_ref().unwrap())
     }
 
-    pub fn get_list(&mut self) -> Result<String, Box<dyn Error>> {
-        // SAFETY: self.0.path is never modified (when entries is accessed) so this just avoids a memory allocation
-        let path: *const PathBuf = unsafe { &self.0.path };
-        let entry = self.0.entries()?.skip(1).next();
+    pub fn read_list(&mut self) -> Result<&String, Box<dyn Error>> {
+        let entry = self.decoder.entries()?.skip(1).next();
         if entry.is_none() {
-            return Err(Box::new(BackupError::NoList(unsafe { (*path).clone() })));
+            return Err(Box::new(BackupError::NoList(self.path.clone())));
         }
         let mut entry = entry.unwrap()?;
         if entry.0.as_os_str() != "files.csv" {
-            return Err(Box::new(BackupError::NoList(unsafe { (*path).clone() })));
+            return Err(Box::new(BackupError::NoList(self.path.clone())));
         }
         let mut s = String::new();
         entry.1.read_to_string(&mut s)?;
-        Ok(s)
+        self.list = Some(s);
+        Ok(self.list.as_ref().unwrap())
     }
 
-    pub fn get_files(
+    pub fn files(
         &mut self,
     ) -> std::io::Result<
         impl Iterator<Item = std::io::Result<(PathBuf, tar::Entry<brotli::Decompressor<File>>)>>,
     > {
-        Ok(self.0.entries()?.skip(2))
+        Ok(self.decoder.entries()?.skip(2))
     }
 
-    pub fn get_all(
+    pub fn read_all(
         &mut self,
     ) -> Result<
         (
-            Config,
-            String,
+            &Config,
+            &String,
             impl Iterator<Item = std::io::Result<(PathBuf, tar::Entry<brotli::Decompressor<File>>)>>,
         ),
         Box<dyn Error>,
     > {
-        // SAFETY: self.0.path is never modified (when entries is accessed) so this just avoids a memory allocation
-        let path: *const PathBuf = unsafe { &self.0.path };
-        let mut entries = self.0.entries()?;
+        let mut entries = self.decoder.entries()?;
         // Read Config
         let entry = entries.next();
         if entry.is_none() {
-            return Err(Box::new(BackupError::NoConfig(unsafe { (*path).clone() })));
+            return Err(Box::new(BackupError::NoConfig(self.path.clone())));
         }
         let mut entry = entry.unwrap()?;
         if entry.0.as_os_str() != "config.yml" {
-            return Err(Box::new(BackupError::NoConfig(unsafe { (*path).clone() })));
+            return Err(Box::new(BackupError::NoConfig(self.path.clone())));
         }
         let mut s = String::new();
         entry.1.read_to_string(&mut s)?;
-        let config = Config::from_yaml(&s)?;
+        let mut conf: Config = Config::from_yaml(&s)?;
+        conf.origin = Some(self.path.to_string_lossy().to_string());
+        self.config = Some(conf);
         // Read File List
         let entry = entries.next();
         if entry.is_none() {
-            return Err(Box::new(BackupError::NoList(unsafe { (*path).clone() })));
+            return Err(Box::new(BackupError::NoList(self.path.clone())));
         }
         let mut entry = entry.unwrap()?;
         if entry.0.as_os_str() != "files.csv" {
-            return Err(Box::new(BackupError::NoList(unsafe { (*path).clone() })));
+            return Err(Box::new(BackupError::NoList(self.path.clone())));
         }
         s.truncate(0);
         entry.1.read_to_string(&mut s)?;
+        self.list = Some(s);
         // Rest
-        Ok((config, s, entries))
+        Ok((
+            self.config.as_ref().unwrap(),
+            self.list.as_ref().unwrap(),
+            entries,
+        ))
     }
 }
 

@@ -8,11 +8,7 @@ use chrono::{Local, NaiveDateTime};
 use clap::{ArgMatches, Values};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    backup::{Backup, BackupError},
-    parse_date,
-    utils::BackupIterator,
-};
+use crate::{parse_date, utils::BackupIterator};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -28,6 +24,8 @@ pub struct Config {
     pub local: bool,
     #[serde(with = "parse_date")]
     pub time: Option<NaiveDateTime>,
+    #[serde(skip)]
+    pub origin: Option<String>,
 }
 
 impl Config {
@@ -45,6 +43,7 @@ impl Config {
             quality: 11,
             local: false,
             time: None,
+            origin: None,
         }
     }
 
@@ -79,12 +78,16 @@ impl Config {
                 .value_of("time")
                 .and_then(|v| Some(parse_date::try_parse(v).expect("Could not parse time")))
                 .unwrap_or(None),
+            origin: None,
         }
     }
 
     pub fn read_yaml(path: &str) -> std::io::Result<Self> {
         let reader = File::open(path)?;
-        Ok(serde_yaml::from_reader(reader).map_err(|e| Error::new(ErrorKind::InvalidData, e))?)
+        let mut conf: Config =
+            serde_yaml::from_reader(reader).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
+        conf.origin = Some(path.to_string());
+        Ok(conf)
     }
 
     pub fn write_yaml(&mut self, path: &str) {
@@ -124,23 +127,6 @@ impl Config {
             BackupIterator::exact(PathBuf::from(&self.output))
         } else {
             BackupIterator::with_name(Path::new(&self.output), self.name.to_string())
-        }
-    }
-
-    pub fn from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn std::error::Error>> {
-        let path = path.as_ref();
-        if path.ends_with(".yml") {
-            Ok(Config::read_yaml(path)?)
-        } else {
-            let path = PathBuf::from(path);
-            if path.metadata()?.is_file() {
-                Backup::read(path)?.get_config()
-            } else {
-                match BackupIterator::with_timestamp(&path).get_latest(true) {
-                    None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
-                    Some(path) => Backup::read(path)?.get_config(),
-                }
-            }
         }
     }
 }

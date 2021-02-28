@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     fs::File,
     path::{Path, PathBuf},
 };
@@ -7,26 +8,24 @@ use brotli::{CompressorWriter, Decompressor};
 use path_clean::PathClean;
 use tar::{Archive, Builder, Entry, Header};
 
-pub struct CompressionEncoder {
-    archive: Builder<CompressorWriter<File>>,
-}
+pub struct CompressionEncoder(Builder<CompressorWriter<File>>);
 
 impl CompressionEncoder {
     pub fn create<P: AsRef<Path>>(path: P, quality: u32) -> std::io::Result<Self> {
         let file = File::create(path)?;
         let encoder = CompressorWriter::new(file, 16384, quality, 23);
         let archive = Builder::new(encoder);
-        Ok(CompressionEncoder { archive })
+        Ok(CompressionEncoder { 0: archive })
     }
 
     pub fn close(self) -> std::io::Result<()> {
-        self.archive.into_inner()?.into_inner().sync_all()?;
+        self.0.into_inner()?.into_inner().sync_all()?;
         Ok(())
     }
 
     pub fn append_file(&mut self, file: &PathBuf) -> std::io::Result<()> {
         let name = path_to_archive(&file);
-        self.archive.append_path_with_name(&file, name)?;
+        self.0.append_path_with_name(&file, name)?;
         Ok(())
     }
 
@@ -38,14 +37,17 @@ impl CompressionEncoder {
         let content = content.as_ref();
         let mut header = Header::new_gnu();
         header.set_size(content.len() as u64);
-        self.archive.append_data(&mut header, &name, content)?;
+        self.0.append_data(&mut header, &name, content)?;
         Ok(())
     }
 }
 
-pub struct CompressionDecoder {
-    pub archive: Archive<Decompressor<File>>,
-    pub path: PathBuf,
+pub struct CompressionDecoder(Archive<Decompressor<File>>);
+
+impl Debug for CompressionDecoder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompressionDecoder").finish()
+    }
 }
 
 impl CompressionDecoder {
@@ -54,17 +56,14 @@ impl CompressionDecoder {
         let decoder = brotli::Decompressor::new(file, 16384);
         let mut archive = Archive::new(decoder);
         archive.set_unpack_xattrs(true);
-        Ok(Self {
-            archive,
-            path: path.as_ref().to_path_buf(),
-        })
+        Ok(Self { 0: archive })
     }
 
     pub fn entries(
         &mut self,
     ) -> std::io::Result<impl Iterator<Item = std::io::Result<(PathBuf, Entry<Decompressor<File>>)>>>
     {
-        Ok(self.archive.entries()?.map(|entry| {
+        Ok(self.0.entries()?.map(|entry| {
             let entry = entry?;
             let path = entry.header().path()?;
             Ok((path_from_archive(&path), entry))

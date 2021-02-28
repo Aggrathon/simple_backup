@@ -8,6 +8,11 @@ use std::{
 use chrono::NaiveDateTime;
 use regex::Regex;
 
+use crate::{
+    backup::{BackupError, BackupReader},
+    config::Config,
+};
+
 const PATTERN_LENGTH: usize = "_2020-20-20_20-20-20.tar.br".len();
 
 macro_rules! try_some {
@@ -163,6 +168,48 @@ impl Iterator for BackupIterator {
             None
         } else {
             None
+        }
+    }
+}
+
+pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn std::error::Error>> {
+    let path = path.as_ref();
+    if path.ends_with(".yml") {
+        Ok(Config::read_yaml(path)?)
+    } else {
+        let path = PathBuf::from(path);
+        if path.metadata()?.is_file() {
+            let mut br = BackupReader::read(path)?;
+            br.read_config()?;
+            Ok(br.config.unwrap())
+        } else {
+            match BackupIterator::with_timestamp(&path).get_latest(true) {
+                None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
+                Some(path) => {
+                    let mut br = BackupReader::read(path)?;
+                    br.read_config()?;
+                    Ok(br.config.unwrap())
+                }
+            }
+        }
+    }
+}
+
+pub fn get_backup_from_path<S: AsRef<str>>(
+    path: S,
+) -> Result<BackupReader, Box<dyn std::error::Error>> {
+    let path = path.as_ref();
+    if path.ends_with(".yml") {
+        Ok(BackupReader::from_config(Config::read_yaml(path)?)?)
+    } else {
+        let path = PathBuf::from(path);
+        if path.metadata()?.is_file() {
+            Ok(BackupReader::read(path)?)
+        } else {
+            match BackupIterator::with_timestamp(&path).get_latest(true) {
+                None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
+                Some(path) => Ok(BackupReader::read(path)?),
+            }
         }
     }
 }
