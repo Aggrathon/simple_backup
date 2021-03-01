@@ -122,7 +122,7 @@ impl Config {
         }
     }
 
-    pub fn get_previous(&self) -> BackupIterator {
+    pub fn get_backups(&self) -> BackupIterator {
         if self.output.ends_with(".tar.br") {
             BackupIterator::exact(PathBuf::from(&self.output))
         } else {

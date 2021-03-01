@@ -1,12 +1,11 @@
 use std::{
     cmp::{max, min},
     fs::ReadDir,
-    io::{Error, ErrorKind, Write},
+    io::Write,
     path::{Path, PathBuf},
 };
 
 use chrono::NaiveDateTime;
-use regex::Regex;
 
 use crate::{
     backup::{BackupError, BackupReader},
@@ -63,7 +62,6 @@ enum BackupIteratorPattern {
     None,
     Fullstamp(String),
     Endstamp,
-    Regex(Regex),
 }
 
 pub struct BackupIterator {
@@ -80,17 +78,6 @@ impl BackupIterator {
 
     pub fn with_name<P: AsRef<Path>>(dir: P, name: String) -> Self {
         Self::new(dir, BackupIteratorPattern::Fullstamp(name))
-    }
-
-    pub fn with_ending<P: AsRef<Path>>(dir: P) -> Self {
-        match Regex::new(".*.tar.br") {
-            Err(e) => BackupIterator {
-                constant: Some(Err(Error::new(ErrorKind::Other, e))),
-                dir: None,
-                pattern: BackupIteratorPattern::None,
-            },
-            Ok(r) => Self::new(dir, BackupIteratorPattern::Regex(r)),
-        }
     }
 
     pub fn exact(path: PathBuf) -> Self {
@@ -116,34 +103,26 @@ impl BackupIterator {
         }
     }
 
-    pub fn get_latest(&mut self, pattern: bool) -> Option<PathBuf> {
-        if pattern {
-            // Select latest based on timestamps in the filename
-            self.filter_map(|res| res.ok())
-                .filter(|p| p.file_name().is_some())
-                .map(|p| {
-                    let f = p.file_name().unwrap().to_string_lossy();
-                    let s = if f.len() >= PATTERN_LENGTH {
-                        f[(f.len() - PATTERN_LENGTH)..].to_string()
-                    } else {
-                        f.to_string()
-                    };
-                    (p, s)
-                })
-                .max_by(|(_, f1), (_, f2)| f1.cmp(&f2))
-                .map(|(p, _)| p)
-        } else {
-            // Select latest based on the modified metadata
-            self.filter_map(|res| {
-                res.ok().and_then(|p| {
-                    p.metadata()
-                        .ok()
-                        .and_then(|md| md.modified().ok().and_then(|t| Some((p, t))))
-                })
+    pub fn get_latest(&mut self) -> Option<PathBuf> {
+        // Select latest based on timestamps in the filename
+        self.filter_map(|res| res.ok())
+            .filter(|p| p.file_name().is_some())
+            .map(|p| {
+                let f = p.file_name().unwrap().to_string_lossy();
+                let s = if f.len() >= PATTERN_LENGTH {
+                    f[(f.len() - PATTERN_LENGTH)..].to_string()
+                } else {
+                    f.to_string()
+                };
+                (p, s)
             })
-            .max_by(|(_, t1), (_, t2)| t1.cmp(t2))
-            .and_then(|(p, _)| Some(p))
-        }
+            .max_by(|(_, f1), (_, f2)| f1.cmp(&f2))
+            .map(|(p, _)| p)
+    }
+
+    pub fn get_previous(&mut self, _time: &str) -> Option<PathBuf> {
+        // TODO: Get latest  before time
+        todo!()
     }
 }
 
@@ -183,11 +162,6 @@ impl Iterator for BackupIterator {
                             return Some(Ok(path));
                         }
                     }
-                    BackupIteratorPattern::Regex(regex) => {
-                        if regex.is_match(&string) {
-                            return Some(Ok(path));
-                        }
-                    }
                     BackupIteratorPattern::None => {}
                 }
             }
@@ -202,12 +176,10 @@ pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn st
     match ConfigPathType::parse(Path::new(path.as_ref()))? {
         ConfigPathType::Dir(path) => Ok(Config::read_yaml(path)?),
         ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
-        ConfigPathType::Config(path) => {
-            match BackupIterator::with_timestamp(&path).get_latest(true) {
-                None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
-                Some(path) => BackupReader::read_config_only(path),
-            }
-        }
+        ConfigPathType::Config(path) => match BackupIterator::with_timestamp(&path).get_latest() {
+            None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
+            Some(path) => BackupReader::read_config_only(path),
+        },
     }
 }
 
@@ -217,12 +189,10 @@ pub fn get_backup_from_path<S: AsRef<str>>(
     match ConfigPathType::parse(Path::new(path.as_ref()))? {
         ConfigPathType::Dir(path) => Ok(BackupReader::from_config(Config::read_yaml(path)?)?),
         ConfigPathType::Backup(path) => Ok(BackupReader::read(path)?),
-        ConfigPathType::Config(path) => {
-            match BackupIterator::with_timestamp(&path).get_latest(true) {
-                None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
-                Some(path) => Ok(BackupReader::read(path)?),
-            }
-        }
+        ConfigPathType::Config(path) => match BackupIterator::with_timestamp(&path).get_latest() {
+            None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
+            Some(path) => Ok(BackupReader::read(path)?),
+        },
     }
 }
 

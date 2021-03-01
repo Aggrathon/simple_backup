@@ -52,7 +52,7 @@ pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
         Some(t)
     } else {
         let mut time = None;
-        for path in config.get_previous() {
+        for path in config.get_backups() {
             if let Err(e) = path {
                 eprintln!("Could not find backup: {}", e);
                 continue;
@@ -86,63 +86,6 @@ pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
     }
 }
 
-// pub fn find_backups<P: AsRef<Path>, S: AsRef<str>>(dir: P, name: Option<S>) -> Option<PathBuf> {
-//     let dir = dir.as_ref();
-//     if dir.is_dir() {
-//         dir.read_dir()?.filter_map(|de| {
-//             de?.file_name().as_os_str().e
-//         })
-//     } else if dir.is_file() {
-//         if name.is_none() {
-//             Some(dir.to_path_buf())
-//         } else {
-//             None
-//         }
-//     } else {
-//         None
-//     }
-// }
-
-// pub fn get_path_config<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn Error>> {
-//     let path = path.as_ref();
-//     let mut config = if path.ends_with(".yml") {
-//         Config::read_yaml(path)?
-//     } else if path.ends_with(".tar.br") {
-//         Backup::read(&path)?.get_config()?
-//     } else {
-//         let mut config: Option<Config> = None;
-//         let mut selected = PathBuf::new();
-//         for path in BackupIterator::with_ending(path) {
-//             if let Err(e) = &path {
-//                 eprintln!("Could not find backups: {}", e);
-//             }
-//             let path = path.unwrap();
-//             let new = get_backup_config(&path);
-//             if let Err(e) = &new {
-//                 eprintln!("Could not get config from backup: {}", e);
-//             }
-//             let new = new.unwrap();
-//             if let Some(old) = config {
-//                 if old.time < new.time {
-//                     config = Some(new);
-//                     selected = path;
-//                 } else {
-//                     config = Some(old);
-//                 }
-//             } else {
-//                 selected = path;
-//                 config = Some(new);
-//             }
-//         }
-//         if config.is_none() {
-//             panic!("Could not find a config from an earlier backup");
-//         }
-//         println!("Using the config from '{}'", selected.to_string_lossy());
-//         config.unwrap()
-//     };
-//     Ok(config)
-// }
-
 pub struct BackupReader {
     decoder: CompressionDecoder,
     pub path: PathBuf,
@@ -162,8 +105,8 @@ impl BackupReader {
 
     pub fn from_config(config: Config) -> std::io::Result<Self> {
         let prev = config
-            .get_previous()
-            .get_latest(true)
+            .get_backups()
+            .get_latest()
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Backup not found"))?;
         let decoder = CompressionDecoder::read(prev.as_path())?;
         Ok(BackupReader {
