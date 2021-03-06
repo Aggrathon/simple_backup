@@ -1,5 +1,6 @@
 use std::{
     cmp::{max, min},
+    ffi::OsStr,
     fs::ReadDir,
     io::Write,
     path::{Path, PathBuf},
@@ -11,8 +12,6 @@ use crate::{
     backup::{BackupError, BackupReader},
     config::Config,
 };
-
-const PATTERN_LENGTH: usize = "_2020-20-20_20-20-20.tar.br".len();
 
 macro_rules! try_some {
     ($value:expr) => {
@@ -32,29 +31,23 @@ macro_rules! try_some_box {
     };
 }
 
-enum ConfigPathType<P: AsRef<Path>> {
-    Dir(P),
-    Backup(P),
-    Config(P),
+macro_rules! try_option {
+    ($value:expr) => {
+        match $value {
+            Some(v) => v,
+            None => return None,
+        }
+    };
 }
 
-impl<P: AsRef<Path>> ConfigPathType<P> {
-    pub fn parse(path: P) -> std::io::Result<Self> {
-        let p = path.as_ref();
-        let md = p.metadata()?;
-        if md.is_dir() {
-            return Ok(Self::Dir(path));
-        } else if md.is_file() {
-            if p.ends_with(".yml") {
-                return Ok(Self::Config(path));
-            } else if p.ends_with(".tar.br") {
-                return Ok(Self::Backup(path));
-            }
-        }
-        Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "The path must be either a config (.yml), a backup (.tar.br), or a directory containing backups",
-        ))
+const PATTERN_LENGTH: usize = "_2020-20-20_20-20-20.tar.br".len();
+
+fn get_pattern(name: &OsStr) -> String {
+    let f = name.to_string_lossy();
+    if f.len() >= PATTERN_LENGTH {
+        f[(f.len() - PATTERN_LENGTH)..].to_string()
+    } else {
+        f.to_string()
     }
 }
 
@@ -63,7 +56,6 @@ enum BackupIteratorPattern {
     Fullstamp(String),
     Endstamp,
 }
-
 pub struct BackupIterator {
     constant: Option<std::io::Result<PathBuf>>,
     dir: Option<ReadDir>,
@@ -106,23 +98,26 @@ impl BackupIterator {
     pub fn get_latest(&mut self) -> Option<PathBuf> {
         // Select latest based on timestamps in the filename
         self.filter_map(|res| res.ok())
-            .filter(|p| p.file_name().is_some())
-            .map(|p| {
-                let f = p.file_name().unwrap().to_string_lossy();
-                let s = if f.len() >= PATTERN_LENGTH {
-                    f[(f.len() - PATTERN_LENGTH)..].to_string()
-                } else {
-                    f.to_string()
-                };
-                (p, s)
+            .filter_map(|p| {
+                let s = get_pattern(try_option!(&p.file_name()));
+                Some((p, s))
             })
             .max_by(|(_, f1), (_, f2)| f1.cmp(&f2))
             .map(|(p, _)| p)
     }
 
-    pub fn get_previous(&mut self, _time: &str) -> Option<PathBuf> {
-        // TODO: Get latest  before time
-        todo!()
+    pub fn get_previous<P: AsRef<Path>>(&mut self, path: P) -> Option<PathBuf> {
+        let limit = get_pattern(try_option!(path.as_ref().file_name()));
+        self.filter_map(|res| res.ok())
+            .filter_map(|p| {
+                let s = get_pattern(try_option!(&p.file_name()));
+                if s > limit {
+                    return None;
+                }
+                Some((p, s))
+            })
+            .max_by(|(_, f1), (_, f2)| f1.cmp(&f2))
+            .map(|(p, _)| p)
     }
 }
 
@@ -169,6 +164,32 @@ impl Iterator for BackupIterator {
         } else {
             None
         }
+    }
+}
+
+enum ConfigPathType<P: AsRef<Path>> {
+    Dir(P),
+    Backup(P),
+    Config(P),
+}
+
+impl<P: AsRef<Path>> ConfigPathType<P> {
+    pub fn parse(path: P) -> std::io::Result<Self> {
+        let p = path.as_ref();
+        let md = p.metadata()?;
+        if md.is_dir() {
+            return Ok(Self::Dir(path));
+        } else if md.is_file() {
+            if p.ends_with(".yml") {
+                return Ok(Self::Config(path));
+            } else if p.ends_with(".tar.br") {
+                return Ok(Self::Backup(path));
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "The path must be either a config (.yml), a backup (.tar.br), or a directory containing backups",
+        ))
     }
 }
 
