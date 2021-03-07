@@ -172,7 +172,7 @@ impl BackupWriter {
         let mut encoder = CompressionEncoder::create(&self.path, self.config.quality)?;
 
         self.config.time = Some(self.time);
-        encoder.append_data("config.yml", self.config.to_yaml())?;
+        encoder.append_data("config.yml", self.config.to_yaml()?)?;
 
         let list = self.get_files(
             true,

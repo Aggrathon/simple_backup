@@ -280,7 +280,7 @@ fn main() {
         // Create a config file
         let mut config = Config::from_args(&matches);
         if matches.is_present("dry") {
-            println!("{}", config.to_yaml());
+            println!("{}", config.to_yaml().expect("Could not serialise config"));
         } else {
             config.write_yaml(matches.value_of("file").unwrap());
         }

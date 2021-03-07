@@ -30,7 +30,7 @@ pub struct Config {
 
 impl Config {
     #[allow(dead_code)]
-    fn new() -> Self {
+    pub fn new() -> Self {
         Config {
             include: vec![],
             exclude: vec![],
@@ -90,19 +90,20 @@ impl Config {
         Ok(conf)
     }
 
-    pub fn write_yaml(&mut self, path: &str) {
+    pub fn write_yaml<P: AsRef<Path>>(&mut self, path: P) -> std::io::Result<()> {
         self.sort();
-        let writer = File::create(path).expect("Could not create the config file");
-        serde_yaml::to_writer(writer, &self).expect("Could not serialise config");
+        let writer = File::create(path)?;
+        serde_yaml::to_writer(writer, &self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 
     pub fn from_yaml<S: AsRef<str>>(yaml: S) -> Result<Self, serde_yaml::Error> {
         serde_yaml::from_str(yaml.as_ref())
     }
 
-    pub fn to_yaml(&mut self) -> String {
+    pub fn to_yaml(&mut self) -> serde_yaml::Result<String> {
         self.sort();
-        serde_yaml::to_string(&self).expect("Could not serialise config")
+        serde_yaml::to_string(&self)
     }
 
     pub fn sort(&mut self) {
@@ -138,9 +139,9 @@ mod tests {
     #[test]
     fn yaml() {
         let mut config = Config::new();
-        let yaml = config.to_yaml();
+        let yaml = config.to_yaml().unwrap();
         let mut config2 = Config::from_yaml(&yaml).unwrap();
-        let yaml2 = config2.to_yaml();
+        let yaml2 = config2.to_yaml().unwrap();
         assert_eq!(config.include, config2.include);
         assert_eq!(config.exclude, config2.exclude);
         assert_eq!(config.regex, config2.regex);

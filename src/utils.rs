@@ -111,7 +111,7 @@ impl BackupIterator {
         self.filter_map(|res| res.ok())
             .filter_map(|p| {
                 let s = get_pattern(try_option!(&p.file_name()));
-                if s > limit {
+                if s >= limit {
                     return None;
                 }
                 Some((p, s))
@@ -174,30 +174,30 @@ enum ConfigPathType<P: AsRef<Path>> {
 }
 
 impl<P: AsRef<Path>> ConfigPathType<P> {
-    pub fn parse(path: P) -> std::io::Result<Self> {
+    pub fn parse<S: AsRef<str>>(path: P, string: S) -> std::io::Result<Self> {
         let p = path.as_ref();
         let md = p.metadata()?;
         if md.is_dir() {
             return Ok(Self::Dir(path));
         } else if md.is_file() {
-            if p.ends_with(".yml") {
+            if string.as_ref().ends_with(".yml") {
                 return Ok(Self::Config(path));
-            } else if p.ends_with(".tar.br") {
+            } else if string.as_ref().ends_with(".tar.br") {
                 return Ok(Self::Backup(path));
             }
         }
         Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
+            std::io::ErrorKind::InvalidInput,
             "The path must be either a config (.yml), a backup (.tar.br), or a directory containing backups",
         ))
     }
 }
 
 pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn std::error::Error>> {
-    match ConfigPathType::parse(Path::new(path.as_ref()))? {
-        ConfigPathType::Dir(path) => Ok(Config::read_yaml(path)?),
+    match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
+        ConfigPathType::Config(path) => Ok(Config::read_yaml(path)?),
         ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
-        ConfigPathType::Config(path) => match BackupIterator::with_timestamp(&path).get_latest() {
+        ConfigPathType::Dir(path) => match BackupIterator::with_timestamp(&path).get_latest() {
             None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
             Some(path) => BackupReader::read_config_only(path),
         },
@@ -207,10 +207,10 @@ pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn st
 pub fn get_backup_from_path<S: AsRef<str>>(
     path: S,
 ) -> Result<BackupReader, Box<dyn std::error::Error>> {
-    match ConfigPathType::parse(Path::new(path.as_ref()))? {
-        ConfigPathType::Dir(path) => Ok(BackupReader::from_config(Config::read_yaml(path)?)?),
+    match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
+        ConfigPathType::Config(path) => Ok(BackupReader::from_config(Config::read_yaml(path)?)?),
         ConfigPathType::Backup(path) => Ok(BackupReader::read(path)?),
-        ConfigPathType::Config(path) => match BackupIterator::with_timestamp(&path).get_latest() {
+        ConfigPathType::Dir(path) => match BackupIterator::with_timestamp(&path).get_latest() {
             None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
             Some(path) => Ok(BackupReader::read(path)?),
         },
@@ -219,9 +219,14 @@ pub fn get_backup_from_path<S: AsRef<str>>(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{fs::File, path::PathBuf};
 
+    use tempfile::tempdir;
+
+    use super::get_backup_from_path;
+    use super::get_config_from_path;
     use super::BackupIterator;
+    use crate::Config;
 
     #[test]
     fn try_macros() {
@@ -242,15 +247,60 @@ mod tests {
     }
 
     #[test]
-    fn backup_iterator() {
-        for b in BackupIterator::with_name(".", "asd".to_string()) {
-            assert!(b.is_ok());
-        }
-        for b in BackupIterator::with_timestamp(".") {
-            assert!(b.is_ok());
-        }
-        for b in BackupIterator::exact(PathBuf::from("cargo.toml")) {
-            assert!(b.is_ok());
-        }
+    fn backup_iterator() -> std::io::Result<()> {
+        let dir = tempdir()?;
+        let f1 = dir.path().join("asd.tar.br");
+        let f1b = f1.clone();
+        let f2 = dir.path().join("asd_2020-02-20_20-20-20.tar.br");
+        let f3 = dir.path().join("bsd_2020-04-24_21-20-20.tar.br");
+        let f4 = dir.path().join("bsd_2020-04-24_22-20-20.tar.br");
+        File::create(&f1)?;
+        File::create(&f2)?;
+        File::create(&f3)?;
+        File::create(&f4)?;
+        let mut bi = BackupIterator::with_name(dir.path(), "asd".to_string());
+        assert_eq!(bi.next().unwrap().unwrap(), f2);
+        assert!(bi.next().is_none());
+        let mut bi = BackupIterator::with_timestamp(dir.path());
+        assert_eq!(bi.next().unwrap().unwrap(), f2);
+        assert_eq!(bi.next().unwrap().unwrap(), f3);
+        assert_eq!(bi.next().unwrap().unwrap(), f4);
+        assert!(bi.next().is_none());
+        let mut bi = BackupIterator::with_timestamp(dir.path());
+        assert_eq!(bi.get_latest().unwrap(), f4);
+        let mut bi = BackupIterator::with_timestamp(dir.path());
+        assert_eq!(bi.get_previous(f4).unwrap(), f3);
+        let mut bi = BackupIterator::exact(f1);
+        assert_eq!(bi.next().unwrap().unwrap(), f1b);
+        assert!(bi.next().is_none());
+        Ok(())
+    }
+
+    fn create_file(path: &PathBuf) -> Result<(), std::io::Error> {
+        File::create(path).and_then(|f| Ok(()))
+    }
+
+    #[test]
+    fn from_path() -> std::io::Result<()> {
+        let dir = tempdir()?;
+        let f1 = dir.path().join("asd.tar.br");
+        let f2 = dir.path().join("asd_2020-02-20_20-20-20.tar.br");
+        let f3 = dir.path().join("config.yml");
+        create_file(&f1)?;
+        create_file(&f2)?;
+        let mut conf = Config::new();
+        conf.write_yaml(&f3)?;
+        assert_eq!(
+            get_config_from_path(f3.to_string_lossy()).unwrap().name,
+            conf.name
+        );
+        assert_eq!(
+            get_backup_from_path(dir.path().to_string_lossy())
+                .unwrap()
+                .path,
+            f2
+        );
+        assert_eq!(get_backup_from_path(f1.to_string_lossy()).unwrap().path, f1);
+        Ok(())
     }
 }
