@@ -1,15 +1,20 @@
 use std::{
-    cmp::max,
     error::Error,
     fmt::{Display, Formatter},
     fs::File,
     io::Read,
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
 use chrono::NaiveDateTime;
 
-use crate::{compression::CompressionDecoder, config::Config, files::FileInfo, parse_date};
+use crate::{
+    compression::{CompressionDecoder, CompressionEncoder},
+    config::Config,
+    files::{FileCrawler, FileInfo},
+    parse_date::system_to_naive,
+};
 
 #[derive(Debug)]
 pub enum BackupError {
@@ -44,45 +49,159 @@ impl Display for BackupError {
 
 impl std::error::Error for BackupError {}
 
-/// Check the config (arguments) or previous backups for a time limit in case of an incremental backup
-pub fn get_previous_time(config: &Config) -> Option<NaiveDateTime> {
-    if !config.incremental {
-        None
-    } else if let Some(t) = config.time {
-        Some(t)
-    } else {
-        let mut time = None;
-        for path in config.get_backups() {
-            if let Err(e) = path {
-                eprintln!("Could not find backup: {}", e);
-                continue;
+pub struct BackupWriter {
+    pub path: PathBuf,
+    pub config: Config,
+    pub prev_time: Option<NaiveDateTime>,
+    pub list: Option<Vec<FileInfo>>,
+    encoder: Option<CompressionEncoder>,
+    time: NaiveDateTime,
+}
+
+impl BackupWriter {
+    pub fn new(config: Config) -> (Self, Option<Box<dyn Error>>) {
+        let (prev_time, error) = if config.incremental {
+            match config.time {
+                Some(t) => (Some(t), None),
+                None => match config.get_backups().get_latest() {
+                    Some(path) => match BackupReader::read_config_only(path) {
+                        Ok(c) => (c.time, None),
+                        Err(e) => (None, Some(e)),
+                    },
+                    None => (None, None),
+                },
             }
-            let path = path.unwrap();
-            let bp = BackupReader::read(&path);
-            if let Err(e) = bp {
-                eprintln!("Could not open backup: {}", e);
-                continue;
-            }
-            match bp.unwrap().read_config() {
-                Err(e) => {
-                    eprintln!(
-                        "Could not get time from '{}': {}",
-                        path.to_string_lossy(),
-                        e
-                    );
-                }
-                Ok(conf) => {
-                    if let Some(t1) = time {
-                        if let Some(t2) = conf.time {
-                            time = Some(max(t1, t2))
+        } else {
+            (None, None)
+        };
+        let path = config.get_output();
+        (
+            Self {
+                config,
+                path,
+                prev_time,
+                list: None,
+                encoder: None,
+                time: system_to_naive(SystemTime::now()),
+            },
+            error,
+        )
+    }
+
+    pub fn get_files<F: FnMut(Result<&mut FileInfo, Box<dyn std::error::Error>>)>(
+        &mut self,
+        all: bool,
+        callback: Option<F>,
+    ) -> Result<&mut Vec<FileInfo>, Box<dyn std::error::Error>> {
+        if self.list.is_some() {
+            if callback.is_some() {
+                let mut callback = callback.unwrap();
+                if all || self.prev_time.is_none() {
+                    self.list.as_mut().unwrap().iter_mut().for_each(|fi| {
+                        callback(Ok(fi));
+                    });
+                } else {
+                    let time = self.prev_time.unwrap();
+                    self.list.as_mut().unwrap().iter_mut().for_each(|fi| {
+                        if fi.time.unwrap() >= time {
+                            callback(Ok(fi));
                         }
-                    } else if let Some(t) = conf.time {
-                        time = Some(t)
-                    }
+                    });
+                }
+            }
+        } else {
+            let fc = FileCrawler::new(
+                &self.config.include,
+                &self.config.exclude,
+                &self.config.regex,
+                self.config.local,
+            )?;
+            if callback.is_none() {
+                self.list = Some(
+                    fc.into_iter()
+                        .filter_map(|fi| match fi {
+                            Ok(fi) => Some(fi),
+                            Err(_) => None,
+                        })
+                        .collect(),
+                );
+            } else if all || self.prev_time.is_none() {
+                let mut callback = callback.unwrap();
+                self.list = Some(
+                    fc.into_iter()
+                        .filter_map(|fi| match fi {
+                            Ok(mut fi) => {
+                                callback(Ok(&mut fi));
+                                Some(fi)
+                            }
+                            Err(e) => {
+                                callback(Err(e));
+                                None
+                            }
+                        })
+                        .collect(),
+                );
+            } else {
+                let time = self.prev_time.unwrap();
+                let mut callback = callback.unwrap();
+                self.list = Some(
+                    fc.into_iter()
+                        .filter_map(|fi| match fi {
+                            Ok(mut fi) => {
+                                if fi.time.unwrap() >= time {
+                                    callback(Ok(&mut fi));
+                                }
+                                Some(fi)
+                            }
+                            Err(e) => {
+                                callback(Err(e));
+                                None
+                            }
+                        })
+                        .collect(),
+                );
+            }
+        }
+        Ok(self.list.as_mut().unwrap())
+    }
+
+    pub fn write<F: FnMut(&mut FileInfo, Result<(), std::io::Error>)>(
+        &mut self,
+        callback: Option<F>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut encoder = CompressionEncoder::create(&self.path, self.config.quality)?;
+
+        self.config.time = Some(self.time);
+        encoder.append_data("config.yml", self.config.to_yaml())?;
+
+        let list = self.get_files(
+            true,
+            None::<fn(Result<&mut FileInfo, Box<dyn std::error::Error>>)>,
+        )?;
+        let mut list_string = String::new();
+        list_string.reserve(list.len() * 200);
+        list.iter_mut().for_each(|fi| {
+            list_string.push_str(fi.get_string());
+            list_string.push('\n');
+        });
+        list_string.pop();
+        encoder.append_data("files.csv", list_string)?;
+
+        match callback {
+            Some(mut callback) => {
+                for fi in list.iter_mut() {
+                    let res = encoder.append_file(fi.get_path());
+                    callback(fi, res);
+                }
+            }
+            None => {
+                for fi in list.iter_mut() {
+                    encoder.append_file(fi.get_path());
                 }
             }
         }
-        time
+
+        Ok(())
     }
 }
 
@@ -207,15 +326,4 @@ impl BackupReader {
             entries,
         ))
     }
-}
-
-pub fn parse_file_list(
-    list: &str,
-) -> std::iter::Map<std::str::Lines<'_>, fn(&str) -> Result<FileInfo, &str>> {
-    list.lines().map(|l| {
-        let mut split = l.splitn(2, ',');
-        let time = split.next().ok_or("File info is missing")?;
-        let string = split.next().ok_or("Could not split at ','")?;
-        Ok(FileInfo::new_str(string, parse_date::try_parse(time)?))
-    })
 }
