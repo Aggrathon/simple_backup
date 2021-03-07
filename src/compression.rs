@@ -8,6 +8,8 @@ use brotli::{CompressorWriter, Decompressor};
 use path_clean::PathClean;
 use tar::{Archive, Builder, Entry, Header};
 
+use crate::files::FileInfo;
+
 pub struct CompressionEncoder(Builder<CompressorWriter<File>>);
 
 impl CompressionEncoder {
@@ -61,7 +63,7 @@ impl CompressionDecoder {
 
     pub fn entries(
         &mut self,
-    ) -> std::io::Result<impl Iterator<Item = std::io::Result<(PathBuf, Entry<Decompressor<File>>)>>>
+    ) -> std::io::Result<impl Iterator<Item = std::io::Result<(FileInfo, Entry<Decompressor<File>>)>>>
     {
         Ok(self.0.entries()?.map(|entry| {
             let entry = entry?;
@@ -79,17 +81,17 @@ fn path_to_archive(path: &PathBuf) -> String {
     }
 }
 
-fn path_from_archive<P: AsRef<Path>>(path: P) -> PathBuf {
+fn path_from_archive<P: AsRef<Path>>(path: P) -> FileInfo {
     let path = path.as_ref();
     let string = path.to_string_lossy();
     if string.starts_with("rel/") {
-        PathBuf::from(&string[4..])
+        FileInfo::from(string[4..].to_string())
     } else if string.starts_with("abs") {
-        PathBuf::from(&string[3..])
+        FileInfo::from(string[3..].to_string())
     } else if string == "rel" {
-        PathBuf::from(".")
+        FileInfo::from(".")
     } else {
-        PathBuf::from(path)
+        FileInfo::from(path)
     }
 }
 
@@ -106,7 +108,7 @@ mod tests {
     fn paths_abs() {
         let dir = PathBuf::from(".").absolutize().unwrap().to_path_buf();
         let pta = path_to_archive(&dir);
-        let out = path_from_archive(&PathBuf::from(&pta));
+        let out = *path_from_archive(&PathBuf::from(&pta)).get_path();
         assert_eq!(dir, out);
 
         let tmp: Vec<u8> = vec![];
@@ -118,7 +120,7 @@ mod tests {
         let mut tar = Archive::new(Cursor::new(tmp));
         let entry = tar.entries().unwrap().next().unwrap().unwrap();
         let pia = entry.header().path().unwrap();
-        let out = path_from_archive(&pia);
+        let out = *path_from_archive(&pia).get_path();
         assert_eq!(dir, out);
     }
 
@@ -126,7 +128,7 @@ mod tests {
     fn paths_rel() {
         let dir = PathBuf::from(".");
         let pta = path_to_archive(&dir);
-        let out = path_from_archive(&PathBuf::from(&pta));
+        let out = *path_from_archive(&PathBuf::from(&pta)).get_path();
         assert_eq!(dir, out);
 
         let tmp: Vec<u8> = vec![];
@@ -138,7 +140,7 @@ mod tests {
         let mut tar = Archive::new(Cursor::new(tmp));
         let entry = tar.entries().unwrap().next().unwrap().unwrap();
         let pia = entry.header().path().unwrap();
-        let out = path_from_archive(&pia);
+        let out = *path_from_archive(&pia).get_path();
         assert_eq!(dir, out);
     }
 }

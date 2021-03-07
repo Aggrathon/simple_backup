@@ -1,8 +1,7 @@
 use std::{
-    cmp::{max, min},
+    cmp::min,
     ffi::OsStr,
     fs::ReadDir,
-    io::Write,
     path::{Path, PathBuf},
 };
 

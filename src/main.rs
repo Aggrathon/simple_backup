@@ -252,20 +252,21 @@ fn main() {
 
     if let Some(matches) = matches.subcommand_matches("restore") {
         // Restore backed up files
-        let backup = get_backup_from_path(matches.value_of("source").unwrap())
-            .expect("Could not locate backup");
-        // TODO Use the backup located above
         cli::restore(
-            matches.value_of("source").unwrap(),
-            matches.value_of("output").unwrap_or(""),
+            get_backup_from_path(matches.value_of("source").unwrap())
+                .expect("Could not find backup"),
+            matches.value_of("output").unwrap_or("."),
+            matches
+                .values_of("include")
+                .unwrap_or(Values::default())
+                .collect(),
             matches
                 .values_of("regex")
                 .unwrap_or(Values::default())
                 .collect(),
-            matches.is_present("all"),
+            matches.is_present("flatten"),
             matches.is_present("force"),
             matches.is_present("verbose"),
-            matches.is_present("flatten"),
             matches.is_present("dry"),
         );
     } else if let Some(_) = matches.subcommand_matches("gui") {
@@ -274,7 +275,7 @@ fn main() {
     } else if let Some(matches) = matches.subcommand_matches("backup") {
         // Backup using an existing config
         let path = matches.value_of("file").unwrap();
-        let mut config = get_config_from_path(path).expect("Could not load config");
+        let config = get_config_from_path(path).expect("Could not load config");
         cli::backup(config, matches.is_present("dry"));
     } else if let Some(matches) = matches.subcommand_matches("config") {
         // Create a config file
@@ -282,11 +283,13 @@ fn main() {
         if matches.is_present("dry") {
             println!("{}", config.to_yaml().expect("Could not serialise config"));
         } else {
-            config.write_yaml(matches.value_of("file").unwrap());
+            config
+                .write_yaml(matches.value_of("file").unwrap())
+                .expect("Could not serialise config");
         }
     } else {
         // Backup using arguments
-        let mut config = Config::from_args(&matches);
+        let config = Config::from_args(&matches);
         cli::backup(config, matches.is_present("dry"));
     }
 }

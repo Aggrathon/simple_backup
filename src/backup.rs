@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fmt::{Display, Formatter},
-    fs::File,
+    fs::{create_dir_all, File},
     io::Read,
     path::{Path, PathBuf},
     time::SystemTime,
@@ -54,7 +54,6 @@ pub struct BackupWriter {
     pub config: Config,
     pub prev_time: Option<NaiveDateTime>,
     pub list: Option<Vec<FileInfo>>,
-    encoder: Option<CompressionEncoder>,
     time: NaiveDateTime,
 }
 
@@ -81,7 +80,6 @@ impl BackupWriter {
                 path,
                 prev_time,
                 list: None,
-                encoder: None,
                 time: system_to_naive(SystemTime::now()),
             },
             error,
@@ -165,9 +163,9 @@ impl BackupWriter {
         Ok(self.list.as_mut().unwrap())
     }
 
-    pub fn write<F: FnMut(&mut FileInfo, Result<(), std::io::Error>)>(
+    pub fn write(
         &mut self,
-        callback: Option<F>,
+        mut callback: impl FnMut(&mut FileInfo, Result<(), std::io::Error>),
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut encoder = CompressionEncoder::create(&self.path, self.config.quality)?;
 
@@ -187,20 +185,11 @@ impl BackupWriter {
         list_string.pop();
         encoder.append_data("files.csv", list_string)?;
 
-        match callback {
-            Some(mut callback) => {
-                for fi in list.iter_mut() {
-                    let res = encoder.append_file(fi.get_path());
-                    callback(fi, res);
-                }
-            }
-            None => {
-                for fi in list.iter_mut() {
-                    encoder.append_file(fi.get_path());
-                }
-            }
+        for fi in list.iter_mut() {
+            let res = encoder.append_file(fi.get_path());
+            callback(fi, res);
         }
-        encoder.close();
+        encoder.close()?;
 
         Ok(())
     }
@@ -249,7 +238,7 @@ impl BackupReader {
             return Err(Box::new(BackupError::NoConfig(self.path.clone())));
         }
         let mut entry = entry.unwrap()?;
-        if entry.0.as_os_str() != "config.yml" {
+        if entry.0.get_string() != "config.yml" {
             return Err(Box::new(BackupError::NoConfig(self.path.clone())));
         }
         let mut s = String::new();
@@ -260,25 +249,41 @@ impl BackupReader {
         Ok(self.config.as_ref().unwrap())
     }
 
-    pub fn read_list(&mut self) -> Result<&String, Box<dyn Error>> {
-        let entry = self.decoder.entries()?.skip(1).next();
+    pub fn read_list(
+        &mut self,
+    ) -> Result<
+        (
+            &String,
+            impl Iterator<Item = std::io::Result<(FileInfo, tar::Entry<brotli::Decompressor<File>>)>>,
+        ),
+        Box<dyn Error>,
+    > {
+        let mut entries = self.decoder.entries()?.skip(1);
+        let entry = entries.next();
         if entry.is_none() {
             return Err(Box::new(BackupError::NoList(self.path.clone())));
         }
         let mut entry = entry.unwrap()?;
-        if entry.0.as_os_str() != "files.csv" {
+        if entry.0.get_string() != "files.csv" {
             return Err(Box::new(BackupError::NoList(self.path.clone())));
         }
         let mut s = String::new();
         entry.1.read_to_string(&mut s)?;
         self.list = Some(s);
-        Ok(self.list.as_ref().unwrap())
+        Ok((self.list.as_ref().unwrap(), entries))
+    }
+
+    pub fn extract_list(&mut self) -> Result<String, Box<dyn Error>> {
+        if self.list.is_none() {
+            self.read_list()?.0;
+        }
+        Ok(std::mem::replace(&mut self.list, None).unwrap())
     }
 
     pub fn files(
         &mut self,
     ) -> std::io::Result<
-        impl Iterator<Item = std::io::Result<(PathBuf, tar::Entry<brotli::Decompressor<File>>)>>,
+        impl Iterator<Item = std::io::Result<(FileInfo, tar::Entry<brotli::Decompressor<File>>)>>,
     > {
         Ok(self.decoder.entries()?.skip(2))
     }
@@ -289,7 +294,7 @@ impl BackupReader {
         (
             &Config,
             &String,
-            impl Iterator<Item = std::io::Result<(PathBuf, tar::Entry<brotli::Decompressor<File>>)>>,
+            impl Iterator<Item = std::io::Result<(FileInfo, tar::Entry<brotli::Decompressor<File>>)>>,
         ),
         Box<dyn Error>,
     > {
@@ -300,7 +305,7 @@ impl BackupReader {
             return Err(Box::new(BackupError::NoConfig(self.path.clone())));
         }
         let mut entry = entry.unwrap()?;
-        if entry.0.as_os_str() != "config.yml" {
+        if entry.0.get_string() != "config.yml" {
             return Err(Box::new(BackupError::NoConfig(self.path.clone())));
         }
         let mut s = String::new();
@@ -314,7 +319,7 @@ impl BackupReader {
             return Err(Box::new(BackupError::NoList(self.path.clone())));
         }
         let mut entry = entry.unwrap()?;
-        if entry.0.as_os_str() != "files.csv" {
+        if entry.0.get_string() != "files.csv" {
             return Err(Box::new(BackupError::NoList(self.path.clone())));
         }
         s.truncate(0);
@@ -326,5 +331,103 @@ impl BackupReader {
             self.list.as_ref().unwrap(),
             entries,
         ))
+    }
+
+    pub fn get_previous(&mut self) -> Result<Option<Self>, Box<dyn Error>> {
+        if self.config.is_none() {
+            self.read_config()?;
+        }
+        match self
+            .config
+            .as_ref()
+            .unwrap()
+            .get_backups()
+            .get_previous(&self.path)
+        {
+            None => Ok(None),
+            Some(path) => Ok(Some(BackupReader::read(path)?)),
+        }
+    }
+
+    pub fn restore(
+        &mut self,
+        filter: Option<impl FnMut(&&str) -> bool>,
+        path_transform: impl FnMut(FileInfo) -> FileInfo,
+        callback: impl FnMut(std::io::Result<()>),
+        overwrite: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        let list = self.extract_list()?;
+        let files: Vec<&str> = if filter.is_none() {
+            list.split('\n').collect()
+        } else {
+            list.split('\n').filter(filter.unwrap()).collect()
+        };
+        let res = self.restore_selected(files, path_transform, callback, overwrite);
+        self.list = Some(list);
+        res
+    }
+
+    pub fn restore_selected(
+        &mut self,
+        selection: Vec<&str>,
+        mut path_transform: impl FnMut(FileInfo) -> FileInfo,
+        mut callback: impl FnMut(std::io::Result<()>),
+        overwrite: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut not_found: Vec<&str> = vec![];
+        let mut list = selection.iter();
+        let mut current = match list.next() {
+            Some(f) => f,
+            None => return Ok(()),
+        };
+        for res in self.files()? {
+            match res {
+                Ok((mut fi, mut entry)) => {
+                    while fi.get_string().as_str() > current {
+                        not_found.push(current);
+                        current = match list.next() {
+                            Some(f) => f,
+                            None => break,
+                        };
+                    }
+                    if fi.get_string().as_str() == *current {
+                        current = list.next().unwrap_or(current);
+                        let mut path = path_transform(fi);
+                        if !overwrite && path.get_path().exists() {
+                            callback(Err(std::io::Error::new(
+                                std::io::ErrorKind::AlreadyExists,
+                                format!("File '{}' already exists", path.get_string()),
+                            )));
+                        } else {
+                            if let Some(dir) = path.get_path().parent() {
+                                callback(
+                                    create_dir_all(dir)
+                                        .and_then(|_| entry.unpack(path.get_path()).and(Ok(()))),
+                                );
+                            } else {
+                                callback(entry.unpack(path.get_path()).and(Ok(())));
+                            }
+                        }
+                    }
+                }
+                Err(e) => callback(Err(e)),
+            }
+        }
+        if not_found.len() > 0 {
+            match self.get_previous()? {
+                Some(mut bw) => {
+                    return bw.restore_selected(not_found, path_transform, callback, overwrite)
+                }
+                None => {
+                    for f in not_found.iter() {
+                        callback(Err(std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            format!("Could not find '{}' in backups", f),
+                        )));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
