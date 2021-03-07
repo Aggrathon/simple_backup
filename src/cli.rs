@@ -1,12 +1,9 @@
 use core::panic;
 use std::error::Error;
 
-use crate::{
-    backup::BackupWriter,
-    config::Config,
-    files::FileInfo,
-    utils::{get_backup_from_path, ProgressBar},
-};
+use indicatif::ProgressBar;
+
+use crate::{backup::BackupWriter, config::Config, files::FileInfo, utils::get_backup_from_path};
 
 /// Backup files
 pub fn backup(config: Config, dry: bool) {
@@ -71,12 +68,19 @@ pub fn backup(config: Config, dry: bool) {
         if bw.config.verbose {
             println!("");
         }
-        let mut bar = ProgressBar::start(num_files, 80, "Backing up files");
+        let bar = ProgressBar::new(num_files);
+        bar.set_message("Backing up files");
+        bar.tick();
         bw.write(Some(|fi: &mut FileInfo, err| match err {
-            Ok(_) => bar.progress(),
-            Err(e) => eprintln!("Could not add '{}' to the backup: {}", fi.get_string(), e),
+            Ok(_) => bar.inc(1),
+            Err(e) => bar.println(format!(
+                "Could not add '{}' to the backup: {}",
+                fi.get_string(),
+                e
+            )),
         }))
         .expect("Could not create backup file");
+        bar.finish();
     }
 }
 

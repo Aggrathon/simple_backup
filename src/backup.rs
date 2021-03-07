@@ -200,6 +200,7 @@ impl BackupWriter {
                 }
             }
         }
+        encoder.close();
 
         Ok(())
     }

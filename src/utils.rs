@@ -217,70 +217,40 @@ pub fn get_backup_from_path<S: AsRef<str>>(
     }
 }
 
-pub struct ProgressBar {
-    max: usize,
-    current: usize,
-    steps: usize,
-    progress: usize,
-}
-
-impl ProgressBar {
-    pub fn start(size: usize, steps: usize, title: &str) -> Self {
-        let length = title.chars().count();
-        let steps = max(length + 4, steps);
-        let pad = steps - length;
-        for _ in 0..(pad / 2) {
-            print!("_");
-        }
-        print!("{}", title);
-        for _ in 0..((pad - 1) / 2 + 1) {
-            print!("_");
-        }
-        print!("\n#");
-        std::io::stdout().flush().unwrap();
-        Self {
-            max: size,
-            current: 0,
-            steps: steps,
-            progress: 1,
-        }
-    }
-
-    pub fn progress(&mut self) {
-        if self.current < self.max {
-            self.current += 1;
-            let blocks = self.current * self.steps / self.max;
-            if blocks > self.progress {
-                while blocks > self.progress {
-                    print!("#");
-                    self.progress += 1;
-                }
-                if self.current == self.max {
-                    println!("");
-                } else {
-                    std::io::stdout().flush().unwrap();
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use super::BackupIterator;
+
     #[test]
-    fn progress_bar() {
-        for n in [333, 500, 100].iter() {
-            for s in [20, 27, 63].iter() {
-                let mut bar = super::ProgressBar::start(*n, *s, "Backing up files");
-                let mut count = 1;
-                for _ in 0..*n {
-                    bar.progress();
-                    if bar.current < bar.max && bar.current * bar.steps % bar.max < bar.steps {
-                        count += 1
-                    }
-                }
-                assert_eq!(*s, count);
-            }
+    fn try_macros() {
+        let try_some_ok: fn() -> Option<Result<i32, i32>> = || Some(Ok(try_some!(Ok(1))));
+        assert_eq!(Some(Ok(1)), try_some_ok());
+        let try_some_err: fn() -> Option<Result<i32, i32>> = || Some(Ok(try_some!(Err(1))));
+        assert_eq!(Some(Err(1)), try_some_err());
+
+        let try_box_ok: fn() -> Option<Result<i32, Box<i32>>> = || Some(Ok(try_some_box!(Ok(1))));
+        assert_eq!(Some(Ok(1)), try_box_ok());
+        let try_box_err: fn() -> Option<Result<i32, Box<i32>>> = || Some(Ok(try_some_box!(Err(1))));
+        assert_eq!(Some(Err(Box::new(1))), try_box_err());
+
+        let option_some: fn() -> Option<i32> = || Some(try_option!(Some(1)));
+        assert_eq!(Some(1), option_some());
+        let option_none: fn() -> Option<i32> = || Some(try_option!(None));
+        assert_eq!(None, option_none());
+    }
+
+    #[test]
+    fn backup_iterator() {
+        for b in BackupIterator::with_name(".", "asd".to_string()) {
+            assert!(b.is_ok());
+        }
+        for b in BackupIterator::with_timestamp(".") {
+            assert!(b.is_ok());
+        }
+        for b in BackupIterator::exact(PathBuf::from("cargo.toml")) {
+            assert!(b.is_ok());
         }
     }
 }
