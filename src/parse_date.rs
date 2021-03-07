@@ -72,7 +72,7 @@ pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &str> {
 mod tests {
     use std::time::SystemTime;
 
-    use chrono::{DateTime, Datelike, Local, Timelike};
+    use chrono::{Datelike, Timelike};
 
     use super::{system_to_naive, try_parse};
 

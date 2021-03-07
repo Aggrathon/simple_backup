@@ -108,7 +108,7 @@ mod tests {
     fn paths_abs() {
         let dir = PathBuf::from(".").absolutize().unwrap().to_path_buf();
         let pta = path_to_archive(&dir);
-        let out = *path_from_archive(&PathBuf::from(&pta)).get_path();
+        let out = path_from_archive(&PathBuf::from(&pta)).consume_path();
         assert_eq!(dir, out);
 
         let tmp: Vec<u8> = vec![];
@@ -120,7 +120,7 @@ mod tests {
         let mut tar = Archive::new(Cursor::new(tmp));
         let entry = tar.entries().unwrap().next().unwrap().unwrap();
         let pia = entry.header().path().unwrap();
-        let out = *path_from_archive(&pia).get_path();
+        let out = path_from_archive(&pia).consume_path();
         assert_eq!(dir, out);
     }
 
@@ -128,7 +128,7 @@ mod tests {
     fn paths_rel() {
         let dir = PathBuf::from(".");
         let pta = path_to_archive(&dir);
-        let out = *path_from_archive(&PathBuf::from(&pta)).get_path();
+        let out = path_from_archive(&PathBuf::from(&pta)).consume_path();
         assert_eq!(dir, out);
 
         let tmp: Vec<u8> = vec![];
@@ -140,7 +140,7 @@ mod tests {
         let mut tar = Archive::new(Cursor::new(tmp));
         let entry = tar.entries().unwrap().next().unwrap().unwrap();
         let pia = entry.header().path().unwrap();
-        let out = *path_from_archive(&pia).get_path();
+        let out = path_from_archive(&pia).consume_path();
         assert_eq!(dir, out);
     }
 }

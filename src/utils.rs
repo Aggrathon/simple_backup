@@ -218,7 +218,7 @@ pub fn get_backup_from_path<S: AsRef<str>>(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs::File, path::PathBuf};
+    use std::fs::File;
 
     use tempfile::tempdir;
 
@@ -275,18 +275,14 @@ mod tests {
         Ok(())
     }
 
-    fn create_file(path: &PathBuf) -> Result<(), std::io::Error> {
-        File::create(path).and_then(|f| Ok(()))
-    }
-
     #[test]
     fn from_path() -> std::io::Result<()> {
         let dir = tempdir()?;
         let f1 = dir.path().join("asd.tar.br");
         let f2 = dir.path().join("asd_2020-02-20_20-20-20.tar.br");
         let f3 = dir.path().join("config.yml");
-        create_file(&f1)?;
-        create_file(&f2)?;
+        File::create(&f1)?;
+        File::create(&f2)?;
         let mut conf = Config::new();
         conf.write_yaml(&f3)?;
         assert_eq!(
