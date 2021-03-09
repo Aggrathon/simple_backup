@@ -58,6 +58,8 @@ impl CompressionDecoder {
         let decoder = brotli::Decompressor::new(file, 16384);
         let mut archive = Archive::new(decoder);
         archive.set_unpack_xattrs(true);
+        archive.set_preserve_permissions(true);
+        archive.set_overwrite(true);
         Ok(Self { 0: archive })
     }
 

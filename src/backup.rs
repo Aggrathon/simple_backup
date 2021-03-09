@@ -197,6 +197,7 @@ impl BackupWriter {
 
 pub struct BackupReader {
     decoder: CompressionDecoder,
+    used: bool,
     pub path: PathBuf,
     pub config: Option<Config>,
     pub list: Option<String>,
@@ -207,6 +208,7 @@ impl BackupReader {
         Ok(BackupReader {
             path: path.as_ref().to_path_buf(),
             decoder: CompressionDecoder::read(path)?,
+            used: false,
             list: None,
             config: None,
         })
@@ -221,9 +223,19 @@ impl BackupReader {
         Ok(BackupReader {
             path: prev,
             decoder,
+            used: false,
             config: Some(config),
             list: None,
         })
+    }
+
+    fn use_decoder(&mut self) -> std::io::Result<()> {
+        if self.used {
+            self.decoder = CompressionDecoder::read(&self.path)?;
+        } else {
+            self.used = true;
+        }
+        Ok(())
     }
 
     pub fn read_config_only<P: AsRef<Path>>(path: P) -> Result<Config, Box<dyn Error>> {
@@ -233,6 +245,7 @@ impl BackupReader {
     }
 
     pub fn read_config(&mut self) -> Result<&Config, Box<dyn Error>> {
+        self.use_decoder()?;
         let entry = self.decoder.entries()?.next();
         if entry.is_none() {
             return Err(Box::new(BackupError::NoConfig(self.path.clone())));
@@ -249,15 +262,8 @@ impl BackupReader {
         Ok(self.config.as_ref().unwrap())
     }
 
-    pub fn read_list(
-        &mut self,
-    ) -> Result<
-        (
-            &String,
-            impl Iterator<Item = std::io::Result<(FileInfo, tar::Entry<brotli::Decompressor<File>>)>>,
-        ),
-        Box<dyn Error>,
-    > {
+    pub fn read_list(&mut self) -> Result<&String, Box<dyn Error>> {
+        self.use_decoder()?;
         let mut entries = self.decoder.entries()?.skip(1);
         let entry = entries.next();
         if entry.is_none() {
@@ -270,12 +276,12 @@ impl BackupReader {
         let mut s = String::new();
         entry.1.read_to_string(&mut s)?;
         self.list = Some(s);
-        Ok((self.list.as_ref().unwrap(), entries))
+        Ok(self.list.as_ref().unwrap())
     }
 
     pub fn extract_list(&mut self) -> Result<String, Box<dyn Error>> {
         if self.list.is_none() {
-            self.read_list()?.0;
+            self.read_list()?;
         }
         Ok(std::mem::replace(&mut self.list, None).unwrap())
     }
@@ -285,9 +291,11 @@ impl BackupReader {
     ) -> std::io::Result<
         impl Iterator<Item = std::io::Result<(FileInfo, tar::Entry<brotli::Decompressor<File>>)>>,
     > {
+        self.use_decoder()?;
         Ok(self.decoder.entries()?.skip(2))
     }
 
+    #[allow(dead_code)]
     pub fn read_all(
         &mut self,
     ) -> Result<
@@ -298,6 +306,7 @@ impl BackupReader {
         ),
         Box<dyn Error>,
     > {
+        self.use_decoder()?;
         let mut entries = self.decoder.entries()?;
         // Read Config
         let entry = entries.next();
@@ -349,19 +358,15 @@ impl BackupReader {
         }
     }
 
-    pub fn restore(
+    #[allow(dead_code)]
+    pub fn restore_all(
         &mut self,
-        filter: Option<impl FnMut(&&str) -> bool>,
         path_transform: impl FnMut(FileInfo) -> FileInfo,
         callback: impl FnMut(std::io::Result<()>),
         overwrite: bool,
     ) -> Result<(), Box<dyn Error>> {
         let list = self.extract_list()?;
-        let files: Vec<&str> = if filter.is_none() {
-            list.split('\n').collect()
-        } else {
-            list.split('\n').filter(filter.unwrap()).collect()
-        };
+        let files = list.split('\n').collect();
         let res = self.restore_selected(files, path_transform, callback, overwrite);
         self.list = Some(list);
         res
@@ -426,6 +431,39 @@ impl BackupReader {
                         )));
                     }
                 }
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn restore_these(
+        &mut self,
+        mut path_transform: impl FnMut(FileInfo) -> FileInfo,
+        mut callback: impl FnMut(std::io::Result<()>),
+        overwrite: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        for res in self.files()? {
+            match res {
+                Ok((fi, mut entry)) => {
+                    let mut path = path_transform(fi);
+                    if !overwrite && path.get_path().exists() {
+                        callback(Err(std::io::Error::new(
+                            std::io::ErrorKind::AlreadyExists,
+                            format!("File '{}' already exists", path.get_string()),
+                        )));
+                    } else {
+                        if let Some(dir) = path.get_path().parent() {
+                            callback(
+                                create_dir_all(dir)
+                                    .and_then(|_| entry.unpack(path.get_path()).and(Ok(()))),
+                            );
+                        } else {
+                            callback(entry.unpack(path.get_path()).and(Ok(())));
+                        }
+                    }
+                }
+                Err(e) => callback(Err(e)),
             }
         }
         Ok(())
