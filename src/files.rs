@@ -1,5 +1,6 @@
 use std::{
     collections::VecDeque,
+    fmt::Display,
     path::{Path, PathBuf},
 };
 
@@ -9,6 +10,7 @@ use regex::Regex;
 
 use crate::parse_date;
 
+#[derive(Debug)]
 pub struct FileInfo {
     path: Option<PathBuf>,
     string: Option<String>,
@@ -81,6 +83,19 @@ impl FileInfo {
         match self.path {
             Some(path) => path,
             None => PathBuf::from(&self.string.unwrap()),
+        }
+    }
+}
+
+impl Display for FileInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.string {
+            Some(s) => write!(f, "FileInfo({})", s),
+            None => write!(
+                f,
+                "FileInfo({})",
+                self.path.as_ref().unwrap().to_string_lossy()
+            ),
         }
     }
 }

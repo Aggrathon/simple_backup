@@ -1,5 +1,5 @@
 [package]
-name = "simple-backup"
+name = "simple_backup"
 version = "0.4.0"
 authors = ["Aggrathon <antonbjo@gmail.com>"]
 edition = "2018"

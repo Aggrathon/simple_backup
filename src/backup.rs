@@ -13,7 +13,7 @@ use crate::{
     compression::{CompressionDecoder, CompressionEncoder},
     config::Config,
     files::{FileCrawler, FileInfo},
-    parse_date::system_to_naive,
+    parse_date::{self, system_to_naive},
 };
 
 #[derive(Debug)]
@@ -170,6 +170,7 @@ impl BackupWriter {
         let mut encoder = CompressionEncoder::create(&self.path, self.config.quality)?;
 
         self.config.time = Some(self.time);
+        let prev_time = self.prev_time.clone();
         encoder.append_data("config.yml", self.config.to_yaml()?)?;
 
         let list = self.get_files(
@@ -179,15 +180,38 @@ impl BackupWriter {
         let mut list_string = String::new();
         list_string.reserve(list.len() * 200);
         list.iter_mut().for_each(|fi| {
+            #[cfg(target_os = "windows")]
+            list_string.push_str(&fi.get_string().replace('\\', "/"));
+            #[cfg(not(target_os = "windows"))]
             list_string.push_str(fi.get_string());
             list_string.push('\n');
         });
         list_string.pop();
         encoder.append_data("files.csv", list_string)?;
 
-        for fi in list.iter_mut() {
-            let res = encoder.append_file(fi.get_path());
-            callback(fi, res);
+        match prev_time {
+            Some(prev_time) => {
+                for fi in list.iter_mut() {
+                    match fi.get_path().metadata() {
+                        Ok(md) => match md.modified() {
+                            Ok(time) => {
+                                if parse_date::system_to_naive(time) >= prev_time {
+                                    let res = encoder.append_file(fi.get_path());
+                                    callback(fi, res);
+                                }
+                            }
+                            Err(e) => callback(fi, Err(e)),
+                        },
+                        Err(e) => callback(fi, Err(e)),
+                    }
+                }
+            }
+            None => {
+                for fi in list.iter_mut() {
+                    let res = encoder.append_file(fi.get_path());
+                    callback(fi, res);
+                }
+            }
         }
         encoder.close()?;
 
@@ -362,7 +386,7 @@ impl BackupReader {
     pub fn restore_all(
         &mut self,
         path_transform: impl FnMut(FileInfo) -> FileInfo,
-        callback: impl FnMut(std::io::Result<()>),
+        callback: impl FnMut(std::io::Result<FileInfo>),
         overwrite: bool,
     ) -> Result<(), Box<dyn Error>> {
         let list = self.extract_list()?;
@@ -376,11 +400,11 @@ impl BackupReader {
         &mut self,
         selection: Vec<&str>,
         mut path_transform: impl FnMut(FileInfo) -> FileInfo,
-        mut callback: impl FnMut(std::io::Result<()>),
+        mut callback: impl FnMut(std::io::Result<FileInfo>),
         overwrite: bool,
     ) -> Result<(), Box<dyn Error>> {
         let mut not_found: Vec<&str> = vec![];
-        let mut list = selection.iter();
+        let mut list = selection.into_iter();
         let mut current = match list.next() {
             Some(f) => f,
             None => return Ok(()),
@@ -395,8 +419,11 @@ impl BackupReader {
                             None => break,
                         };
                     }
-                    if fi.get_string().as_str() == *current {
-                        current = list.next().unwrap_or(current);
+                    if fi.get_string() == current {
+                        current = match list.next() {
+                            Some(s) => s,
+                            None => current,
+                        };
                         let mut path = path_transform(fi);
                         if !overwrite && path.get_path().exists() {
                             callback(Err(std::io::Error::new(
@@ -407,10 +434,10 @@ impl BackupReader {
                             if let Some(dir) = path.get_path().parent() {
                                 callback(
                                     create_dir_all(dir)
-                                        .and_then(|_| entry.unpack(path.get_path()).and(Ok(()))),
+                                        .and_then(|_| entry.unpack(path.get_path()).and(Ok(path))),
                                 );
                             } else {
-                                callback(entry.unpack(path.get_path()).and(Ok(())));
+                                callback(entry.unpack(path.get_path()).and(Ok(path)));
                             }
                         }
                     }
@@ -440,7 +467,7 @@ impl BackupReader {
     pub fn restore_these(
         &mut self,
         mut path_transform: impl FnMut(FileInfo) -> FileInfo,
-        mut callback: impl FnMut(std::io::Result<()>),
+        mut callback: impl FnMut(std::io::Result<FileInfo>),
         overwrite: bool,
     ) -> Result<(), Box<dyn Error>> {
         for res in self.files()? {
@@ -456,10 +483,10 @@ impl BackupReader {
                         if let Some(dir) = path.get_path().parent() {
                             callback(
                                 create_dir_all(dir)
-                                    .and_then(|_| entry.unpack(path.get_path()).and(Ok(()))),
+                                    .and_then(|_| entry.unpack(path.get_path()).and(Ok(path))),
                             );
                         } else {
-                            callback(entry.unpack(path.get_path()).and(Ok(())));
+                            callback(entry.unpack(path.get_path()).and(Ok(path)));
                         }
                     }
                 }
