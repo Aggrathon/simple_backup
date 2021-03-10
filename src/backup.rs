@@ -167,54 +167,56 @@ impl BackupWriter {
         &mut self,
         mut callback: impl FnMut(&mut FileInfo, Result<(), std::io::Error>),
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut encoder = CompressionEncoder::create(&self.path, self.config.quality)?;
-
-        self.config.time = Some(self.time);
-        let prev_time = self.prev_time.clone();
-        encoder.append_data("config.yml", self.config.to_yaml()?)?;
-
-        let list = self.get_files(
-            true,
-            None::<fn(Result<&mut FileInfo, Box<dyn std::error::Error>>)>,
-        )?;
         let mut list_string = String::new();
-        list_string.reserve(list.len() * 200);
-        list.iter_mut().for_each(|fi| {
-            #[cfg(target_os = "windows")]
-            list_string.push_str(&fi.get_string().replace('\\', "/"));
-            #[cfg(not(target_os = "windows"))]
-            list_string.push_str(fi.get_string());
-            list_string.push('\n');
-        });
-        list_string.pop();
-        encoder.append_data("files.csv", list_string)?;
+        {
+            let list = self.get_files(
+                true,
+                None::<fn(Result<&mut FileInfo, Box<dyn std::error::Error>>)>,
+            )?;
+            list_string.reserve(list.len() * 200);
+            list.iter_mut().for_each(|fi| {
+                #[cfg(target_os = "windows")]
+                list_string.push_str(&fi.get_string().replace('\\', "/"));
+                #[cfg(not(target_os = "windows"))]
+                list_string.push_str(fi.get_string());
+                list_string.push('\n');
+            });
+            list_string.pop();
+        }
+        {
+            let mut encoder = CompressionEncoder::create(&self.path, self.config.quality)?;
+            self.config.time = Some(self.time);
+            encoder.append_data("config.yml", self.config.to_yaml()?)?;
+            encoder.append_data("files.csv", list_string)?;
 
-        match prev_time {
-            Some(prev_time) => {
-                for fi in list.iter_mut() {
-                    match fi.get_path().metadata() {
-                        Ok(md) => match md.modified() {
-                            Ok(time) => {
-                                if parse_date::system_to_naive(time) >= prev_time {
-                                    let res = encoder.append_file(fi.get_path());
-                                    callback(fi, res);
+            let prev_time = self.prev_time.clone();
+            let list = self.list.as_mut().unwrap();
+            match prev_time {
+                Some(prev_time) => {
+                    for fi in list.iter_mut() {
+                        match fi.get_path().metadata() {
+                            Ok(md) => match md.modified() {
+                                Ok(time) => {
+                                    if parse_date::system_to_naive(time) >= prev_time {
+                                        let res = encoder.append_file(fi.get_path());
+                                        callback(fi, res);
+                                    }
                                 }
-                            }
+                                Err(e) => callback(fi, Err(e)),
+                            },
                             Err(e) => callback(fi, Err(e)),
-                        },
-                        Err(e) => callback(fi, Err(e)),
+                        }
+                    }
+                }
+                None => {
+                    for fi in list.iter_mut() {
+                        let res = encoder.append_file(fi.get_path());
+                        callback(fi, res);
                     }
                 }
             }
-            None => {
-                for fi in list.iter_mut() {
-                    let res = encoder.append_file(fi.get_path());
-                    callback(fi, res);
-                }
-            }
+            encoder.close()?;
         }
-        encoder.close()?;
-
         Ok(())
     }
 }
@@ -420,10 +422,6 @@ impl BackupReader {
                         };
                     }
                     if fi.get_string() == current {
-                        current = match list.next() {
-                            Some(s) => s,
-                            None => current,
-                        };
                         let mut path = path_transform(fi);
                         if !overwrite && path.get_path().exists() {
                             callback(Err(std::io::Error::new(
@@ -440,6 +438,10 @@ impl BackupReader {
                                 callback(entry.unpack(path.get_path()).and(Ok(path)));
                             }
                         }
+                        current = match list.next() {
+                            Some(s) => s,
+                            None => break,
+                        };
                     }
                 }
                 Err(e) => callback(Err(e)),
@@ -454,7 +456,11 @@ impl BackupReader {
                     for f in not_found.iter() {
                         callback(Err(std::io::Error::new(
                             std::io::ErrorKind::NotFound,
-                            format!("Could not find '{}' in backups", f),
+                            format!(
+                                "Could not find '{}' in backup '{}'",
+                                f,
+                                self.path.to_string_lossy()
+                            ),
                         )));
                     }
                 }
