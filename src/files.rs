@@ -6,7 +6,7 @@ use std::{
 
 use chrono::NaiveDateTime;
 use path_absolutize::Absolutize;
-use regex::Regex;
+use regex::RegexSet;
 
 use crate::parse_date;
 
@@ -104,7 +104,7 @@ impl Display for FileInfo {
 pub struct FileCrawler {
     include: Vec<PathBuf>,
     exclude: Vec<PathBuf>,
-    regex: Vec<Regex>,
+    regex: RegexSet,
     stack: VecDeque<FileInfo>,
 }
 
@@ -150,11 +150,7 @@ impl FileCrawler {
         }
         inc.sort_unstable_by(|a, b| b.cmp(a));
         exc.sort_unstable_by(|a, b| b.cmp(a));
-        let regex = regex
-            .as_ref()
-            .iter()
-            .map(|s| Regex::new(s.as_ref()))
-            .collect::<Result<Vec<Regex>, regex::Error>>()?;
+        let regex = RegexSet::new(regex.as_ref())?;
 
         Ok(Self {
             include: inc,
@@ -201,7 +197,7 @@ impl Iterator for FileCrawler {
                         }
                         if !filtered {
                             let string = path.to_string_lossy();
-                            if !self.regex.iter().any(|r| r.is_match(&string)) {
+                            if !self.regex.is_match(&string) {
                                 let string = string.to_string();
                                 let fi = FileInfo::from_both(path, string);
                                 self.stack.push_front(fi);

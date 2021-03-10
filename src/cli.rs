@@ -2,7 +2,7 @@ use core::panic;
 use std::{error::Error, path::PathBuf};
 
 use indicatif::ProgressBar;
-use regex::Regex;
+use regex::RegexSet;
 
 use crate::{
     backup::{BackupReader, BackupWriter},
@@ -111,28 +111,20 @@ pub fn restore(
         if regex.is_empty() {
             list_str.split('\n').collect()
         } else {
-            let regex = regex
-                .into_iter()
-                .map(Regex::new)
-                .collect::<Result<Vec<Regex>, regex::Error>>()
-                .expect("Could not parse regex");
+            let regex = RegexSet::new(regex).expect("Could not parse regex");
             list_str
                 .split('\n')
-                .filter(|f| !regex.iter().any(|r| r.is_match(f)))
+                .filter(|f| !regex.is_match(f))
                 .collect()
         }
     } else {
         if regex.is_empty() {
             list = include.into_iter().map(|f| f.replace('\\', "/")).collect();
         } else {
-            let regex = regex
-                .into_iter()
-                .map(Regex::new)
-                .collect::<Result<Vec<Regex>, regex::Error>>()
-                .expect("Could not parse regex");
+            let regex = RegexSet::new(regex).expect("Could not parse regex");
             list = include
                 .into_iter()
-                .filter(|f| !regex.iter().any(|r| r.is_match(f)))
+                .filter(|f| !regex.is_match(f))
                 .map(|f| f.replace('\\', "/"))
                 .collect();
         }
