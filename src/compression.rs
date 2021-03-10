@@ -75,6 +75,16 @@ impl CompressionDecoder {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn path_to_archive(path: &PathBuf) -> String {
+    if path.has_root() {
+        "abs".to_string() + &path.to_string_lossy().replace('\\', "/")
+    } else {
+        "rel/".to_string() + &path.clean().to_string_lossy().replace('\\', "/")
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
 fn path_to_archive(path: &PathBuf) -> String {
     if path.has_root() {
         "abs".to_string() + &path.to_string_lossy()

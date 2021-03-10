@@ -92,8 +92,7 @@ pub fn backup(config: Config, dry: bool) {
     }
 }
 
-#[allow(unused_variables)]
-pub fn restore<'a>(
+pub fn restore(
     mut source: BackupReader,
     output: &str,
     include: Vec<&str>,
@@ -103,50 +102,47 @@ pub fn restore<'a>(
     verbose: bool,
     dry: bool,
 ) {
-    if include.is_empty() {
-        let list = source
+    let list_str: String;
+    let list: Vec<String>;
+    let include: Vec<&str> = if include.is_empty() {
+        list_str = source
             .extract_list()
             .expect("Could not get list of files from backup");
-        let include: Vec<&str> = if regex.is_empty() {
-            list.split('\n').collect()
+        if regex.is_empty() {
+            list_str.split('\n').collect()
         } else {
             let regex = regex
                 .into_iter()
                 .map(Regex::new)
                 .collect::<Result<Vec<Regex>, regex::Error>>()
                 .expect("Could not parse regex");
-            list.split('\n')
+            list_str
+                .split('\n')
                 .filter(|f| !regex.iter().any(|r| r.is_match(f)))
                 .collect()
-        };
-        if include.is_empty() {
-            eprintln!("No files in the backup: {}", source.path.to_string_lossy());
-            return;
         }
-        return restore(
-            source,
-            output,
-            include,
-            vec![],
-            flatten,
-            force,
-            verbose,
-            dry,
-        );
-    }
-    let include = if regex.is_empty() {
-        include
     } else {
-        let regex = regex
-            .into_iter()
-            .map(Regex::new)
-            .collect::<Result<Vec<Regex>, regex::Error>>()
-            .expect("Could not parse regex");
-        include
-            .into_iter()
-            .filter(|f| !regex.iter().any(|r| r.is_match(f)))
-            .collect()
+        if regex.is_empty() {
+            list = include.into_iter().map(|f| f.replace('\\', "/")).collect();
+        } else {
+            let regex = regex
+                .into_iter()
+                .map(Regex::new)
+                .collect::<Result<Vec<Regex>, regex::Error>>()
+                .expect("Could not parse regex");
+            list = include
+                .into_iter()
+                .filter(|f| !regex.iter().any(|r| r.is_match(f)))
+                .map(|f| f.replace('\\', "/"))
+                .collect();
+        }
+        list.iter().map(String::as_str).collect()
     };
+
+    if include.is_empty() {
+        eprintln!("No files to backup");
+        return;
+    }
 
     if verbose {
         println!("Files to restore:");
