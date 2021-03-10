@@ -6,6 +6,7 @@ use std::{
 
 use chrono::NaiveDateTime;
 use path_absolutize::Absolutize;
+use path_clean::PathClean;
 use regex::RegexSet;
 
 use crate::parse_date;
@@ -109,10 +110,17 @@ pub struct FileCrawler {
 }
 
 impl FileCrawler {
-    pub fn new<S: AsRef<str>, VS: AsRef<[S]>>(
-        include: VS,
-        exclude: VS,
-        regex: VS,
+    pub fn new<
+        S1: AsRef<str>,
+        S2: AsRef<str>,
+        S3: AsRef<str>,
+        VS1: AsRef<[S1]>,
+        VS2: AsRef<[S2]>,
+        VS3: AsRef<[S3]>,
+    >(
+        include: VS1,
+        exclude: VS2,
+        regex: VS3,
         local: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let mut inc: Vec<PathBuf>;
@@ -121,12 +129,12 @@ impl FileCrawler {
             inc = include
                 .as_ref()
                 .iter()
-                .map(|s| PathBuf::from(s.as_ref()))
+                .map(|s| PathBuf::from(s.as_ref()).clean())
                 .collect();
             exc = exclude
                 .as_ref()
                 .iter()
-                .map(|s| PathBuf::from(s.as_ref()))
+                .map(|s| PathBuf::from(s.as_ref()).clean())
                 .collect();
         } else {
             inc = include
@@ -173,7 +181,11 @@ impl Iterator for FileCrawler {
                     return Some(Ok(item));
                 } else {
                     let mut count: usize = 0;
-                    let dir = try_some_box!(item.get_path().read_dir());
+                    let dir = try_some_box!(if item.get_path().as_os_str() == "." {
+                        PathBuf::from("").read_dir()
+                    } else {
+                        item.get_path().read_dir()
+                    });
                     for f in dir {
                         let entry = try_some_box!(f);
                         let path = entry.path();

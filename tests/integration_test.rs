@@ -1,15 +1,19 @@
 // This file contains integration tests for backups and restoring
 
-use std::fs::{remove_file, File};
+use std::{
+    fs::{remove_file, File},
+    path::PathBuf,
+};
 
 use tempfile::tempdir;
 
-use simple_backup::{self, backup::BackupWriter, cli::restore};
+use simple_backup::{self, backup::BackupWriter, cli::backup, cli::restore};
 use simple_backup::{backup::BackupReader, config::Config};
 
 #[test]
 fn cli_test() {
     let dir = tempdir().unwrap();
+    let dir2 = dir.path().join("dir");
     let f1 = dir.path().join("a.txt");
     let f2 = dir.path().join("b.txt");
     let f3 = dir.path().join("c.txt");
@@ -78,7 +82,7 @@ fn cli_test() {
     let conf = Config::from_yaml(&mut bw1.config.to_yaml().unwrap()).unwrap();
     restore(
         BackupReader::from_config(conf).unwrap(),
-        &dir.path().to_string_lossy(),
+        &dir2.to_string_lossy(),
         vec![],
         vec![],
         true,
@@ -87,10 +91,10 @@ fn cli_test() {
         false,
     );
 
-    assert!(f1.exists());
-    assert!(f2.exists());
-    assert!(f3.exists());
-    assert!(f4.exists());
+    assert!(dir2.join("a.txt").exists());
+    assert!(dir2.join("b.txt").exists());
+    assert!(dir2.join("c.txt").exists());
+    assert!(dir2.join("d.txt").exists());
 }
 
 #[test]
@@ -156,4 +160,43 @@ fn absolute_test() {
     br1.restore_all(|fi| fi, |_| (), true).unwrap();
     assert!(f2.exists());
     assert!(f5.exists());
+}
+
+#[test]
+fn local_test() {
+    let dir = tempdir().unwrap();
+
+    let mut config = Config {
+        include: vec![".".to_string()],
+        exclude: vec!["target".to_string(), ".git".to_string(), "src".to_string()],
+        regex: vec![".*.md".to_string()],
+        output: dir.path().to_string_lossy().to_string(),
+        name: "backup".to_string(),
+        verbose: true,
+        force: false,
+        incremental: false,
+        quality: 11,
+        local: true,
+        time: None,
+        origin: None,
+    };
+
+    let conf = Config::from_yaml(config.to_yaml().unwrap()).unwrap();
+    backup(conf, false);
+
+    restore(
+        BackupReader::from_config(config).unwrap(),
+        &dir.path().to_string_lossy(),
+        vec![],
+        vec![],
+        false,
+        false,
+        false,
+        false,
+    );
+
+    assert!(dir.path().join("Cargo.toml").exists());
+    assert!(!dir.path().join(".target").exists());
+    assert!(!dir.path().join(".git").exists());
+    assert!(!dir.path().join("README.md").exists());
 }
