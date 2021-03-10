@@ -4,13 +4,97 @@ use std::fs::{remove_file, File};
 
 use tempfile::tempdir;
 
-// extern crate simple_backup;
-
-use simple_backup::{self, backup::BackupWriter};
+use simple_backup::{self, backup::BackupWriter, cli::restore};
 use simple_backup::{backup::BackupReader, config::Config};
 
 #[test]
-fn absolute() {
+fn cli_test() {
+    let dir = tempdir().unwrap();
+    let f1 = dir.path().join("a.txt");
+    let f2 = dir.path().join("b.txt");
+    let f3 = dir.path().join("c.txt");
+    let f4 = dir.path().join("d.txt");
+    File::create(&f1).unwrap();
+    File::create(&f2).unwrap();
+    File::create(&f3).unwrap();
+    File::create(&f4).unwrap();
+
+    let config = Config {
+        include: vec![dir.path().to_string_lossy().to_string()],
+        exclude: vec![],
+        regex: vec![],
+        output: dir.path().to_string_lossy().to_string(),
+        name: "backup".to_string(),
+        verbose: false,
+        force: false,
+        incremental: true,
+        quality: 11,
+        local: false,
+        time: None,
+        origin: None,
+    };
+    let mut bw1 = BackupWriter::new(config).0;
+    bw1.write(|_, _| ()).unwrap();
+
+    remove_file(&f1).unwrap();
+    remove_file(&f2).unwrap();
+    remove_file(&f3).unwrap();
+    remove_file(&f4).unwrap();
+
+    let conf = Config::from_yaml(&mut bw1.config.to_yaml().unwrap()).unwrap();
+    restore(
+        BackupReader::from_config(conf).unwrap(),
+        &dir.path().to_string_lossy(),
+        vec![&f1.to_string_lossy()],
+        vec![],
+        false,
+        false,
+        false,
+        false,
+    );
+
+    assert!(f1.exists());
+    assert!(!f2.exists());
+    assert!(!f3.exists());
+    assert!(!f4.exists());
+
+    let conf = Config::from_yaml(&mut bw1.config.to_yaml().unwrap()).unwrap();
+    restore(
+        BackupReader::from_config(conf).unwrap(),
+        &dir.path().to_string_lossy(),
+        vec![],
+        vec![&f2.to_string_lossy().replace('\\', "/")],
+        false,
+        true,
+        false,
+        false,
+    );
+
+    assert!(f1.exists());
+    assert!(!f2.exists());
+    assert!(f3.exists());
+    assert!(f4.exists());
+
+    let conf = Config::from_yaml(&mut bw1.config.to_yaml().unwrap()).unwrap();
+    restore(
+        BackupReader::from_config(conf).unwrap(),
+        &dir.path().to_string_lossy(),
+        vec![],
+        vec![],
+        true,
+        true,
+        false,
+        false,
+    );
+
+    assert!(f1.exists());
+    assert!(f2.exists());
+    assert!(f3.exists());
+    assert!(f4.exists());
+}
+
+#[test]
+fn absolute_test() {
     let dir = tempdir().unwrap();
     let f1 = dir.path().join("a.txt");
     let f2 = dir.path().join("b.txt");
@@ -69,7 +153,7 @@ fn absolute() {
     remove_file(&f2).unwrap();
     assert!(!f2.exists());
 
-    br1.restore_all(|fi| fi, |_| (), false).unwrap();
+    br1.restore_all(|fi| fi, |_| (), true).unwrap();
     assert!(f2.exists());
     assert!(f5.exists());
 }
