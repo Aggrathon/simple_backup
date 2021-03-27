@@ -222,9 +222,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::get_backup_from_path;
-    use super::get_config_from_path;
-    use super::BackupIterator;
+    use super::{get_backup_from_path, get_config_from_path, BackupIterator};
     use crate::Config;
 
     #[test]

@@ -1,3 +1,3 @@
 pub fn gui() {
-    panic!("GUI is not yet implemented");
+    todo!("GUI is not yet implemented");
 }

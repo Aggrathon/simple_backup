@@ -1,14 +1,14 @@
 // This file contains integration tests for backups and restoring
 
-use std::{
-    fs::{remove_file, File},
-    path::PathBuf,
+use std::fs::{remove_file, File};
+
+use simple_backup::{
+    self,
+    backup::{BackupReader, BackupWriter},
+    cli::{backup, restore},
+    config::Config,
 };
-
 use tempfile::tempdir;
-
-use simple_backup::{self, backup::BackupWriter, cli::backup, cli::restore};
-use simple_backup::{backup::BackupReader, config::Config};
 
 #[test]
 fn cli_test() {
