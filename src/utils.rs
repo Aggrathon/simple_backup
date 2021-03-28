@@ -21,15 +21,6 @@ macro_rules! try_some {
     };
 }
 
-macro_rules! try_some_box {
-    ($value:expr) => {
-        match $value {
-            Ok(v) => v,
-            Err(e) => return Some(Err(Box::new(e))),
-        }
-    };
-}
-
 macro_rules! try_option {
     ($value:expr) => {
         match $value {
@@ -231,11 +222,6 @@ mod tests {
         assert_eq!(Some(Ok(1)), try_some_ok());
         let try_some_err: fn() -> Option<Result<i32, i32>> = || Some(Ok(try_some!(Err(1))));
         assert_eq!(Some(Err(1)), try_some_err());
-
-        let try_box_ok: fn() -> Option<Result<i32, Box<i32>>> = || Some(Ok(try_some_box!(Ok(1))));
-        assert_eq!(Some(Ok(1)), try_box_ok());
-        let try_box_err: fn() -> Option<Result<i32, Box<i32>>> = || Some(Ok(try_some_box!(Err(1))));
-        assert_eq!(Some(Err(Box::new(1))), try_box_err());
 
         let option_some: fn() -> Option<i32> = || Some(try_option!(Some(1)));
         assert_eq!(Some(1), option_some());

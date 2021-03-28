@@ -1,5 +1,5 @@
 use core::panic;
-use std::{error::Error, path::PathBuf};
+use std::path::PathBuf;
 
 use indicatif::ProgressBar;
 use regex::RegexSet;
@@ -7,7 +7,7 @@ use regex::RegexSet;
 use crate::{
     backup::{BackupReader, BackupWriter},
     config::Config,
-    files::FileInfo,
+    files::{FileAccessError, FileInfo},
 };
 
 /// Backup files
@@ -36,13 +36,13 @@ pub fn backup(config: Config, dry: bool) {
         }
         bw.get_files(
             false,
-            Some(|res: Result<&mut FileInfo, Box<dyn Error>>| match res {
+            Some(|res: Result<&mut FileInfo, FileAccessError>| match res {
                 Ok(fi) => {
                     num_files += 1;
                     println!("{}", &fi.get_string());
                 }
                 Err(e) => {
-                    eprintln!("Could not access file: {}", e);
+                    eprintln!("{}", e);
                 }
             }),
         )
@@ -51,12 +51,12 @@ pub fn backup(config: Config, dry: bool) {
         println!("Crawling for files...");
         bw.get_files(
             false,
-            Some(|res: Result<&mut FileInfo, Box<dyn Error>>| match res {
+            Some(|res: Result<&mut FileInfo, FileAccessError>| match res {
                 Ok(_) => {
                     num_files += 1;
                 }
                 Err(e) => {
-                    eprintln!("Could not access file: {}", e);
+                    eprintln!("{}", e);
                 }
             }),
         )

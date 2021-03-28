@@ -86,6 +86,18 @@ impl FileInfo {
             None => PathBuf::from(&self.string.unwrap()),
         }
     }
+
+    pub fn move_string(&mut self) -> String {
+        if self.string.is_none() {
+            self.path.as_ref().unwrap().to_string_lossy().to_string()
+        } else {
+            let str = std::mem::replace(&mut self.string, None).unwrap();
+            if self.path.is_none() {
+                self.path = Some(PathBuf::from(&str));
+            }
+            str
+        }
+    }
 }
 
 impl Display for FileInfo {
@@ -98,6 +110,26 @@ impl Display for FileInfo {
                 self.path.as_ref().unwrap().to_string_lossy()
             ),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct FileAccessError {
+    error: std::io::Error,
+    path: String,
+}
+
+impl std::fmt::Display for FileAccessError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Could not access '{}': {}", self.path, self.error)
+    }
+}
+
+impl std::error::Error for FileAccessError {}
+
+impl FileAccessError {
+    fn new(error: std::io::Error, path: String) -> Self {
+        Self { error, path }
     }
 }
 
@@ -170,24 +202,34 @@ impl FileCrawler {
 }
 
 impl Iterator for FileCrawler {
-    type Item = Result<FileInfo, Box<dyn std::error::Error>>;
+    type Item = Result<FileInfo, FileAccessError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             while let Some(mut item) = self.stack.pop_front() {
-                let md = try_some_box!(item.get_path().metadata());
+                let md = try_some!(item
+                    .get_path()
+                    .metadata()
+                    .map_err(|e| FileAccessError::new(e, item.move_string())));
                 if md.is_file() {
-                    item.time = Some(parse_date::system_to_naive(try_some_box!(md.modified())));
+                    item.time = Some(parse_date::system_to_naive(try_some!(md
+                        .modified()
+                        .map_err(|e| FileAccessError::new(e, item.move_string())))));
                     return Some(Ok(item));
                 } else {
                     let mut count: usize = 0;
-                    let dir = try_some_box!(if item.get_path().as_os_str() == "." {
-                        PathBuf::from("").read_dir()
+                    let dir = try_some!(if item.get_path().as_os_str() == "." {
+                        PathBuf::from("")
+                            .read_dir()
+                            .map_err(|e| FileAccessError::new(e, item.move_string()))
                     } else {
-                        item.get_path().read_dir()
+                        item.get_path()
+                            .read_dir()
+                            .map_err(|e| FileAccessError::new(e, item.move_string()))
                     });
                     for f in dir {
-                        let entry = try_some_box!(f);
+                        let entry =
+                            try_some!(f.map_err(|e| FileAccessError::new(e, item.move_string())));
                         let path = entry.path();
                         let mut filtered = false;
                         while let Some(p) = self.include.last() {

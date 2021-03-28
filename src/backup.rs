@@ -12,7 +12,7 @@ use chrono::NaiveDateTime;
 use crate::{
     compression::{CompressionDecoder, CompressionEncoder},
     config::Config,
-    files::{FileCrawler, FileInfo},
+    files::{FileAccessError, FileCrawler, FileInfo},
     parse_date::{self, system_to_naive},
 };
 
@@ -86,7 +86,7 @@ impl BackupWriter {
         )
     }
 
-    pub fn get_files<F: FnMut(Result<&mut FileInfo, Box<dyn std::error::Error>>)>(
+    pub fn get_files<F: FnMut(Result<&mut FileInfo, FileAccessError>)>(
         &mut self,
         all: bool,
         callback: Option<F>,
@@ -169,10 +169,7 @@ impl BackupWriter {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut list_string = String::new();
         {
-            let list = self.get_files(
-                true,
-                None::<fn(Result<&mut FileInfo, Box<dyn std::error::Error>>)>,
-            )?;
+            let list = self.get_files(true, None::<fn(Result<&mut FileInfo, FileAccessError>)>)?;
             list_string.reserve(list.len() * 200);
             list.iter_mut().for_each(|fi| {
                 #[cfg(target_os = "windows")]
