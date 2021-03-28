@@ -29,6 +29,7 @@ fn arg_include<'a>(restore: bool) -> Arg<'a, 'a> {
         arg.help("Files to restore (if given then only these are restored)")
     } else {
         arg.help("Paths (file or directory) to include in the backup")
+            .min_values(1)
             .required(true)
     }
 }
@@ -104,13 +105,22 @@ fn arg_dry<'a>() -> Arg<'a, 'a> {
         .help("Only display the output, don't write anything to disk")
 }
 
-fn arg_conffile<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("file")
-        .value_name("PATH")
+fn arg_conf_file<'a>(new: bool) -> Arg<'a, 'a> {
+    let arg = Arg::with_name("file")
+        .value_name("CONFIG")
         .help("The path to the config file, previous backup, or directory with previous backups")
         .takes_value(true)
-        .required(true)
-        .validator(|v| {
+        .required(true);
+    if new {
+        arg.validator(|v| {
+            if v.ends_with(".yml") {
+                Ok(())
+            } else {
+                Err("The config file must end with .yml".to_string())
+            }
+        })
+    } else {
+        arg.validator(|v| {
             let path = PathBuf::from(&v);
             if path.exists() {
                 if path.is_dir() {
@@ -128,6 +138,7 @@ fn arg_conffile<'a>() -> Arg<'a, 'a> {
                 Err("File does not exist".to_string())
             }
         })
+    }
 }
 
 fn arg_source<'a>() -> Arg<'a, 'a> {
@@ -150,13 +161,13 @@ fn arg_incremental<'a>() -> Arg<'a, 'a> {
     Arg::with_name("incremental")
         .short("I")
         .long("incremental")
-        .help("Do an incremental backup (only backup files that have been changed)")
+        .help("Do an incremental backup (only backup files that have been modified)")
 }
 
 fn arg_time<'a>(req: bool) -> Arg<'a, 'a> {
     let arg = Arg::with_name("time")
         .long("time")
-        .help("If doing an incremental backup, override the previous time")
+        .help("If doing an incremental backup, set the previous time to this")
         .validator(|v| parse_date::try_parse(&v).map_err(String::from).map(|_| ()));
     if req {
         arg.requires("incremental")
@@ -194,6 +205,7 @@ fn arg_local<'a>() -> Arg<'a, 'a> {
 
 fn main() {
     let matches = App::new(crate_name!())
+        .setting(clap::AppSettings::SubcommandsNegateReqs)
         // .author(crate_authors!())
         .version(crate_version!())
         .about(crate_description!())
@@ -213,7 +225,7 @@ fn main() {
             SubCommand::with_name("backup")
                 .version(crate_version!())
                 .about("Backup using arguments from a config file")
-                .arg(arg_conffile())
+                .arg(arg_conf_file(false))
                 .arg(arg_time(false))
                 .arg(arg_dry()),
         )
@@ -235,7 +247,7 @@ fn main() {
             SubCommand::with_name("config")
                 .version(crate_version!())
                 .about("Create a config file. The flags and options are added to the config file")
-                .arg(arg_conffile())
+                .arg(arg_conf_file(true))
                 .arg(arg_include(false))
                 .arg(arg_exclude())
                 .arg(arg_regex(false))
