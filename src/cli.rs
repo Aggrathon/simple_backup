@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Backup files
-pub fn backup(config: Config, verbose: bool, dry: bool) {
+pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
     let (mut bw, error) = BackupWriter::new(config);
     if error.is_some() {
         eprintln!(
@@ -19,7 +19,7 @@ pub fn backup(config: Config, verbose: bool, dry: bool) {
             error.unwrap()
         );
     }
-    if bw.path.exists() && !bw.config.force {
+    if bw.path.exists() && !force {
         panic!(
             "Backup already exists at '{}' (use --force to overwrite)",
             bw.path.to_string_lossy()

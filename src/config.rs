@@ -20,7 +20,6 @@ pub struct Config {
     pub exclude: Vec<String>,
     pub regex: Vec<String>,
     pub output: String,
-    pub force: bool,
     pub incremental: bool,
     pub quality: u32,
     pub local: bool,
@@ -38,7 +37,6 @@ impl Config {
             exclude: vec![],
             regex: vec![],
             output: ".".to_string(),
-            force: false,
             incremental: false,
             quality: 11,
             local: false,
@@ -65,7 +63,6 @@ impl Config {
                 .map(|x| x.to_string())
                 .collect(),
             output: args.value_of("output").unwrap_or(".").to_string(),
-            force: args.is_present("force"),
             incremental: args.is_present("incremental"),
             quality: args
                 .value_of("quality")
@@ -140,7 +137,6 @@ mod tests {
         assert_eq!(config.exclude, config2.exclude);
         assert_eq!(config.regex, config2.regex);
         assert_eq!(config.output, config2.output);
-        assert_eq!(config.force, config2.force);
         assert_eq!(config.incremental, config2.incremental);
         assert_eq!(config.quality, config2.quality);
         assert_eq!(config.local, config2.local);

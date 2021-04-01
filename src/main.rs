@@ -215,6 +215,8 @@ fn main() {
                 .version(crate_version!())
                 .about("Backup using arguments from a config file")
                 .arg(arg_conf_file(false))
+                .arg(arg_verbose())
+                .arg(arg_force())
                 .arg(arg_time(false))
                 .arg(arg_dry()),
         )
@@ -243,7 +245,6 @@ fn main() {
                 .arg(arg_output(false))
                 .arg(arg_incremental())
                 .arg(arg_local())
-                .arg(arg_force())
                 .arg(arg_verbose())
                 .arg(arg_quality())
                 .arg(arg_dry()),
@@ -278,6 +279,7 @@ fn main() {
         let config = get_config_from_path(path).expect("Could not load config");
         cli::backup(
             config,
+            matches.is_present("verbose"),
             matches.is_present("force"),
             matches.is_present("dry"),
         );
@@ -296,6 +298,7 @@ fn main() {
         let config = Config::from_args(&matches);
         cli::backup(
             config,
+            matches.is_present("verbose"),
             matches.is_present("force"),
             matches.is_present("dry"),
         );

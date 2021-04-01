@@ -29,7 +29,6 @@ fn cli_test() {
         exclude: vec![],
         regex: vec![],
         output: dir3.to_string_lossy().to_string(),
-        force: false,
         incremental: true,
         quality: 11,
         local: false,
@@ -113,7 +112,6 @@ fn absolute_test() {
         exclude: vec![],
         regex: vec![],
         output: dir.path().to_string_lossy().to_string(),
-        force: false,
         incremental: true,
         quality: 11,
         local: false,
@@ -168,7 +166,6 @@ fn local_test() {
         exclude: vec!["target".to_string(), ".git".to_string(), "src".to_string()],
         regex: vec![".*.md".to_string()],
         output: dir.path().to_string_lossy().to_string(),
-        force: false,
         incremental: false,
         quality: 11,
         local: true,
@@ -177,7 +174,7 @@ fn local_test() {
     };
 
     let conf = Config::from_yaml(config.to_yaml().unwrap()).unwrap();
-    backup(conf, false, false);
+    backup(conf, false, false, false);
 
     restore(
         BackupReader::from_config(config).unwrap(),
