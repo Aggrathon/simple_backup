@@ -4,7 +4,6 @@ use std::{
     fs::{create_dir_all, File},
     io::Read,
     path::{Path, PathBuf},
-    time::SystemTime,
 };
 
 use chrono::NaiveDateTime;
@@ -13,7 +12,7 @@ use crate::{
     compression::{CompressionDecoder, CompressionEncoder},
     config::Config,
     files::{FileAccessError, FileCrawler, FileInfo},
-    parse_date::{self, system_to_naive},
+    parse_date::{self, naive_now},
 };
 
 #[derive(Debug)]
@@ -80,7 +79,7 @@ impl BackupWriter {
                 path,
                 prev_time,
                 list: None,
-                time: system_to_naive(SystemTime::now()),
+                time: naive_now(),
             },
             error,
         )

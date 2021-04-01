@@ -1,15 +1,13 @@
 use std::{
-    cmp::min,
     ffi::OsStr,
     fs::ReadDir,
     path::{Path, PathBuf},
 };
 
-use chrono::NaiveDateTime;
-
 use crate::{
     backup::{BackupError, BackupReader},
     config::Config,
+    parse_date::parse_backup_file_name,
 };
 
 macro_rules! try_some {
@@ -43,8 +41,7 @@ fn get_pattern(name: &OsStr) -> String {
 
 enum BackupIteratorPattern {
     None,
-    Fullstamp(String),
-    Endstamp,
+    Timestamp,
 }
 pub struct BackupIterator {
     constant: Option<std::io::Result<PathBuf>>,
@@ -53,13 +50,8 @@ pub struct BackupIterator {
 }
 
 impl BackupIterator {
-    #[allow(dead_code)]
-    pub fn with_timestamp<P: AsRef<Path>>(dir: P) -> Self {
-        Self::new(dir, BackupIteratorPattern::Endstamp)
-    }
-
-    pub fn with_name<P: AsRef<Path>>(dir: P, name: String) -> Self {
-        Self::new(dir, BackupIteratorPattern::Fullstamp(name))
+    pub fn timestamp<P: AsRef<Path>>(dir: P) -> Self {
+        Self::new(dir, BackupIteratorPattern::Timestamp)
     }
 
     pub fn exact(path: PathBuf) -> Self {
@@ -125,25 +117,8 @@ impl Iterator for BackupIterator {
                 }
                 let string = path.file_name().unwrap().to_string_lossy();
                 match &self.pattern {
-                    BackupIteratorPattern::Fullstamp(name) => {
-                        if string.starts_with(name)
-                            && NaiveDateTime::parse_from_str(
-                                &string[name.len()..],
-                                "_%Y-%m-%d_%H-%M-%S.tar.br",
-                            )
-                            .is_ok()
-                        {
-                            return Some(Ok(path));
-                        }
-                    }
-                    BackupIteratorPattern::Endstamp => {
-                        let start = string.len() - min(string.len(), PATTERN_LENGTH);
-                        if NaiveDateTime::parse_from_str(
-                            &string[start..],
-                            "_%Y-%m-%d_%H-%M-%S.tar.br",
-                        )
-                        .is_ok()
-                        {
+                    BackupIteratorPattern::Timestamp => {
+                        if parse_backup_file_name(&string).is_ok() {
                             return Some(Ok(path));
                         }
                     }
@@ -187,7 +162,7 @@ pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn st
     match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
         ConfigPathType::Config(path) => Ok(Config::read_yaml(path)?),
         ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
-        ConfigPathType::Dir(path) => match BackupIterator::with_timestamp(&path).get_latest() {
+        ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
             None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
             Some(path) => BackupReader::read_config_only(path),
         },
@@ -200,7 +175,7 @@ pub fn get_backup_from_path<S: AsRef<str>>(
     match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
         ConfigPathType::Config(path) => Ok(BackupReader::from_config(Config::read_yaml(path)?)?),
         ConfigPathType::Backup(path) => Ok(BackupReader::read(path)?),
-        ConfigPathType::Dir(path) => match BackupIterator::with_timestamp(&path).get_latest() {
+        ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
             None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
             Some(path) => Ok(BackupReader::read(path)?),
         },
@@ -234,24 +209,21 @@ mod tests {
         let dir = tempdir()?;
         let f1 = dir.path().join("asd.tar.br");
         let f1b = f1.clone();
-        let f2 = dir.path().join("asd_2020-02-20_20-20-20.tar.br");
-        let f3 = dir.path().join("bsd_2020-04-24_21-20-20.tar.br");
-        let f4 = dir.path().join("bsd_2020-04-24_22-20-20.tar.br");
+        let f2 = dir.path().join("backup_2020-02-20_20-20-20.tar.br");
+        let f3 = dir.path().join("backup_2020-04-24_21-20-20.tar.br");
+        let f4 = dir.path().join("backup_2020-04-24_22-20-20.tar.br");
         File::create(&f1)?;
         File::create(&f2)?;
         File::create(&f3)?;
         File::create(&f4)?;
-        let mut bi = BackupIterator::with_name(dir.path(), "asd".to_string());
-        assert_eq!(bi.next().unwrap().unwrap(), f2);
-        assert!(bi.next().is_none());
-        let mut bi = BackupIterator::with_timestamp(dir.path());
+        let mut bi = BackupIterator::timestamp(dir.path());
         assert_eq!(bi.next().unwrap().unwrap(), f2);
         assert_eq!(bi.next().unwrap().unwrap(), f3);
         assert_eq!(bi.next().unwrap().unwrap(), f4);
         assert!(bi.next().is_none());
-        let mut bi = BackupIterator::with_timestamp(dir.path());
+        let mut bi = BackupIterator::timestamp(dir.path());
         assert_eq!(bi.get_latest().unwrap(), f4);
-        let mut bi = BackupIterator::with_timestamp(dir.path());
+        let mut bi = BackupIterator::timestamp(dir.path());
         assert_eq!(bi.get_previous(f4).unwrap(), f3);
         let mut bi = BackupIterator::exact(f1);
         assert_eq!(bi.next().unwrap().unwrap(), f1b);
@@ -263,15 +235,16 @@ mod tests {
     fn from_path() -> std::io::Result<()> {
         let dir = tempdir()?;
         let f1 = dir.path().join("asd.tar.br");
-        let f2 = dir.path().join("asd_2020-02-20_20-20-20.tar.br");
+        let f2 = dir.path().join("backup_2020-02-20_20-20-20.tar.br");
         let f3 = dir.path().join("config.yml");
         File::create(&f1)?;
         File::create(&f2)?;
         let mut conf = Config::new();
+        conf.output = "test".to_string();
         conf.write_yaml(&f3)?;
         assert_eq!(
-            get_config_from_path(f3.to_string_lossy()).unwrap().name,
-            conf.name
+            get_config_from_path(f3.to_string_lossy()).unwrap().output,
+            conf.output
         );
         assert_eq!(
             get_backup_from_path(dir.path().to_string_lossy())

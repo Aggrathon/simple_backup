@@ -1,9 +1,8 @@
 use std::time::SystemTime;
 
-use chrono::{DateTime, Local, NaiveDate, NaiveDateTime};
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, ParseError};
 use serde::{de::Error, Deserialize, Deserializer, Serializer};
 
-pub const FORMAT: &'static str = "%Y-%m-%d %H:%M:%S";
 const FORMATS_DT: [&'static str; 13] = [
     "%Y-%m-%d_%H-%M-%S",
     "%Y-%m-%d %H:%M:%S",
@@ -29,7 +28,7 @@ where
 {
     match date {
         None => serializer.serialize_str(""),
-        Some(date) => serializer.serialize_str(&format!("{}", date.format(FORMAT))),
+        Some(date) => serializer.serialize_str(&format!("{}", date.format("%Y-%m-%d %H:%M:%S"))),
     }
 }
 
@@ -41,7 +40,7 @@ where
     if date == "" {
         Ok(None)
     } else {
-        NaiveDateTime::parse_from_str(&date, FORMAT)
+        NaiveDateTime::parse_from_str(&date, "%Y-%m-%d %H:%M:%S")
             .map_err(Error::custom)
             .map(|v| Some(v))
     }
@@ -66,6 +65,18 @@ pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &str> {
         }
     }
     Err("Unknown time format, try, e.g., `YYMMDD`")
+}
+
+pub fn parse_backup_file_name<S: AsRef<str>>(filename: S) -> Result<NaiveDateTime, ParseError> {
+    NaiveDateTime::parse_from_str(filename.as_ref(), "backup_%Y-%m-%d_%H-%M-%S.tar.br")
+}
+
+pub fn create_backup_file_name(time: NaiveDateTime) -> String {
+    format!("{}", time.format("backup_%Y-%m-%d_%H-%M-%S.tar.br"))
+}
+
+pub fn naive_now() -> NaiveDateTime {
+    system_to_naive(SystemTime::now())
 }
 
 #[cfg(test)]

@@ -4,11 +4,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::{Local, NaiveDateTime};
+use chrono::NaiveDateTime;
 use clap::{ArgMatches, Values};
 use serde::{Deserialize, Serialize};
 
-use crate::{parse_date, utils::BackupIterator};
+use crate::{
+    parse_date,
+    parse_date::{create_backup_file_name, naive_now},
+    utils::BackupIterator,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -16,7 +20,6 @@ pub struct Config {
     pub exclude: Vec<String>,
     pub regex: Vec<String>,
     pub output: String,
-    pub name: String,
     pub force: bool,
     pub incremental: bool,
     pub quality: u32,
@@ -35,7 +38,6 @@ impl Config {
             exclude: vec![],
             regex: vec![],
             output: ".".to_string(),
-            name: "backup".to_string(),
             force: false,
             incremental: false,
             quality: 11,
@@ -63,7 +65,6 @@ impl Config {
                 .map(|x| x.to_string())
                 .collect(),
             output: args.value_of("output").unwrap_or(".").to_string(),
-            name: args.value_of("name").unwrap_or("backup").to_string(),
             force: args.is_present("force"),
             incremental: args.is_present("incremental"),
             quality: args
@@ -112,11 +113,7 @@ impl Config {
         if self.output.ends_with(".tar.br") {
             PathBuf::from(&self.output)
         } else {
-            Path::new(&self.output).join(format!(
-                "{}_{}.tar.br",
-                self.name,
-                Local::now().format("%Y-%m-%d_%H-%M-%S")
-            ))
+            Path::new(&self.output).join(create_backup_file_name(naive_now()))
         }
     }
 
@@ -124,7 +121,7 @@ impl Config {
         if self.output.ends_with(".tar.br") {
             BackupIterator::exact(PathBuf::from(&self.output))
         } else {
-            BackupIterator::with_name(Path::new(&self.output), self.name.to_string())
+            BackupIterator::timestamp(Path::new(&self.output))
         }
     }
 }
@@ -143,7 +140,6 @@ mod tests {
         assert_eq!(config.exclude, config2.exclude);
         assert_eq!(config.regex, config2.regex);
         assert_eq!(config.output, config2.output);
-        assert_eq!(config.name, config2.name);
         assert_eq!(config.force, config2.force);
         assert_eq!(config.incremental, config2.incremental);
         assert_eq!(config.quality, config2.quality);

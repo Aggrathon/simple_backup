@@ -60,16 +60,6 @@ fn arg_output<'a>(restore: bool) -> Arg<'a, 'a> {
     }
 }
 
-fn arg_name<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("name")
-        .short("n")
-        .long("name")
-        .value_name("NAME")
-        .help("Prefix to the backup filenames")
-        .takes_value(true)
-        .default_value("backup")
-}
-
 fn arg_force<'a>() -> Arg<'a, 'a> {
     Arg::with_name("force")
         .short("f")
@@ -213,7 +203,6 @@ fn main() {
         .arg(arg_exclude())
         .arg(arg_regex(false))
         .arg(arg_output(false))
-        .arg(arg_name())
         .arg(arg_incremental())
         .arg(arg_time(true))
         .arg(arg_local())
@@ -252,7 +241,6 @@ fn main() {
                 .arg(arg_exclude())
                 .arg(arg_regex(false))
                 .arg(arg_output(false))
-                .arg(arg_name())
                 .arg(arg_incremental())
                 .arg(arg_local())
                 .arg(arg_force())
