@@ -21,7 +21,7 @@ pub struct Config {
     pub regex: Vec<String>,
     pub output: String,
     pub incremental: bool,
-    pub quality: u32,
+    pub quality: i32,
     pub local: bool,
     #[serde(with = "parse_date")]
     pub time: Option<NaiveDateTime>,
@@ -38,7 +38,7 @@ impl Config {
             regex: vec![],
             output: ".".to_string(),
             incremental: false,
-            quality: 11,
+            quality: 9,
             local: false,
             time: None,
             origin: None,
@@ -66,8 +66,8 @@ impl Config {
             incremental: args.is_present("incremental"),
             quality: args
                 .value_of("quality")
-                .and_then(|v| Some(v.parse::<u32>().expect("Could not parse number")))
-                .unwrap_or(11),
+                .and_then(|v| Some(v.parse::<i32>().expect("Could not parse number")))
+                .unwrap_or(9),
             local: args.is_present("local"),
             time: args
                 .value_of("time")

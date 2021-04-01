@@ -173,7 +173,7 @@ fn arg_quality<'a>() -> Arg<'a, 'a> {
         .value_name("quality")
         .help("Compression quality (1-11)")
         .takes_value(true)
-        .default_value("11")
+        .default_value("9")
         .validator(|v: String| match v.parse::<u32>() {
             Ok(v) => {
                 if v >= 1 && v <= 11 {

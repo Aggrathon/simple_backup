@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use brotli::{CompressorWriter, Decompressor};
+use brotli::{enc::BrotliEncoderInitParams, CompressorWriter, Decompressor};
 use path_clean::PathClean;
 use tar::{Archive, Builder, Entry, Header};
 
@@ -14,12 +14,18 @@ use crate::files::FileInfo;
 pub struct CompressionEncoder(Builder<CompressorWriter<File>>);
 
 impl CompressionEncoder {
-    pub fn create<P: AsRef<Path>>(path: P, quality: u32) -> std::io::Result<Self> {
+    pub fn create<P: AsRef<Path>>(path: P, quality: i32) -> std::io::Result<Self> {
         if let Some(p) = path.as_ref().parent() {
             create_dir_all(p)?;
         }
         let file = File::create(path)?;
-        let encoder = CompressorWriter::new(file, 16384, quality, 23);
+        let mut params = BrotliEncoderInitParams();
+        params.large_window = true;
+        params.quality = quality;
+        params.lgwin = 26;
+        params.cdf_adaptation_detection = 1;
+        params.prior_bitmask_detection = 1;
+        let encoder = CompressorWriter::with_params(file, 131072, &params);
         let archive = Builder::new(encoder);
         Ok(CompressionEncoder { 0: archive })
     }
