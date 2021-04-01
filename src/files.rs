@@ -135,10 +135,8 @@ impl FileAccessError {
 
 /// Iterator for crawling through files to backup
 pub struct FileCrawler {
-    include: Vec<PathBuf>,
-    exclude: Vec<PathBuf>,
-    regex: RegexSet,
     stack: VecDeque<FileInfo>,
+    regex: RegexSet,
 }
 
 impl FileCrawler {
@@ -152,52 +150,60 @@ impl FileCrawler {
     >(
         include: VS1,
         exclude: VS2,
-        regex: VS3,
+        filter: VS3,
         local: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut inc: Vec<PathBuf>;
-        let mut exc: Vec<PathBuf>;
+        let mut stack: VecDeque<FileInfo>;
+        let exc: Vec<String>;
         if local {
-            inc = include
+            stack = include
                 .as_ref()
                 .iter()
-                .map(|s| PathBuf::from(s.as_ref()).clean())
+                .map(|s| FileInfo::from(PathBuf::from(s.as_ref()).clean()))
                 .collect();
             exc = exclude
                 .as_ref()
                 .iter()
-                .map(|s| PathBuf::from(s.as_ref()).clean())
-                .collect();
+                .map(|s| {
+                    format!(
+                        "^{}$",
+                        regex::escape(&PathBuf::from(s.as_ref()).clean().to_string_lossy())
+                    )
+                })
+                .collect::<Vec<String>>();
         } else {
-            inc = include
+            stack = include
                 .as_ref()
                 .iter()
                 .map(|s| {
                     PathBuf::from(s.as_ref())
                         .absolutize()
-                        .map(|p| p.to_path_buf())
+                        .map(|p| FileInfo::from(p.to_path_buf()))
                 })
-                .collect::<std::io::Result<Vec<PathBuf>>>()?;
+                .collect::<std::io::Result<VecDeque<FileInfo>>>()?;
             exc = exclude
                 .as_ref()
                 .iter()
                 .map(|s| {
                     PathBuf::from(s.as_ref())
                         .absolutize()
-                        .map(|p| p.to_path_buf())
+                        .map(|p| format!("^{}$", regex::escape(&p.to_string_lossy())))
                 })
-                .collect::<std::io::Result<Vec<PathBuf>>>()?;
+                .collect::<std::io::Result<Vec<String>>>()?;
         }
-        inc.sort_unstable_by(|a, b| b.cmp(a));
-        exc.sort_unstable_by(|a, b| b.cmp(a));
-        let regex = RegexSet::new(regex.as_ref())?;
+        stack
+            .make_contiguous()
+            .sort_unstable_by(|a, b| a.path.as_ref().unwrap().cmp(b.path.as_ref().unwrap()));
 
-        Ok(Self {
-            include: inc,
-            exclude: exc,
-            regex,
-            stack: VecDeque::new(),
-        })
+        let regex = RegexSet::new(
+            filter
+                .as_ref()
+                .into_iter()
+                .map(|s| s.as_ref())
+                .chain(exc.iter().map(|s| s.as_str())),
+        )?;
+
+        Ok(Self { stack, regex })
     }
 }
 
@@ -205,73 +211,45 @@ impl Iterator for FileCrawler {
     type Item = Result<FileInfo, FileAccessError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            while let Some(mut item) = self.stack.pop_front() {
-                let md = try_some!(item
-                    .get_path()
-                    .metadata()
-                    .map_err(|e| FileAccessError::new(e, item.move_string())));
-                if md.is_file() {
-                    item.time = Some(parse_date::system_to_naive(try_some!(md
-                        .modified()
-                        .map_err(|e| FileAccessError::new(e, item.move_string())))));
-                    return Some(Ok(item));
+        while let Some(mut item) = self.stack.pop_front() {
+            let md = try_some!(item
+                .get_path()
+                .metadata()
+                .map_err(|e| FileAccessError::new(e, item.move_string())));
+            if md.is_file() {
+                item.time = Some(parse_date::system_to_naive(try_some!(md
+                    .modified()
+                    .map_err(|e| FileAccessError::new(e, item.move_string())))));
+                return Some(Ok(item));
+            } else {
+                let mut count: usize = 0;
+                let dir = try_some!(if item.get_path().as_os_str() == "." {
+                    PathBuf::from("")
+                        .read_dir()
+                        .map_err(|e| FileAccessError::new(e, item.move_string()))
                 } else {
-                    let mut count: usize = 0;
-                    let dir = try_some!(if item.get_path().as_os_str() == "." {
-                        PathBuf::from("")
-                            .read_dir()
-                            .map_err(|e| FileAccessError::new(e, item.move_string()))
-                    } else {
-                        item.get_path()
-                            .read_dir()
-                            .map_err(|e| FileAccessError::new(e, item.move_string()))
-                    });
-                    for f in dir {
-                        let entry =
-                            try_some!(f.map_err(|e| FileAccessError::new(e, item.move_string())));
-                        let path = entry.path();
-                        let mut filtered = false;
-                        while let Some(p) = self.include.last() {
-                            if *p <= path {
-                                self.include.pop().unwrap();
-                            } else {
-                                break;
-                            }
-                        }
-                        while let Some(p) = self.exclude.last() {
-                            if *p == path {
-                                self.exclude.pop().unwrap();
-                                filtered = true;
-                            } else if *p < path {
-                                self.exclude.pop().unwrap();
-                            } else {
-                                break;
-                            }
-                        }
-                        if !filtered {
-                            let string = path.to_string_lossy();
-                            if !self.regex.is_match(&string) {
-                                let string = string.to_string();
-                                let fi = FileInfo::from_both(path, string);
-                                self.stack.push_front(fi);
-                                count += 1;
-                            }
-                        }
-                    }
-                    // Reverse the order of the added items to preserve lexicographic ordering
-                    if count > 1 {
-                        for i in 0..(count / 2) {
-                            self.stack.swap(i, count - i - 1);
-                        }
+                    item.get_path()
+                        .read_dir()
+                        .map_err(|e| FileAccessError::new(e, item.move_string()))
+                });
+                for f in dir {
+                    let entry =
+                        try_some!(f.map_err(|e| FileAccessError::new(e, item.move_string())));
+                    let path = entry.path();
+                    let string = path.to_string_lossy();
+                    if !self.regex.is_match(&string) {
+                        let string = string.to_string();
+                        let fi = FileInfo::from_both(path, string);
+                        self.stack.push_front(fi);
+                        count += 1;
                     }
                 }
-            }
-            if self.include.len() > 0 {
-                self.stack
-                    .push_back(FileInfo::from(self.include.pop().unwrap()));
-            } else {
-                break;
+                // Reverse the order of the added items to preserve lexicographic ordering
+                if count > 1 {
+                    for i in 0..(count / 2) {
+                        self.stack.swap(i, count - i - 1);
+                    }
+                }
             }
         }
         None
@@ -318,9 +296,10 @@ mod tests {
     }
     #[test]
     fn file_crawler_rel() {
+        let main_path = Path::new("src").join("main.rs");
         let files: Vec<PathBuf> = FileCrawler::new(
             &vec!["src".to_string()],
-            &vec!["src/main.rs".to_string()],
+            &vec![main_path.to_string_lossy()],
             &vec!["config.*".to_string()],
             true,
         )
@@ -332,16 +311,14 @@ mod tests {
             .take(files.len() - 1)
             .zip(files.iter().skip(1))
             .for_each(|(a, b)| assert!(a < b));
+        files.iter().for_each(|f| assert_ne!(*f, main_path));
         files
             .iter()
-            .for_each(|f| assert_ne!(*f, PathBuf::from("src/main.rs")));
-        files
-            .iter()
-            .for_each(|f| assert_ne!(*f, PathBuf::from("src/config.rs")));
+            .for_each(|f| assert_ne!(*f, Path::new("src").join("config.rs")));
         assert_eq!(
             files
                 .iter()
-                .filter(|f| **f == PathBuf::from("src/backup.rs"))
+                .filter(|f| **f == Path::new("src").join("backup.rs"))
                 .count(),
             1
         );
