@@ -73,8 +73,8 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
         if verbose {
             println!("");
         }
+        println!("Backing up files...");
         let bar = ProgressBar::new(num_files);
-        bar.set_message("Backing up files");
         bar.tick();
         bw.write(|fi: &mut FileInfo, err| match err {
             Ok(_) => bar.inc(1),
