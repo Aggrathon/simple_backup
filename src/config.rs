@@ -17,7 +17,6 @@ pub struct Config {
     pub regex: Vec<String>,
     pub output: String,
     pub name: String,
-    pub verbose: bool,
     pub force: bool,
     pub incremental: bool,
     pub quality: u32,
@@ -37,7 +36,6 @@ impl Config {
             regex: vec![],
             output: ".".to_string(),
             name: "backup".to_string(),
-            verbose: false,
             force: false,
             incremental: false,
             quality: 11,
@@ -66,7 +64,6 @@ impl Config {
                 .collect(),
             output: args.value_of("output").unwrap_or(".").to_string(),
             name: args.value_of("name").unwrap_or("backup").to_string(),
-            verbose: args.is_present("verbose"),
             force: args.is_present("force"),
             incremental: args.is_present("incremental"),
             quality: args
@@ -147,7 +144,6 @@ mod tests {
         assert_eq!(config.regex, config2.regex);
         assert_eq!(config.output, config2.output);
         assert_eq!(config.name, config2.name);
-        assert_eq!(config.verbose, config2.verbose);
         assert_eq!(config.force, config2.force);
         assert_eq!(config.incremental, config2.incremental);
         assert_eq!(config.quality, config2.quality);

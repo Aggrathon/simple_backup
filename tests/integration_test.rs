@@ -29,7 +29,6 @@ fn cli_test() {
         regex: vec![],
         output: dir.path().to_string_lossy().to_string(),
         name: "backup".to_string(),
-        verbose: false,
         force: false,
         incremental: true,
         quality: 11,
@@ -115,7 +114,6 @@ fn absolute_test() {
         regex: vec![],
         output: dir.path().to_string_lossy().to_string(),
         name: "backup".to_string(),
-        verbose: false,
         force: false,
         incremental: true,
         quality: 11,
@@ -172,7 +170,6 @@ fn local_test() {
         regex: vec![".*.md".to_string()],
         output: dir.path().to_string_lossy().to_string(),
         name: "backup".to_string(),
-        verbose: true,
         force: false,
         incremental: false,
         quality: 11,
@@ -182,7 +179,7 @@ fn local_test() {
     };
 
     let conf = Config::from_yaml(config.to_yaml().unwrap()).unwrap();
-    backup(conf, false);
+    backup(conf, false, false);
 
     restore(
         BackupReader::from_config(config).unwrap(),

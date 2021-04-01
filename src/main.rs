@@ -288,7 +288,11 @@ fn main() {
         // Backup using an existing config
         let path = matches.value_of("file").unwrap();
         let config = get_config_from_path(path).expect("Could not load config");
-        cli::backup(config, matches.is_present("dry"));
+        cli::backup(
+            config,
+            matches.is_present("force"),
+            matches.is_present("dry"),
+        );
     } else if let Some(matches) = matches.subcommand_matches("config") {
         // Create a config file
         let mut config = Config::from_args(&matches);
@@ -302,6 +306,10 @@ fn main() {
     } else {
         // Backup using arguments
         let config = Config::from_args(&matches);
-        cli::backup(config, matches.is_present("dry"));
+        cli::backup(
+            config,
+            matches.is_present("force"),
+            matches.is_present("dry"),
+        );
     }
 }

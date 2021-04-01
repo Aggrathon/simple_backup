@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Backup files
-pub fn backup(config: Config, dry: bool) {
+pub fn backup(config: Config, verbose: bool, dry: bool) {
     let (mut bw, error) = BackupWriter::new(config);
     if error.is_some() {
         eprintln!(
@@ -28,7 +28,7 @@ pub fn backup(config: Config, dry: bool) {
 
     // Crawl for files
     let mut num_files = 0;
-    if bw.config.verbose {
+    if verbose {
         if bw.config.time.is_some() {
             println!("Updated files to backup:");
         } else {
@@ -70,7 +70,7 @@ pub fn backup(config: Config, dry: bool) {
 
     // Perform the backup
     if !dry {
-        if bw.config.verbose {
+        if verbose {
             println!("");
         }
         let bar = ProgressBar::new(num_files);
