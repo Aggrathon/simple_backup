@@ -14,6 +14,7 @@ use tempfile::tempdir;
 fn cli_test() {
     let dir = tempdir().unwrap();
     let dir2 = dir.path().join("dir");
+    let dir3 = dir.path().join("backup");
     let f1 = dir.path().join("a.txt");
     let f2 = dir.path().join("b.txt");
     let f3 = dir.path().join("c.txt");
@@ -27,7 +28,7 @@ fn cli_test() {
         include: vec![dir.path().to_string_lossy().to_string()],
         exclude: vec![],
         regex: vec![],
-        output: dir.path().to_string_lossy().to_string(),
+        output: dir3.to_string_lossy().to_string(),
         force: false,
         incremental: true,
         quality: 11,

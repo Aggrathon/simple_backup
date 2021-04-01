@@ -1,5 +1,6 @@
 use std::{
     fmt::Debug,
+    fs::create_dir_all,
     fs::File,
     path::{Path, PathBuf},
 };
@@ -14,6 +15,9 @@ pub struct CompressionEncoder(Builder<CompressorWriter<File>>);
 
 impl CompressionEncoder {
     pub fn create<P: AsRef<Path>>(path: P, quality: u32) -> std::io::Result<Self> {
+        if let Some(p) = path.as_ref().parent() {
+            create_dir_all(p)?;
+        }
         let file = File::create(path)?;
         let encoder = CompressorWriter::new(file, 16384, quality, 23);
         let archive = Builder::new(encoder);
