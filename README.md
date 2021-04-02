@@ -6,10 +6,13 @@ A minimal application for doing backups.
 
 - [X] No propriety format, the backups are saved in a normal compressed archive.
 - [X] Modern, state-of-the-art compression using [zstd](https://www.zstd.net).
+- [X] Optional multithreading for increased performance.
+
 - [X] Incremental backups (using last modified from the file metadata).
+- [X] Selective restores (only deleted files, only selected files, or all files).
+
 - [X] Command line interface, declare includes, excludes, and regex-filters.
 - [X] Commands can be saved as a config file for easy reuse (e.g. for incremental backups).
-- [X] Selective restores (only deleted files, only selected files, or all files).
 - [ ] Graphical user interface (not yet implemented).
 
 ## Usage
