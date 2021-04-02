@@ -38,7 +38,7 @@ impl Config {
             regex: vec![],
             output: ".".to_string(),
             incremental: false,
-            quality: 9,
+            quality: 22,
             local: false,
             time: None,
             origin: None,
@@ -67,7 +67,7 @@ impl Config {
             quality: args
                 .value_of("quality")
                 .and_then(|v| Some(v.parse::<i32>().expect("Could not parse number")))
-                .unwrap_or(9),
+                .unwrap_or(22),
             local: args.is_present("local"),
             time: args
                 .value_of("time")
