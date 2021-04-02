@@ -77,7 +77,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
         let bar = ProgressBar::new(num_files);
         bar.set_style(
             ProgressStyle::default_bar()
-                .template("{wide_msg} {pos} / {len}\n{wide_bar} {elapsed_precise} / {eta_precise}"),
+                .template("{wide_msg} {pos} / {len}\n{wide_bar} {elapsed_precise} | {eta_precise}"),
         );
         bar.set_message("Compressing file list");
         bar.tick();
@@ -157,7 +157,7 @@ pub fn restore(
         let bar = ProgressBar::new(include.len() as u64);
         bar.set_style(
             ProgressStyle::default_bar()
-                .template("{wide_msg} {pos} / {len}\n{wide_bar} {elapsed_precise} / {eta_precise}"),
+                .template("{wide_msg} {pos} / {len}\n{wide_bar} {elapsed_precise} | {eta_precise}"),
         );
         bar.set_message("Restoring files");
         bar.tick();

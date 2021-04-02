@@ -156,6 +156,7 @@ fn arg_incremental<'a>() -> Arg<'a, 'a> {
 fn arg_time<'a>(req: bool) -> Arg<'a, 'a> {
     let arg = Arg::with_name("time")
         .long("time")
+        .takes_value(true)
         .help("If doing an incremental backup, set the previous time to this")
         .validator(|v| parse_date::try_parse(&v).map_err(String::from).map(|_| ()));
     if req {
@@ -190,7 +191,7 @@ fn arg_threads<'a>() -> Arg<'a, 'a> {
         .short("n")
         .long("threads")
         .value_name("NUM")
-        .help("Number of worker threads")
+        .help("Number of worker threads (using threads requires more memory)")
         .takes_value(true)
         .default_value("1")
         .validator(|v: String| match v.parse::<u32>() {
