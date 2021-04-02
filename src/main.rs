@@ -169,7 +169,7 @@ fn arg_quality<'a>() -> Arg<'a, 'a> {
     Arg::with_name("quality")
         .short("q")
         .long("quality")
-        .value_name("quality")
+        .value_name("NUM")
         .help("Compression quality (1-22)")
         .takes_value(true)
         .default_value("22")
@@ -182,6 +182,20 @@ fn arg_quality<'a>() -> Arg<'a, 'a> {
                 }
             }
             Err(_) => Err(String::from("Must be a number between 1-22")),
+        })
+}
+
+fn arg_threads<'a>() -> Arg<'a, 'a> {
+    Arg::with_name("threads")
+        .short("n")
+        .long("threads")
+        .value_name("NUM")
+        .help("Number of worker threads")
+        .takes_value(true)
+        .default_value("1")
+        .validator(|v: String| match v.parse::<u32>() {
+            Ok(_) => Ok(()),
+            Err(_) => Err(String::from("Must be a number equal or greater than zero")),
         })
 }
 
@@ -205,6 +219,7 @@ fn main() {
         .arg(arg_incremental())
         .arg(arg_time(true))
         .arg(arg_local())
+        .arg(arg_threads())
         .arg(arg_force())
         .arg(arg_verbose())
         .arg(arg_quality())
@@ -244,7 +259,7 @@ fn main() {
                 .arg(arg_output(false))
                 .arg(arg_incremental())
                 .arg(arg_local())
-                .arg(arg_verbose())
+                .arg(arg_threads())
                 .arg(arg_quality())
                 .arg(arg_dry()),
         )

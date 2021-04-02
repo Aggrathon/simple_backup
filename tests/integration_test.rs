@@ -31,6 +31,7 @@ fn cli_test() {
         output: dir3.to_string_lossy().to_string(),
         incremental: true,
         quality: 11,
+        threads: 1,
         local: false,
         time: None,
         origin: None,
@@ -96,16 +97,16 @@ fn cli_test() {
 }
 
 #[test]
-fn absolute_test() {
+fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir().unwrap();
     let f1 = dir.path().join("a.txt");
     let f2 = dir.path().join("b.txt");
     let f3 = dir.path().join("c.txt");
     let f4 = dir.path().join("d.txt");
-    File::create(&f1).unwrap();
-    File::create(&f2).unwrap();
-    File::create(&f3).unwrap();
-    File::create(&f4).unwrap();
+    File::create(&f1)?;
+    File::create(&f2)?;
+    File::create(&f3)?;
+    File::create(&f4)?;
 
     let config = Config {
         include: vec![dir.path().to_string_lossy().to_string()],
@@ -115,46 +116,49 @@ fn absolute_test() {
         incremental: true,
         quality: 11,
         local: false,
+        threads: 1,
         time: None,
         origin: None,
     };
     let mut bw1 = BackupWriter::new(config).0;
-    bw1.write(|_| (), |_, _| ()).unwrap();
+    bw1.write(|_| (), |_, _| ())?;
 
     let f5 = dir.path().join("e.txt");
     let f6 = dir.path().join("f.txt");
-    File::create(&f5).unwrap();
-    File::create(&f6).unwrap();
+    File::create(&f5)?;
+    File::create(&f6)?;
 
     std::thread::sleep(std::time::Duration::from_secs(1));
     let mut bw2 = BackupWriter::new(bw1.config).0;
-    bw2.write(|_| (), |_, _| ()).unwrap();
+    bw2.write(|_| (), |_, _| ())?;
 
-    remove_file(&f2).unwrap();
-    remove_file(&f5).unwrap();
+    remove_file(&f2)?;
+    remove_file(&f5)?;
     assert!(!f2.exists());
     assert!(!f5.exists());
 
-    let mut br1 = BackupReader::from_config(bw2.config).unwrap();
-    let mut br2 = br1.get_previous().unwrap().unwrap();
+    let mut br1 = BackupReader::from_config(bw2.config)?;
+    let mut br2 = br1.get_previous()?.unwrap();
 
-    br1.restore_these(|fi| fi, |_| (), false).unwrap();
+    br1.restore_these(|fi| fi, |_| (), false)?;
     assert!(!f2.exists());
     assert!(f5.exists());
 
-    remove_file(&f5).unwrap();
+    remove_file(&f5)?;
     assert!(!f5.exists());
 
-    br2.restore_all(|fi| fi, |_| (), false).unwrap();
+    br2.restore_all(|fi| fi, |_| (), false)?;
     assert!(f2.exists());
     assert!(!f5.exists());
 
-    remove_file(&f2).unwrap();
+    remove_file(&f2)?;
     assert!(!f2.exists());
 
-    br1.restore_all(|fi| fi, |_| (), true).unwrap();
+    br1.restore_all(|fi| fi, |_| (), true)?;
     assert!(f2.exists());
     assert!(f5.exists());
+
+    Ok(())
 }
 
 #[test]
@@ -169,6 +173,7 @@ fn local_test() {
         incremental: false,
         quality: 11,
         local: true,
+        threads: 1,
         time: None,
         origin: None,
     };

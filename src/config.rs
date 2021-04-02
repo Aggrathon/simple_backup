@@ -1,4 +1,5 @@
 use std::{
+    cmp::{max, min},
     fs::File,
     io::{Error, ErrorKind},
     path::{Path, PathBuf},
@@ -23,6 +24,7 @@ pub struct Config {
     pub incremental: bool,
     pub quality: i32,
     pub local: bool,
+    pub threads: u32,
     #[serde(with = "parse_date")]
     pub time: Option<NaiveDateTime>,
     #[serde(skip)]
@@ -40,6 +42,7 @@ impl Config {
             incremental: false,
             quality: 22,
             local: false,
+            threads: 1,
             time: None,
             origin: None,
         }
@@ -64,10 +67,17 @@ impl Config {
                 .collect(),
             output: args.value_of("output").unwrap_or(".").to_string(),
             incremental: args.is_present("incremental"),
-            quality: args
+            quality: match args
                 .value_of("quality")
                 .and_then(|v| Some(v.parse::<i32>().expect("Could not parse number")))
-                .unwrap_or(22),
+            {
+                Some(i) => max(min(i, 22), 1),
+                None => 22,
+            },
+            threads: args
+                .value_of("threads")
+                .and_then(|v| Some(v.parse::<u32>().expect("Could not parse number")))
+                .unwrap_or(1),
             local: args.is_present("local"),
             time: args
                 .value_of("time")

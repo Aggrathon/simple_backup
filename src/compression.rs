@@ -1,6 +1,6 @@
 use std::{
     fmt::Debug,
-    fs::{create_dir_all, File},
+    fs::{create_dir_all, remove_file, File},
     io::BufReader,
     path::{Path, PathBuf},
 };
@@ -14,12 +14,17 @@ use crate::files::FileInfo;
 pub struct CompressionEncoder<'a>(Builder<Encoder<'a, File>>);
 
 impl<'a> CompressionEncoder<'a> {
-    pub fn create<P: AsRef<Path>>(path: P, quality: i32) -> std::io::Result<Self> {
+    pub fn create<P: AsRef<Path>>(path: P, quality: i32, threads: u32) -> std::io::Result<Self> {
         if let Some(p) = path.as_ref().parent() {
             create_dir_all(p)?;
         }
-        let file = File::create(path)?;
-        let encoder = Encoder::new(file, quality)?;
+        let file = File::create(&path)?;
+        let cleanup = |err| {
+            remove_file(&path).unwrap_or_default();
+            err
+        };
+        let mut encoder = Encoder::new(file, quality).map_err(cleanup)?;
+        encoder.multithread(threads).map_err(cleanup)?;
         let archive = Builder::new(encoder);
         Ok(CompressionEncoder { 0: archive })
     }

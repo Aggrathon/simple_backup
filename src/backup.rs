@@ -181,7 +181,8 @@ impl BackupWriter {
             list_string.pop();
         }
         {
-            let mut encoder = CompressionEncoder::create(&self.path, self.config.quality)?;
+            let mut encoder =
+                CompressionEncoder::create(&self.path, self.config.quality, self.config.threads)?;
             self.config.time = Some(self.time);
             encoder.append_data("config.yml", self.config.to_yaml()?)?;
             encoder.append_data("files.csv", list_string)?;
