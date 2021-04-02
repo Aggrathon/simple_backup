@@ -36,7 +36,7 @@ fn cli_test() {
         origin: None,
     };
     let mut bw1 = BackupWriter::new(config).0;
-    bw1.write(|_, _| ()).unwrap();
+    bw1.write(|_| (), |_, _| ()).unwrap();
 
     remove_file(&f1).unwrap();
     remove_file(&f2).unwrap();
@@ -119,7 +119,7 @@ fn absolute_test() {
         origin: None,
     };
     let mut bw1 = BackupWriter::new(config).0;
-    bw1.write(|_, _| ()).unwrap();
+    bw1.write(|_| (), |_, _| ()).unwrap();
 
     let f5 = dir.path().join("e.txt");
     let f6 = dir.path().join("f.txt");
@@ -128,7 +128,7 @@ fn absolute_test() {
 
     std::thread::sleep(std::time::Duration::from_secs(1));
     let mut bw2 = BackupWriter::new(bw1.config).0;
-    bw2.write(|_, _| ()).unwrap();
+    bw2.write(|_| (), |_, _| ()).unwrap();
 
     remove_file(&f2).unwrap();
     remove_file(&f5).unwrap();

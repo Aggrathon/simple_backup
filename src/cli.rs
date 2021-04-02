@@ -1,7 +1,7 @@
 use core::panic;
 use std::path::PathBuf;
 
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use regex::RegexSet;
 
 use crate::{
@@ -30,9 +30,9 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
     let mut num_files = 0;
     if verbose {
         if bw.config.time.is_some() {
-            println!("Updated files to backup:");
+            eprintln!("Updated files to backup:");
         } else {
-            println!("Files to backup:");
+            eprintln!("Files to backup:");
         }
         bw.get_files(
             false,
@@ -64,30 +64,39 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
     }
 
     if num_files == 0 {
-        println!("Nothing to backup!");
+        eprintln!("Nothing to backup!");
         return;
     }
 
     // Perform the backup
     if !dry {
         if verbose {
-            println!("");
+            eprintln!("");
         }
-        println!("Backing up files...");
+        eprintln!("Backing up files...");
         let bar = ProgressBar::new(num_files);
+        bar.set_style(
+            ProgressStyle::default_bar()
+                .template("{wide_msg} {pos} / {len}\n{wide_bar} {elapsed_precise} / {eta_precise}"),
+        );
+        bar.set_message("Compressing file list");
         bar.tick();
-        bw.write(|fi: &mut FileInfo, err| match err {
-            Ok(_) => bar.inc(1),
-            Err(e) => {
-                bar.inc(1);
-                bar.println(format!(
-                    "Could not add '{}' to the backup: {}",
-                    fi.get_string(),
-                    e
-                ));
-            }
-        })
+        bw.write(
+            |fi| bar.set_message(fi.get_string()),
+            |fi: &mut FileInfo, err| match err {
+                Ok(_) => bar.inc(1),
+                Err(e) => {
+                    bar.inc(1);
+                    bar.println(format!(
+                        "Could not add '{}' to the backup: {}",
+                        fi.get_string(),
+                        e
+                    ));
+                }
+            },
+        )
         .expect("Could not create backup file");
+        bar.set_message("Backup completed!");
         bar.finish();
     }
 }
@@ -137,15 +146,19 @@ pub fn restore(
     }
 
     if verbose {
-        println!("Files to restore:");
+        eprintln!("Files to restore:");
         for f in include.iter() {
             println!("{}", f);
         }
-        println!("");
+        eprintln!("");
     }
 
     if !dry {
         let bar = ProgressBar::new(include.len() as u64);
+        bar.set_style(
+            ProgressStyle::default_bar()
+                .template("{wide_msg} {pos} / {len}\n{wide_bar} {elapsed_precise} / {eta_precise}"),
+        );
         bar.set_message("Restoring files");
         bar.tick();
 
@@ -161,7 +174,10 @@ pub fn restore(
         if flatten {
             source.restore_selected(
                 include,
-                |fi| FileInfo::from(output.join(fi.consume_path().file_name().unwrap())),
+                |mut fi| {
+                    bar.set_message(&fi.move_string());
+                    FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
+                },
                 callback,
                 force,
             )
@@ -169,6 +185,7 @@ pub fn restore(
             source.restore_selected(
                 include,
                 |mut fi| {
+                    bar.set_message(&fi.move_string());
                     if fi.get_path().has_root() {
                         fi
                     } else {

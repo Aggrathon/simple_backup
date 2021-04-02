@@ -164,7 +164,8 @@ impl BackupWriter {
 
     pub fn write(
         &mut self,
-        mut callback: impl FnMut(&mut FileInfo, Result<(), std::io::Error>),
+        mut on_next: impl FnMut(&mut FileInfo),
+        mut on_added: impl FnMut(&mut FileInfo, Result<(), std::io::Error>),
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut list_string = String::new();
         {
@@ -194,20 +195,22 @@ impl BackupWriter {
                             Ok(md) => match md.modified() {
                                 Ok(time) => {
                                     if parse_date::system_to_naive(time) >= prev_time {
+                                        on_next(fi);
                                         let res = encoder.append_file(fi.get_path());
-                                        callback(fi, res);
+                                        on_added(fi, res);
                                     }
                                 }
-                                Err(e) => callback(fi, Err(e)),
+                                Err(e) => on_added(fi, Err(e)),
                             },
-                            Err(e) => callback(fi, Err(e)),
+                            Err(e) => on_added(fi, Err(e)),
                         }
                     }
                 }
                 None => {
                     for fi in list.iter_mut() {
+                        on_next(fi);
                         let res = encoder.append_file(fi.get_path());
-                        callback(fi, res);
+                        on_added(fi, res);
                     }
                 }
             }
