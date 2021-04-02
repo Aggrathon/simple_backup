@@ -28,7 +28,7 @@ macro_rules! try_option {
     };
 }
 
-const PATTERN_LENGTH: usize = "_2020-20-20_20-20-20.tar.br".len();
+const PATTERN_LENGTH: usize = "_2020-20-20_20-20-20.tar.zst".len();
 
 fn get_pattern(name: &OsStr) -> String {
     let f = name.to_string_lossy();
@@ -147,13 +147,13 @@ impl<P: AsRef<Path>> ConfigPathType<P> {
         } else if md.is_file() {
             if string.as_ref().ends_with(".yml") {
                 return Ok(Self::Config(path));
-            } else if string.as_ref().ends_with(".tar.br") {
+            } else if string.as_ref().ends_with(".tar.zst") {
                 return Ok(Self::Backup(path));
             }
         }
         Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "The path must be either a config (.yml), a backup (.tar.br), or a directory containing backups",
+            "The path must be either a config (.yml), a backup (.tar.zst), or a directory containing backups",
         ))
     }
 }
@@ -169,9 +169,9 @@ pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn st
     }
 }
 
-pub fn get_backup_from_path<S: AsRef<str>>(
+pub fn get_backup_from_path<'a, S: AsRef<str>>(
     path: S,
-) -> Result<BackupReader, Box<dyn std::error::Error>> {
+) -> Result<BackupReader<'a>, Box<dyn std::error::Error>> {
     match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
         ConfigPathType::Config(path) => Ok(BackupReader::from_config(Config::read_yaml(path)?)?),
         ConfigPathType::Backup(path) => Ok(BackupReader::read(path)?),
@@ -207,11 +207,11 @@ mod tests {
     #[test]
     fn backup_iterator() -> std::io::Result<()> {
         let dir = tempdir()?;
-        let f1 = dir.path().join("asd.tar.br");
+        let f1 = dir.path().join("asd.tar.zst");
         let f1b = f1.clone();
-        let f2 = dir.path().join("backup_2020-02-20_20-20-20.tar.br");
-        let f3 = dir.path().join("backup_2020-04-24_21-20-20.tar.br");
-        let f4 = dir.path().join("backup_2020-04-24_22-20-20.tar.br");
+        let f2 = dir.path().join("backup_2020-02-20_20-20-20.tar.zst");
+        let f3 = dir.path().join("backup_2020-04-24_21-20-20.tar.zst");
+        let f4 = dir.path().join("backup_2020-04-24_22-20-20.tar.zst");
         File::create(&f1)?;
         File::create(&f2)?;
         File::create(&f3)?;
@@ -234,8 +234,8 @@ mod tests {
     #[test]
     fn from_path() -> std::io::Result<()> {
         let dir = tempdir()?;
-        let f1 = dir.path().join("asd.tar.br");
-        let f2 = dir.path().join("backup_2020-02-20_20-20-20.tar.br");
+        let f1 = dir.path().join("asd.tar.zst");
+        let f2 = dir.path().join("backup_2020-02-20_20-20-20.tar.zst");
         let f3 = dir.path().join("config.yml");
         File::create(&f1)?;
         File::create(&f2)?;

@@ -54,7 +54,7 @@ fn arg_output<'a>(restore: bool) -> Arg<'a, 'a> {
         arg.help("The root directory to restore to")
     } else {
         arg.help(
-            "Where should the backup be stored (either a direcory or a file ending in `.tar.br`)",
+            "Where should the backup be stored (either a direcory or a file ending in `.tar.zst`)",
         )
         .default_value(".")
     }
@@ -116,10 +116,10 @@ fn arg_conf_file<'a>(new: bool) -> Arg<'a, 'a> {
                 if path.is_dir() {
                     Ok(())
                 } else if path.is_file() {
-                    if v.ends_with(".yml") || v.ends_with(".tar.br"){
+                    if v.ends_with(".yml") || v.ends_with(".tar.zst"){
                         Ok(())
                     } else {
-                        Err("The file must be either a config file (ends with '.yml') or a previous backup (ends with `.tar.br`)".to_string())
+                        Err("The file must be either a config file (ends with '.yml') or a previous backup (ends with `.tar.zst`)".to_string())
                     }
                 } else {
                     Err("The path to the config file is broken".to_string())

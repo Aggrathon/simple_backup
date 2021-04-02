@@ -5,7 +5,7 @@ A minimal application for doing backups.
 ## Features
 
 - [X] No propriety format, the backups are saved in a normal compressed archive.
-- [X] Modern, state-of-the-art compression using [Brotli](https://github.com/google/brotli).
+- [X] Modern, state-of-the-art compression using [zstd](https://www.zstd.net).
 - [X] Incremental backups (using last modified from the file metadata).
 - [X] Command line interface, declare includes, excludes, and regex-filters.
 - [X] Commands can be saved as a config file for easy reuse (e.g. for incremental backups).
@@ -23,7 +23,7 @@ cd /tmp
 mkdir dir
 touch test1.txt dir/test2.txt dir/test3.txt
 
-simple_backup config config.yml --include test.txt dir --exclude dir/test2.txt --output . --name backup
+simple_backup config config.yml --include test.txt dir --exclude dir/test2.txt --output .
 simple_backup backup config.yml
 
 rm test1.txt dir/test2.txt dir/test3.txt dir -r
@@ -34,5 +34,5 @@ simple_backup restore config.yml
 [ ! -f dir/test2.txt ] && echo "test2.txt was excluded."
 [ -f dir/test3.txt ] && echo "test3.txt was restored."
 
-rm backup_*.tar.br config.yml test1.txt dir/test3.txt dir -r
+rm backup_*.tar.zst config.yml test1.txt dir/test3.txt dir -r
 ```

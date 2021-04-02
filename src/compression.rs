@@ -2,36 +2,31 @@ use std::{
     fmt::Debug,
     fs::create_dir_all,
     fs::File,
+    io::BufReader,
     path::{Path, PathBuf},
 };
 
-use brotli::{enc::BrotliEncoderInitParams, CompressorWriter, Decompressor};
 use path_clean::PathClean;
 use tar::{Archive, Builder, Entry, Header};
+use zstd::{Decoder, Encoder};
 
 use crate::files::FileInfo;
 
-pub struct CompressionEncoder(Builder<CompressorWriter<File>>);
+pub struct CompressionEncoder<'a>(Builder<Encoder<'a, File>>);
 
-impl CompressionEncoder {
+impl<'a> CompressionEncoder<'a> {
     pub fn create<P: AsRef<Path>>(path: P, quality: i32) -> std::io::Result<Self> {
         if let Some(p) = path.as_ref().parent() {
             create_dir_all(p)?;
         }
         let file = File::create(path)?;
-        let mut params = BrotliEncoderInitParams();
-        params.large_window = true;
-        params.quality = quality;
-        params.lgwin = 26;
-        params.cdf_adaptation_detection = 1;
-        params.prior_bitmask_detection = 1;
-        let encoder = CompressorWriter::with_params(file, 131072, &params);
+        let encoder = Encoder::new(file, quality)?;
         let archive = Builder::new(encoder);
         Ok(CompressionEncoder { 0: archive })
     }
 
     pub fn close(self) -> std::io::Result<()> {
-        self.0.into_inner()?.into_inner().sync_all()?;
+        self.0.into_inner()?.finish()?.sync_all()?;
         Ok(())
     }
 
@@ -54,18 +49,19 @@ impl CompressionEncoder {
     }
 }
 
-pub struct CompressionDecoder(Archive<Decompressor<File>>);
+pub type CompressionDecoderEntry<'dummy, 'a> = Entry<'dummy, Decoder<'a, BufReader<File>>>;
+pub struct CompressionDecoder<'a>(Archive<Decoder<'a, BufReader<File>>>);
 
-impl Debug for CompressionDecoder {
+impl<'a> Debug for CompressionDecoder<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CompressionDecoder").finish()
     }
 }
 
-impl CompressionDecoder {
+impl<'a> CompressionDecoder<'a> {
     pub fn read<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let file = File::open(&path)?;
-        let decoder = brotli::Decompressor::new(file, 16384);
+        let decoder = Decoder::new(file)?;
         let mut archive = Archive::new(decoder);
         archive.set_unpack_xattrs(true);
         archive.set_preserve_permissions(true);
@@ -75,8 +71,9 @@ impl CompressionDecoder {
 
     pub fn entries(
         &mut self,
-    ) -> std::io::Result<impl Iterator<Item = std::io::Result<(FileInfo, Entry<Decompressor<File>>)>>>
-    {
+    ) -> std::io::Result<
+        impl Iterator<Item = std::io::Result<(FileInfo, CompressionDecoderEntry<'_, 'a>)>>,
+    > {
         Ok(self.0.entries()?.map(|entry| {
             let entry = entry?;
             let path = entry.header().path()?;

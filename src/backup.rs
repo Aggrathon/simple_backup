@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fmt::{Display, Formatter},
-    fs::{create_dir_all, File},
+    fs::create_dir_all,
     io::Read,
     path::{Path, PathBuf},
 };
@@ -9,7 +9,7 @@ use std::{
 use chrono::NaiveDateTime;
 
 use crate::{
-    compression::{CompressionDecoder, CompressionEncoder},
+    compression::{CompressionDecoder, CompressionDecoderEntry, CompressionEncoder},
     config::Config,
     files::{FileAccessError, FileCrawler, FileInfo},
     parse_date::{self, naive_now},
@@ -217,15 +217,15 @@ impl BackupWriter {
     }
 }
 
-pub struct BackupReader {
-    decoder: CompressionDecoder,
+pub struct BackupReader<'a> {
+    decoder: CompressionDecoder<'a>,
     used: bool,
     pub path: PathBuf,
     pub config: Option<Config>,
     pub list: Option<String>,
 }
 
-impl BackupReader {
+impl<'a> BackupReader<'a> {
     pub fn read<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         Ok(BackupReader {
             path: path.as_ref().to_path_buf(),
@@ -311,7 +311,7 @@ impl BackupReader {
     pub fn files(
         &mut self,
     ) -> std::io::Result<
-        impl Iterator<Item = std::io::Result<(FileInfo, tar::Entry<brotli::Decompressor<File>>)>>,
+        impl Iterator<Item = std::io::Result<(FileInfo, CompressionDecoderEntry<'_, 'a>)>>,
     > {
         self.use_decoder()?;
         Ok(self.decoder.entries()?.skip(2))
@@ -324,7 +324,7 @@ impl BackupReader {
         (
             &Config,
             &String,
-            impl Iterator<Item = std::io::Result<(FileInfo, tar::Entry<brotli::Decompressor<File>>)>>,
+            impl Iterator<Item = std::io::Result<(FileInfo, CompressionDecoderEntry<'_, 'a>)>>,
         ),
         Box<dyn Error>,
     > {

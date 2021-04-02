@@ -107,7 +107,7 @@ impl Config {
     }
 
     pub fn get_output(&self) -> PathBuf {
-        if self.output.ends_with(".tar.br") {
+        if self.output.ends_with(".tar.zst") {
             PathBuf::from(&self.output)
         } else {
             Path::new(&self.output).join(create_backup_file_name(naive_now()))
@@ -115,7 +115,7 @@ impl Config {
     }
 
     pub fn get_backups(&self) -> BackupIterator {
-        if self.output.ends_with(".tar.br") {
+        if self.output.ends_with(".tar.zst") {
             BackupIterator::exact(PathBuf::from(&self.output))
         } else {
             BackupIterator::timestamp(Path::new(&self.output))

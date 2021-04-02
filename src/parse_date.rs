@@ -68,11 +68,11 @@ pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &str> {
 }
 
 pub fn parse_backup_file_name<S: AsRef<str>>(filename: S) -> Result<NaiveDateTime, ParseError> {
-    NaiveDateTime::parse_from_str(filename.as_ref(), "backup_%Y-%m-%d_%H-%M-%S.tar.br")
+    NaiveDateTime::parse_from_str(filename.as_ref(), "backup_%Y-%m-%d_%H-%M-%S.tar.zst")
 }
 
 pub fn create_backup_file_name(time: NaiveDateTime) -> String {
-    format!("{}", time.format("backup_%Y-%m-%d_%H-%M-%S.tar.br"))
+    format!("{}", time.format("backup_%Y-%m-%d_%H-%M-%S.tar.zst"))
 }
 
 pub fn naive_now() -> NaiveDateTime {
