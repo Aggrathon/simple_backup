@@ -13,7 +13,6 @@ mod parse_date;
 
 use std::path::PathBuf;
 
-// use backup::get_backup_config;
 use clap::{App, Arg, SubCommand, Values};
 use config::Config;
 use utils::{get_backup_from_path, get_config_from_path};
