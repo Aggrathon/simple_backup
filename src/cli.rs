@@ -81,6 +81,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
         );
         bar.set_message("Compressing file list");
         bar.tick();
+        bar.enable_steady_tick(1000);
         bw.write(
             |fi| bar.set_message(fi.get_string()),
             |fi: &mut FileInfo, err| match err {
@@ -96,6 +97,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
             },
         )
         .expect("Could not create backup file");
+        bar.disable_steady_tick();
         bar.set_message("Backup completed!");
         bar.finish();
     }
@@ -161,6 +163,7 @@ pub fn restore(
         );
         bar.set_message("Restoring files");
         bar.tick();
+        bar.enable_steady_tick(1000);
 
         let output = PathBuf::from(output);
         let callback = |res| match res {
@@ -198,6 +201,8 @@ pub fn restore(
         }
         .expect("Could not restore from backup");
 
+        bar.disable_steady_tick();
+        bar.set_message("Restoration Completed!");
         bar.finish();
     }
 }
