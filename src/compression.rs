@@ -86,63 +86,29 @@ impl<'a> CompressionDecoder<'a> {
 
 #[cfg(target_os = "windows")]
 fn path_to_archive(path: &PathBuf) -> String {
-    archive_path_offset(if path.has_root() {
+    if path.has_root() {
         "abs".to_string() + &path.to_string_lossy().replace('\\', "/")
     } else {
         "rel/".to_string() + &path.clean().to_string_lossy().replace('\\', "/")
-    })
-}
-
-/// If the 100th byte is not a complete unicode character, add '_' to the beginning until it is.
-/// This is a workaround for the naive behaviour for long filenames in the `tar` crate.
-#[inline(always)]
-fn archive_path_offset(path: String) -> String {
-    if path.as_bytes().len() > 100 {
-        // Check if the following byte is the start of a valid unicode character
-        if (path.as_bytes()[100] >> 7) == 0 || (path.as_bytes()[100] >> 6) == 3 {
-            path
-        } else if (path.as_bytes()[99] >> 7) == 0 || (path.as_bytes()[99] >> 6) == 3 {
-            "_".to_string() + &path
-        } else if (path.as_bytes()[98] >> 7) == 0 || (path.as_bytes()[98] >> 6) == 3 {
-            "__".to_string() + &path
-        } else if (path.as_bytes()[97] >> 7) == 0 || (path.as_bytes()[98] >> 6) == 3 {
-            "___".to_string() + &path
-        } else {
-            // At this point the string is not valid unicode!
-            path
-        }
-    } else {
-        path
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 fn path_to_archive(path: &PathBuf) -> String {
-    archive_path_offset(if path.has_root() {
+    if path.has_root() {
         "abs".to_string() + &path.to_string_lossy()
     } else {
         "rel/".to_string() + &path.clean().to_string_lossy()
-    })
+    }
 }
 
 fn path_from_archive<P: AsRef<Path>>(path: P) -> FileInfo {
     let path = path.as_ref();
     let string = path.to_string_lossy();
-    // skip the '_' added by `archive_path_offset
-    let start = if string.as_bytes().len() > 100 {
-        string
-            .as_bytes()
-            .iter()
-            .take(3)
-            .position(|b| *b != b'_')
-            .unwrap_or(0)
-    } else {
-        0
-    };
-    if string[start..].starts_with("rel/") {
-        FileInfo::from(string[(start + 4)..].to_string())
-    } else if string[start..].starts_with("abs") {
-        FileInfo::from(string[(start + 3)..].to_string())
+    if string.starts_with("rel/") {
+        FileInfo::from(string[4..].to_string())
+    } else if string.starts_with("abs") {
+        FileInfo::from(string[3..].to_string())
     } else if string == "rel" {
         FileInfo::from(".")
     } else {
@@ -197,17 +163,5 @@ mod tests {
         let pia = entry.header().path().unwrap();
         let out = path_from_archive(&pia).consume_path();
         assert_eq!(dir, out);
-    }
-
-    #[test]
-    fn unicode_split() {
-        let string = "aåååååååååååååååååååååååååååååååååååååååååååååååååååååååååååå";
-        let new = path_to_archive(&PathBuf::from(string));
-        std::str::from_utf8(&string.as_bytes()[..100])
-            .expect_err("the original string should split a unicode character at byte 100");
-        std::str::from_utf8(&new.as_bytes()[..100])
-            .expect("the new string should be offset not to split a unicode character at byte 100");
-        assert_eq!(b'_', new.as_bytes()[0]);
-        assert_eq!(string, path_from_archive(new).get_string().as_str());
     }
 }
