@@ -98,9 +98,18 @@ fn path_to_archive(path: &PathBuf) -> String {
 #[inline(always)]
 fn archive_path_offset(path: String) -> String {
     if path.as_bytes().len() > 100 {
-        match std::str::from_utf8(&path.as_bytes()[..100]) {
-            Ok(_) => path,
-            Err(_) => archive_path_offset("_".to_string() + &path),
+        // Check if the following byte is the start of a valid unicode character
+        if (path.as_bytes()[100] >> 7) == 0 || (path.as_bytes()[100] >> 6) == 3 {
+            path
+        } else if (path.as_bytes()[99] >> 7) == 0 || (path.as_bytes()[99] >> 6) == 3 {
+            "_".to_string() + &path
+        } else if (path.as_bytes()[98] >> 7) == 0 || (path.as_bytes()[98] >> 6) == 3 {
+            "__".to_string() + &path
+        } else if (path.as_bytes()[97] >> 7) == 0 || (path.as_bytes()[98] >> 6) == 3 {
+            "___".to_string() + &path
+        } else {
+            // At this point the string is not valid unicode!
+            path
         }
     } else {
         path
@@ -124,6 +133,7 @@ fn path_from_archive<P: AsRef<Path>>(path: P) -> FileInfo {
         string
             .as_bytes()
             .iter()
+            .take(3)
             .position(|b| *b != b'_')
             .unwrap_or(0)
     } else {
@@ -198,5 +208,6 @@ mod tests {
         std::str::from_utf8(&new.as_bytes()[..100])
             .expect("the new string should be offset not to split a unicode character at byte 100");
         assert_eq!(b'_', new.as_bytes()[0]);
+        assert_eq!(string, path_from_archive(new).get_string().as_str());
     }
 }
