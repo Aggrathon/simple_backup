@@ -7,6 +7,7 @@ use simple_backup::{
     backup::{BackupReader, BackupWriter},
     cli::{backup, restore},
     config::Config,
+    parse_date::naive_now,
 };
 use tempfile::tempdir;
 
@@ -196,4 +197,71 @@ fn local_test() {
     assert!(!dir.path().join(".target").exists());
     assert!(!dir.path().join(".git").exists());
     assert!(!dir.path().join("README.md").exists());
+}
+
+#[test]
+fn time_test() -> std::io::Result<()> {
+    let dir = tempdir()?;
+    let f1 = dir.path().join("a.txt");
+    let f2 = dir.path().join("b.txt");
+    let f3 = dir.path().join("c.txt");
+    let f4 = dir.path().join("d.txt");
+    File::create(&f1)?;
+    File::create(&f2)?;
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let config = Config {
+        include: vec![dir.path().to_string_lossy().to_string()],
+        exclude: vec![],
+        regex: vec![],
+        output: dir.path().to_string_lossy().to_string(),
+        incremental: true,
+        quality: 11,
+        threads: 1,
+        local: false,
+        time: Some(naive_now()),
+        origin: None,
+    };
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    File::create(&f3)?;
+    File::create(&f4)?;
+
+    backup(config, false, false, false);
+
+    remove_file(&f1)?;
+    remove_file(&f2)?;
+    remove_file(&f3)?;
+    remove_file(&f4)?;
+
+    let config = Config {
+        include: vec![dir.path().to_string_lossy().to_string()],
+        exclude: vec![],
+        regex: vec![],
+        output: dir.path().to_string_lossy().to_string(),
+        incremental: true,
+        quality: 11,
+        threads: 1,
+        local: false,
+        time: Some(naive_now()),
+        origin: None,
+    };
+
+    restore(
+        BackupReader::from_config(config)?,
+        &dir.path().to_string_lossy(),
+        vec![],
+        vec![],
+        false,
+        false,
+        false,
+        false,
+    );
+
+    assert!(!f1.exists());
+    assert!(!f2.exists());
+    assert!(f3.exists());
+    assert!(f4.exists());
+
+    Ok(())
 }
