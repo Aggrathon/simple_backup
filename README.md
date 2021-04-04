@@ -39,3 +39,7 @@ simple_backup restore config.yml
 
 rm backup_*.tar.zst config.yml test1.txt dir/test3.txt dir -r
 ```
+
+## Binaries
+
+Precompiled binaries can be found on the [releases page](/releases).
