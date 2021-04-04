@@ -32,6 +32,7 @@ pub struct Config {
 }
 
 impl Config {
+    /// Create an empty config
     #[allow(dead_code)]
     pub fn new() -> Self {
         Config {
@@ -48,6 +49,7 @@ impl Config {
         }
     }
 
+    /// Create a config from commandline arguments
     pub fn from_args(args: &ArgMatches) -> Self {
         Config {
             include: args
@@ -87,6 +89,7 @@ impl Config {
         }
     }
 
+    /// Read a config from a yaml file
     pub fn read_yaml<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let reader = File::open(&path)?;
         let mut conf: Config =
@@ -95,6 +98,7 @@ impl Config {
         Ok(conf)
     }
 
+    /// Write the config to a yaml file
     pub fn write_yaml<P: AsRef<Path>>(&mut self, path: P) -> std::io::Result<()> {
         self.sort();
         let writer = File::create(path)?;
@@ -102,10 +106,12 @@ impl Config {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 
+    /// Parse a yaml string to a config
     pub fn from_yaml<S: AsRef<str>>(yaml: S) -> Result<Self, serde_yaml::Error> {
         serde_yaml::from_str(yaml.as_ref())
     }
 
+    /// serialise the config as a yaml string
     pub fn to_yaml(&mut self) -> serde_yaml::Result<String> {
         self.sort();
         serde_yaml::to_string(&self)
@@ -116,6 +122,7 @@ impl Config {
         self.exclude.sort();
     }
 
+    /// Get the path fro a new backup
     pub fn get_output(&self) -> PathBuf {
         if self.output.ends_with(".tar.zst") {
             PathBuf::from(&self.output)
@@ -124,6 +131,7 @@ impl Config {
         }
     }
 
+    /// Iterate over old backups
     pub fn get_backups(&self) -> BackupIterator {
         if self.output.ends_with(".tar.zst") {
             BackupIterator::exact(PathBuf::from(&self.output))

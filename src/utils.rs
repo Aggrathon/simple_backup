@@ -50,10 +50,12 @@ pub struct BackupIterator {
 }
 
 impl BackupIterator {
+    /// Create an iterator over backups based on timestamps
     pub fn timestamp<P: AsRef<Path>>(dir: P) -> Self {
         Self::new(dir, BackupIteratorPattern::Timestamp)
     }
 
+    /// Create an iterator over backups based on ONE specific backup
     pub fn exact(path: PathBuf) -> Self {
         BackupIterator {
             constant: Some(path.metadata().map(|_| path)),
@@ -77,8 +79,8 @@ impl BackupIterator {
         }
     }
 
+    /// Get the latest backup based on the timestamp in the file name
     pub fn get_latest(&mut self) -> Option<PathBuf> {
-        // Select latest based on timestamps in the filename
         self.filter_map(|res| res.ok())
             .filter_map(|p| {
                 let s = get_pattern(try_option!(&p.file_name()));
@@ -88,6 +90,7 @@ impl BackupIterator {
             .map(|(p, _)| p)
     }
 
+    /// Get the previous backup based on a file name
     pub fn get_previous<P: AsRef<Path>>(&mut self, path: P) -> Option<PathBuf> {
         let limit = get_pattern(try_option!(path.as_ref().file_name()));
         self.filter_map(|res| res.ok())
@@ -139,6 +142,7 @@ enum ConfigPathType<P: AsRef<Path>> {
 }
 
 impl<P: AsRef<Path>> ConfigPathType<P> {
+    /// Parse a path to get how the config should be extracted
     pub fn parse<S: AsRef<str>>(path: P, string: S) -> std::io::Result<Self> {
         let p = path.as_ref();
         let md = p.metadata()?;
@@ -158,6 +162,7 @@ impl<P: AsRef<Path>> ConfigPathType<P> {
     }
 }
 
+/// Get a config based upon the path
 pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn std::error::Error>> {
     match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
         ConfigPathType::Config(path) => Ok(Config::read_yaml(path)?),
@@ -169,6 +174,7 @@ pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn st
     }
 }
 
+/// Get a BackupReader based upon the path
 pub fn get_backup_from_path<'a, S: AsRef<str>>(
     path: S,
 ) -> Result<BackupReader<'a>, Box<dyn std::error::Error>> {

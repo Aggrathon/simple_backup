@@ -11,6 +11,7 @@ use regex::RegexSet;
 
 use crate::parse_date;
 
+/// A struct that contains both the PathBuf and String versions of a path
 #[derive(Debug)]
 pub struct FileInfo {
     path: Option<PathBuf>,
@@ -58,6 +59,7 @@ impl From<&str> for FileInfo {
 }
 
 impl FileInfo {
+    /// Create a FileInfo from a Pathbuf and a String
     pub fn from_both(path: PathBuf, string: String) -> Self {
         Self {
             path: Some(path),
@@ -66,6 +68,7 @@ impl FileInfo {
         }
     }
 
+    /// Returns the String version (with lazy conversion)
     pub fn get_string(&mut self) -> &String {
         if self.string.is_none() {
             self.string = Some(self.path.as_ref().unwrap().to_string_lossy().to_string())
@@ -73,6 +76,7 @@ impl FileInfo {
         self.string.as_ref().unwrap()
     }
 
+    /// Returns the PathBuf version (with lazy conversion)
     pub fn get_path(&mut self) -> &PathBuf {
         if self.path.is_none() {
             self.path = Some(PathBuf::from(self.string.as_ref().unwrap()))
@@ -80,6 +84,7 @@ impl FileInfo {
         self.path.as_ref().unwrap()
     }
 
+    /// Convert the FileInfo into a PathBuf
     pub fn consume_path(self) -> PathBuf {
         match self.path {
             Some(path) => path,
@@ -87,15 +92,14 @@ impl FileInfo {
         }
     }
 
+    /// Move the String version out (with minimal allocation)
     pub fn move_string(&mut self) -> String {
         if self.string.is_none() {
             self.path.as_ref().unwrap().to_string_lossy().to_string()
+        } else if self.path.is_none() {
+            self.string.as_ref().unwrap().to_string()
         } else {
-            let str = std::mem::replace(&mut self.string, None).unwrap();
-            if self.path.is_none() {
-                self.path = Some(PathBuf::from(&str));
-            }
-            str
+            std::mem::replace(&mut self.string, None).unwrap()
         }
     }
 }
@@ -140,6 +144,7 @@ pub struct FileCrawler {
 }
 
 impl FileCrawler {
+    /// Create an iterator over files to be added to a backup
     pub fn new<
         S1: AsRef<str>,
         S2: AsRef<str>,

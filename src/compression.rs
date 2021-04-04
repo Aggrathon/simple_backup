@@ -14,6 +14,7 @@ use crate::files::FileInfo;
 pub struct CompressionEncoder<'a>(Builder<Encoder<'a, File>>);
 
 impl<'a> CompressionEncoder<'a> {
+    /// Create a compressed archive
     pub fn create<P: AsRef<Path>>(path: P, quality: i32, threads: u32) -> std::io::Result<Self> {
         if let Some(p) = path.as_ref().parent() {
             create_dir_all(p)?;
@@ -29,16 +30,19 @@ impl<'a> CompressionEncoder<'a> {
         Ok(CompressionEncoder { 0: archive })
     }
 
+    /// Finnish compressing the archive and close the file
     pub fn close(self) -> std::io::Result<()> {
         self.0.into_inner()?.finish()?.sync_all()?;
         Ok(())
     }
 
+    /// Add a file to the compressed archive
     pub fn append_file(&mut self, file: &PathBuf) -> std::io::Result<()> {
         let name = path_to_archive(&file);
         self.0.append_path_with_name(&file, name)
     }
 
+    /// Add raw data as a file to the compressed archive
     pub fn append_data<P: AsRef<Path>, B: AsRef<[u8]>>(
         &mut self,
         name: P,
@@ -51,7 +55,8 @@ impl<'a> CompressionEncoder<'a> {
     }
 }
 
-pub type CompressionDecoderEntry<'dummy, 'a> = Entry<'dummy, Decoder<'a, BufReader<File>>>;
+pub type CompressionDecoderEntry<'dummy, 'a> =
+    (FileInfo, Entry<'dummy, Decoder<'a, BufReader<File>>>);
 pub struct CompressionDecoder<'a>(Archive<Decoder<'a, BufReader<File>>>);
 
 impl<'a> Debug for CompressionDecoder<'a> {
@@ -61,6 +66,7 @@ impl<'a> Debug for CompressionDecoder<'a> {
 }
 
 impl<'a> CompressionDecoder<'a> {
+    /// Read a compressed archive
     pub fn read<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let file = File::open(&path)?;
         let decoder = Decoder::new(file)?;
@@ -71,11 +77,11 @@ impl<'a> CompressionDecoder<'a> {
         Ok(Self { 0: archive })
     }
 
+    /// Iterate over the files in the compressed archive
     pub fn entries(
         &mut self,
-    ) -> std::io::Result<
-        impl Iterator<Item = std::io::Result<(FileInfo, CompressionDecoderEntry<'_, 'a>)>>,
-    > {
+    ) -> std::io::Result<impl Iterator<Item = std::io::Result<CompressionDecoderEntry<'_, 'a>>>>
+    {
         Ok(self.0.entries()?.map(|entry| {
             let entry = entry?;
             let path = entry.header().path()?;
@@ -84,6 +90,7 @@ impl<'a> CompressionDecoder<'a> {
     }
 }
 
+/// Encode a path for adding to a tar archive
 #[cfg(target_os = "windows")]
 fn path_to_archive(path: &PathBuf) -> String {
     if path.has_root() {
@@ -93,6 +100,7 @@ fn path_to_archive(path: &PathBuf) -> String {
     }
 }
 
+/// Encode a path for adding to a tar archive
 #[cfg(not(target_os = "windows"))]
 fn path_to_archive(path: &PathBuf) -> String {
     if path.has_root() {
@@ -102,6 +110,7 @@ fn path_to_archive(path: &PathBuf) -> String {
     }
 }
 
+/// Decode a path from a tar archive
 fn path_from_archive<P: AsRef<Path>>(path: P) -> FileInfo {
     let path = path.as_ref();
     let string = path.to_string_lossy();

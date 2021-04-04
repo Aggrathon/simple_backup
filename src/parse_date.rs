@@ -22,6 +22,7 @@ const FORMATS_D: [&'static str; 6] = [
     "%Y-%m-%d", "%y-%m-%d", "%Y.%m.%d", "%y.%m.%d", "%Y%m%d", "%y%m%d",
 ];
 
+/// Serialise a Option<NaiveDateTime> (for serde)
 pub fn serialize<S>(date: &Option<NaiveDateTime>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -32,6 +33,7 @@ where
     }
 }
 
+/// Deserialise a Option<NaiveDateTime> (for serde)
 pub fn deserialize<'a, D>(deserializer: D) -> Result<Option<NaiveDateTime>, D::Error>
 where
     D: Deserializer<'a>,
@@ -46,10 +48,12 @@ where
     }
 }
 
+/// Convert a SystemTime to NaiveDateTime
 pub fn system_to_naive(time: SystemTime) -> NaiveDateTime {
     DateTime::<Local>::from(time).naive_local()
 }
 
+/// Try parsing a string into a NaiveDateTime
 pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &str> {
     if input == "" {
         return Ok(None);
@@ -67,14 +71,17 @@ pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &str> {
     Err("Unknown time format, try, e.g., `YYMMDD`")
 }
 
+/// Try parsing a backup file name into a NaiveDateTime
 pub fn parse_backup_file_name<S: AsRef<str>>(filename: S) -> Result<NaiveDateTime, ParseError> {
     NaiveDateTime::parse_from_str(filename.as_ref(), "backup_%Y-%m-%d_%H-%M-%S.tar.zst")
 }
 
+// Encode a NaiveDateTime into a backup file name
 pub fn create_backup_file_name(time: NaiveDateTime) -> String {
     format!("{}", time.format("backup_%Y-%m-%d_%H-%M-%S.tar.zst"))
 }
 
+/// Get the current time as a NaiveDateTime
 pub fn naive_now() -> NaiveDateTime {
     system_to_naive(SystemTime::now())
 }

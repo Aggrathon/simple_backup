@@ -102,6 +102,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
     }
 }
 
+/// Restore files from a backup
 pub fn restore(
     mut source: BackupReader,
     output: &str,
@@ -155,6 +156,7 @@ pub fn restore(
     }
 
     if !dry {
+        let incremental = source.is_incremental().expect("Could not read backup");
         let bar = ProgressBar::new(include.len() as u64);
         bar.set_style(ProgressStyle::default_bar().template(
             "{wide_msg} {pos:>8} / {len:<8}\n{wide_bar} {elapsed_precise} | {eta_precise}",
@@ -180,6 +182,7 @@ pub fn restore(
                     FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
                 },
                 callback,
+                incremental,
                 force,
             )
         } else {
@@ -194,6 +197,7 @@ pub fn restore(
                     }
                 },
                 callback,
+                incremental,
                 force,
             )
         }

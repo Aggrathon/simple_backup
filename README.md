@@ -11,8 +11,8 @@ A minimal application for doing backups.
 - [X] Incremental backups (using last modified from the file metadata).
 - [X] Selective restores (only deleted files, only selected files, or all files).
 
-- [X] Command line interface, declare includes, excludes, and regex-filters.
-- [X] Commands can be saved as a config file for easy reuse (e.g. for incremental backups).
+- [X] Command line interface (declare includes, excludes, and regex-filters).
+- [X] Configurations can be saved for easy reuse (e.g. for incremental backups).
 - [ ] Graphical user interface (not yet implemented).
 
 ## Usage

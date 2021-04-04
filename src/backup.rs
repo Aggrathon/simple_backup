@@ -57,6 +57,7 @@ pub struct BackupWriter {
 }
 
 impl BackupWriter {
+    /// Create a new backup
     pub fn new(config: Config) -> (Self, Option<Box<dyn Error>>) {
         let (prev_time, error) = if config.incremental {
             match config.time {
@@ -85,6 +86,7 @@ impl BackupWriter {
         )
     }
 
+    /// List all files that are added to the backup
     pub fn get_files<F: FnMut(Result<&mut FileInfo, FileAccessError>)>(
         &mut self,
         all: bool,
@@ -162,6 +164,7 @@ impl BackupWriter {
         Ok(self.list.as_mut().unwrap())
     }
 
+    /// Write (and compress) the backup to disk
     pub fn write(
         &mut self,
         mut on_next: impl FnMut(&mut FileInfo),
@@ -230,6 +233,7 @@ pub struct BackupReader<'a> {
 }
 
 impl<'a> BackupReader<'a> {
+    /// Read a backup
     pub fn read<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         Ok(BackupReader {
             path: path.as_ref().to_path_buf(),
@@ -240,6 +244,7 @@ impl<'a> BackupReader<'a> {
         })
     }
 
+    /// Read a backup from a config
     pub fn from_config(config: Config) -> std::io::Result<Self> {
         let prev = config
             .get_backups()
@@ -264,12 +269,14 @@ impl<'a> BackupReader<'a> {
         Ok(())
     }
 
+    /// Read a backup, but only return the embedded config
     pub fn read_config_only<P: AsRef<Path>>(path: P) -> Result<Config, Box<dyn Error>> {
         let mut br = BackupReader::read(path)?;
         br.read_config()?;
         Ok(br.config.unwrap())
     }
 
+    /// Read the embedded config from the backup
     pub fn read_config(&mut self) -> Result<&Config, Box<dyn Error>> {
         self.use_decoder()?;
         let entry = self.decoder.entries()?.next();
@@ -288,6 +295,7 @@ impl<'a> BackupReader<'a> {
         Ok(self.config.as_ref().unwrap())
     }
 
+    /// Read the embedded list of files from the backup
     pub fn read_list(&mut self) -> Result<&String, Box<dyn Error>> {
         self.use_decoder()?;
         let mut entries = self.decoder.entries()?.skip(1);
@@ -305,6 +313,7 @@ impl<'a> BackupReader<'a> {
         Ok(self.list.as_ref().unwrap())
     }
 
+    /// move the list of files out of the backup
     pub fn extract_list(&mut self) -> Result<String, Box<dyn Error>> {
         if self.list.is_none() {
             self.read_list()?;
@@ -312,15 +321,16 @@ impl<'a> BackupReader<'a> {
         Ok(std::mem::replace(&mut self.list, None).unwrap())
     }
 
+    /// Iterator over the files in the backup
     pub fn files(
         &mut self,
-    ) -> std::io::Result<
-        impl Iterator<Item = std::io::Result<(FileInfo, CompressionDecoderEntry<'_, 'a>)>>,
-    > {
+    ) -> std::io::Result<impl Iterator<Item = std::io::Result<CompressionDecoderEntry<'_, 'a>>>>
+    {
         self.use_decoder()?;
         Ok(self.decoder.entries()?.skip(2))
     }
 
+    /// Read the embedded config and file list, and return the iterator over the files
     #[allow(dead_code)]
     pub fn read_all(
         &mut self,
@@ -328,7 +338,7 @@ impl<'a> BackupReader<'a> {
         (
             &Config,
             &String,
-            impl Iterator<Item = std::io::Result<(FileInfo, CompressionDecoderEntry<'_, 'a>)>>,
+            impl Iterator<Item = std::io::Result<CompressionDecoderEntry<'_, 'a>>>,
         ),
         Box<dyn Error>,
     > {
@@ -368,6 +378,16 @@ impl<'a> BackupReader<'a> {
         ))
     }
 
+    /// Is this an incemental backup
+    pub fn is_incremental(&mut self) -> Result<bool, Box<dyn Error>> {
+        if self.config.is_some() {
+            Ok(self.config.as_ref().unwrap().incremental)
+        } else {
+            Ok(self.read_config()?.incremental)
+        }
+    }
+
+    /// Try to find the previous backup
     pub fn get_previous(&mut self) -> Result<Option<Self>, Box<dyn Error>> {
         if self.config.is_none() {
             self.read_config()?;
@@ -384,25 +404,29 @@ impl<'a> BackupReader<'a> {
         }
     }
 
+    /// Restore all files
     #[allow(dead_code)]
     pub fn restore_all(
         &mut self,
         path_transform: impl FnMut(FileInfo) -> FileInfo,
         callback: impl FnMut(std::io::Result<FileInfo>),
+        incremental: bool,
         overwrite: bool,
     ) -> Result<(), Box<dyn Error>> {
         let list = self.extract_list()?;
         let files = list.split('\n').collect();
-        let res = self.restore_selected(files, path_transform, callback, overwrite);
+        let res = self.restore_selected(files, path_transform, callback, incremental, overwrite);
         self.list = Some(list);
         res
     }
 
+    /// Restore specific files
     pub fn restore_selected(
         &mut self,
         selection: Vec<&str>,
         mut path_transform: impl FnMut(FileInfo) -> FileInfo,
         mut callback: impl FnMut(std::io::Result<FileInfo>),
+        incremental: bool,
         overwrite: bool,
     ) -> Result<(), Box<dyn Error>> {
         let mut not_found: Vec<&str> = vec![];
@@ -415,7 +439,9 @@ impl<'a> BackupReader<'a> {
             match res {
                 Ok((mut fi, mut entry)) => {
                     while fi.get_string().as_str() > current {
-                        not_found.push(current);
+                        if incremental {
+                            not_found.push(current);
+                        }
                         current = match list.next() {
                             Some(f) => f,
                             None => break,
@@ -450,7 +476,13 @@ impl<'a> BackupReader<'a> {
         if not_found.len() > 0 {
             match self.get_previous()? {
                 Some(mut bw) => {
-                    return bw.restore_selected(not_found, path_transform, callback, overwrite)
+                    return bw.restore_selected(
+                        not_found,
+                        path_transform,
+                        callback,
+                        incremental,
+                        overwrite,
+                    )
                 }
                 None => {
                     for f in not_found.iter() {
@@ -464,39 +496,6 @@ impl<'a> BackupReader<'a> {
                         )));
                     }
                 }
-            }
-        }
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub fn restore_these(
-        &mut self,
-        mut path_transform: impl FnMut(FileInfo) -> FileInfo,
-        mut callback: impl FnMut(std::io::Result<FileInfo>),
-        overwrite: bool,
-    ) -> Result<(), Box<dyn Error>> {
-        for res in self.files()? {
-            match res {
-                Ok((fi, mut entry)) => {
-                    let mut path = path_transform(fi);
-                    if !overwrite && path.get_path().exists() {
-                        callback(Err(std::io::Error::new(
-                            std::io::ErrorKind::AlreadyExists,
-                            format!("File '{}' already exists", path.get_string()),
-                        )));
-                    } else {
-                        if let Some(dir) = path.get_path().parent() {
-                            callback(
-                                create_dir_all(dir)
-                                    .and_then(|_| entry.unpack(path.get_path()).and(Ok(path))),
-                            );
-                        } else {
-                            callback(entry.unpack(path.get_path()).and(Ok(path)));
-                        }
-                    }
-                }
-                Err(e) => callback(Err(e)),
             }
         }
         Ok(())
