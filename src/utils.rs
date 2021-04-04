@@ -1,5 +1,5 @@
 use std::{
-    ffi::OsStr,
+    cmp::Ordering,
     fs::ReadDir,
     path::{Path, PathBuf},
 };
@@ -19,90 +19,68 @@ macro_rules! try_some {
     };
 }
 
-macro_rules! try_option {
-    ($value:expr) => {
-        match $value {
-            Some(v) => v,
-            None => return None,
-        }
+const PATTERN_LENGTH: usize = "2020-20-20_20-20-20.tar.zst".len();
+
+fn compare_backup_paths(p1: &PathBuf, p2: &PathBuf) -> Ordering {
+    let f1 = match p1.file_name() {
+        None => return Ordering::Less,
+        Some(f) => match f.to_str() {
+            None => return Ordering::Less,
+            Some(s) => s,
+        },
     };
-}
-
-const PATTERN_LENGTH: usize = "_2020-20-20_20-20-20.tar.zst".len();
-
-fn get_pattern(name: &OsStr) -> String {
-    let f = name.to_string_lossy();
-    if f.len() >= PATTERN_LENGTH {
-        f[(f.len() - PATTERN_LENGTH)..].to_string()
-    } else {
-        f.to_string()
+    let f2 = match p2.file_name() {
+        None => return Ordering::Greater,
+        Some(f) => match f.to_str() {
+            None => return Ordering::Greater,
+            Some(s) => s,
+        },
+    };
+    if f1.len() <= PATTERN_LENGTH || f2.len() <= PATTERN_LENGTH {
+        return f1.cmp(f2);
     }
+    f1[(f1.len() - PATTERN_LENGTH)..(f1.len() - 8)]
+        .cmp(&f2[(f2.len() - PATTERN_LENGTH)..(f2.len() - 8)])
 }
 
-enum BackupIteratorPattern {
-    None,
-    Timestamp,
-}
 pub struct BackupIterator {
     constant: Option<std::io::Result<PathBuf>>,
     dir: Option<ReadDir>,
-    pattern: BackupIteratorPattern,
 }
 
 impl BackupIterator {
-    /// Create an iterator over backups based on timestamps
-    pub fn timestamp<P: AsRef<Path>>(dir: P) -> Self {
-        Self::new(dir, BackupIteratorPattern::Timestamp)
-    }
-
     /// Create an iterator over backups based on ONE specific backup
     pub fn exact(path: PathBuf) -> Self {
         BackupIterator {
             constant: Some(path.metadata().map(|_| path)),
             dir: None,
-            pattern: BackupIteratorPattern::None,
         }
     }
 
-    fn new<P: AsRef<Path>>(dir: P, pattern: BackupIteratorPattern) -> Self {
+    /// Create an iterator over backups based on timestamps
+    pub fn timestamp<P: AsRef<Path>>(dir: P) -> Self {
         match dir.as_ref().read_dir() {
             Err(e) => BackupIterator {
                 constant: Some(Err(e)),
                 dir: None,
-                pattern: BackupIteratorPattern::None,
             },
             Ok(d) => BackupIterator {
                 constant: None,
                 dir: Some(d),
-                pattern,
             },
         }
     }
 
     /// Get the latest backup based on the timestamp in the file name
     pub fn get_latest(&mut self) -> Option<PathBuf> {
-        self.filter_map(|res| res.ok())
-            .filter_map(|p| {
-                let s = get_pattern(try_option!(&p.file_name()));
-                Some((p, s))
-            })
-            .max_by(|(_, f1), (_, f2)| f1.cmp(&f2))
-            .map(|(p, _)| p)
+        self.filter_map(|res| res.ok()).max_by(compare_backup_paths)
     }
 
     /// Get the previous backup based on a file name
-    pub fn get_previous<P: AsRef<Path>>(&mut self, path: P) -> Option<PathBuf> {
-        let limit = get_pattern(try_option!(path.as_ref().file_name()));
+    pub fn get_previous(&mut self, path: &PathBuf) -> Option<PathBuf> {
         self.filter_map(|res| res.ok())
-            .filter_map(|p| {
-                let s = get_pattern(try_option!(&p.file_name()));
-                if s >= limit {
-                    return None;
-                }
-                Some((p, s))
-            })
-            .max_by(|(_, f1), (_, f2)| f1.cmp(&f2))
-            .map(|(p, _)| p)
+            .filter(|p| compare_backup_paths(path, p) == Ordering::Greater)
+            .max_by(compare_backup_paths)
     }
 }
 
@@ -118,14 +96,12 @@ impl Iterator for BackupIterator {
                 if !try_some!(path.metadata()).is_file() {
                     continue;
                 }
-                let string = path.file_name().unwrap().to_string_lossy();
-                match &self.pattern {
-                    BackupIteratorPattern::Timestamp => {
-                        if parse_backup_file_name(&string).is_ok() {
+                if let Some(p) = path.file_name() {
+                    if let Some(s) = p.to_str() {
+                        if parse_backup_file_name(s).is_ok() {
                             return Some(Ok(path));
                         }
                     }
-                    BackupIteratorPattern::None => {}
                 }
             }
             None
@@ -203,18 +179,12 @@ mod tests {
         assert_eq!(Some(Ok(1)), try_some_ok());
         let try_some_err: fn() -> Option<Result<i32, i32>> = || Some(Ok(try_some!(Err(1))));
         assert_eq!(Some(Err(1)), try_some_err());
-
-        let option_some: fn() -> Option<i32> = || Some(try_option!(Some(1)));
-        assert_eq!(Some(1), option_some());
-        let option_none: fn() -> Option<i32> = || Some(try_option!(None));
-        assert_eq!(None, option_none());
     }
 
     #[test]
     fn backup_iterator() -> std::io::Result<()> {
         let dir = tempdir()?;
         let f1 = dir.path().join("asd.tar.zst");
-        let f1b = f1.clone();
         let f2 = dir.path().join("backup_2020-02-20_20-20-20.tar.zst");
         let f3 = dir.path().join("backup_2020-04-24_21-20-20.tar.zst");
         let f4 = dir.path().join("backup_2020-04-24_22-20-20.tar.zst");
@@ -223,17 +193,19 @@ mod tests {
         File::create(&f3)?;
         File::create(&f4)?;
         let mut bi = BackupIterator::timestamp(dir.path());
-        assert_eq!(bi.next().unwrap().unwrap(), f2);
-        assert_eq!(bi.next().unwrap().unwrap(), f3);
-        assert_eq!(bi.next().unwrap().unwrap(), f4);
+        assert_eq!(bi.next().unwrap()?, f2);
+        assert_eq!(bi.next().unwrap()?, f3);
+        assert_eq!(bi.next().unwrap()?, f4);
         assert!(bi.next().is_none());
         let mut bi = BackupIterator::timestamp(dir.path());
         assert_eq!(bi.get_latest().unwrap(), f4);
         let mut bi = BackupIterator::timestamp(dir.path());
-        assert_eq!(bi.get_previous(f4).unwrap(), f3);
-        let mut bi = BackupIterator::exact(f1);
-        assert_eq!(bi.next().unwrap().unwrap(), f1b);
+        assert_eq!(bi.get_previous(&f4.to_path_buf()).unwrap(), f3);
+        let mut bi = BackupIterator::exact(f1.clone());
+        assert_eq!(bi.next().unwrap()?, f1);
         assert!(bi.next().is_none());
+        let mut bi = BackupIterator::exact(f1.clone());
+        assert_eq!(bi.get_latest().unwrap(), f1);
         Ok(())
     }
 
