@@ -42,4 +42,4 @@ rm backup_*.tar.zst config.yml test1.txt dir/test3.txt dir -r
 
 ## Binaries
 
-Precompiled binaries can be found on the [releases page](/releases).
+Precompiled binaries can be found on the [releases page](https://github.com/Aggrathon/simple_backup/releases/).
