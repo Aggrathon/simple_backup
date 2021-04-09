@@ -215,6 +215,39 @@ impl FileCrawler {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn dir_read<P: AsRef<Path>>(
+    dir: P,
+) -> std::io::Result<impl Iterator<Item = std::io::Result<DirEntry>>> {
+    if dir.as_ref().as_os_str() == "." {
+        Path::new("").read_dir()
+    } else {
+        dir.as_ref().read_dir()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn dir_read<P: AsRef<Path>>(
+    dir: P,
+) -> std::io::Result<impl Iterator<Item = std::io::Result<DirEntry>>> {
+    dir.as_ref().read_dir()
+}
+
+#[cfg(target_os = "windows")]
+fn dir_path(d: &DirEntry, _local: bool) -> PathBuf {
+    d.path()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn dir_path(d: &DirEntry, local: bool) -> PathBuf {
+    let path = d.path();
+    if local && path.is_relative() {
+        path.clean()
+    } else {
+        path
+    }
+}
+
 impl Iterator for FileCrawler {
     type Item = Result<FileInfo, FileAccessError>;
 
@@ -230,19 +263,13 @@ impl Iterator for FileCrawler {
                     .map_err(|e| FileAccessError::new(e, item.move_string())))));
                 return Some(Ok(item));
             } else {
-                let path = item.path.as_ref().unwrap();
-                let local = self.local && path.as_os_str() == ".";
-                let dir = try_some!(path
-                    .read_dir()
-                    .map_err(|e| FileAccessError::new(e, item.move_string())));
+                let string = item.move_string();
+                let path = item.consume_path();
+                let dir =
+                    try_some!(dir_read(path).map_err(|e| FileAccessError::new(e, string.clone())));
                 for f in dir {
-                    let entry =
-                        try_some!(f.map_err(|e| FileAccessError::new(e, item.move_string())));
-                    let path = if local {
-                        entry.path().clean()
-                    } else {
-                        entry.path()
-                    };
+                    let entry = try_some!(f.map_err(|e| FileAccessError::new(e, string.clone())));
+                    let path = dir_path(&entry, self.local);
                     let string = path.to_string_lossy();
                     if !self.regex.is_match(&string) {
                         let string = string.to_string();
