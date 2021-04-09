@@ -1,8 +1,6 @@
-use std::{
-    collections::VecDeque,
-    fmt::Display,
-    path::{Path, PathBuf},
-};
+use std::fmt::Display;
+use std::fs::DirEntry;
+use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
 use path_absolutize::Absolutize;
@@ -139,7 +137,8 @@ impl FileAccessError {
 
 /// Iterator for crawling through files to backup
 pub struct FileCrawler {
-    stack: VecDeque<FileInfo>,
+    temp: Vec<(FileInfo, DirEntry)>,
+    stack: Vec<FileInfo>,
     regex: RegexSet,
 }
 
@@ -158,7 +157,7 @@ impl FileCrawler {
         filter: VS3,
         local: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut stack: VecDeque<FileInfo>;
+        let mut stack: Vec<FileInfo>;
         let exc: Vec<String>;
         if local {
             stack = include
@@ -185,7 +184,7 @@ impl FileCrawler {
                         .absolutize()
                         .map(|p| FileInfo::from(p.to_path_buf()))
                 })
-                .collect::<std::io::Result<VecDeque<FileInfo>>>()?;
+                .collect::<std::io::Result<Vec<FileInfo>>>()?;
             exc = exclude
                 .as_ref()
                 .iter()
@@ -196,9 +195,7 @@ impl FileCrawler {
                 })
                 .collect::<std::io::Result<Vec<String>>>()?;
         }
-        stack
-            .make_contiguous()
-            .sort_unstable_by(|a, b| a.path.as_ref().unwrap().cmp(b.path.as_ref().unwrap()));
+        stack.sort_unstable_by(|a, b| b.path.as_ref().unwrap().cmp(a.path.as_ref().unwrap()));
 
         let regex = RegexSet::new(
             filter
@@ -208,7 +205,11 @@ impl FileCrawler {
                 .chain(exc.iter().map(|s| s.as_str())),
         )?;
 
-        Ok(Self { stack, regex })
+        Ok(Self {
+            stack,
+            regex,
+            temp: vec![],
+        })
     }
 }
 
@@ -216,7 +217,7 @@ impl Iterator for FileCrawler {
     type Item = Result<FileInfo, FileAccessError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(mut item) = self.stack.pop_front() {
+        while let Some(mut item) = self.stack.pop() {
             let md = try_some!(item
                 .get_path()
                 .metadata()
@@ -227,7 +228,6 @@ impl Iterator for FileCrawler {
                     .map_err(|e| FileAccessError::new(e, item.move_string())))));
                 return Some(Ok(item));
             } else {
-                let mut count: usize = 0;
                 let dir = try_some!(if item.get_path().as_os_str() == "." {
                     PathBuf::from("")
                         .read_dir()
@@ -245,14 +245,34 @@ impl Iterator for FileCrawler {
                     if !self.regex.is_match(&string) {
                         let string = string.to_string();
                         let fi = FileInfo::from_both(path, string);
-                        self.stack.push_front(fi);
-                        count += 1;
+                        self.temp.push((fi, entry));
                     }
                 }
-                // Reverse the order of the added items to preserve lexicographic ordering
-                if count > 1 {
-                    for i in 0..(count / 2) {
-                        self.stack.swap(i, count - i - 1);
+                if self.temp.len() > 0 {
+                    // Sort the added items to preserve lexicographic ordering
+                    self.temp
+                        .sort_unstable_by(|a, b| a.1.file_name().cmp(&b.1.file_name()));
+                    // Check for items already on the stack
+                    let mut count = self.stack.len();
+                    if count > 0 {
+                        count -= 1;
+                        for (fi1, _) in self.temp.iter() {
+                            match self.stack.get(count) {
+                                Some(fi2) => {
+                                    if fi1.path.as_ref().unwrap() == fi2.path.as_ref().unwrap() {
+                                        self.stack.remove(count);
+                                        count -= 1;
+                                    }
+                                }
+                                None => {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    // Add new items to the stack
+                    while let Some((fi, _)) = self.temp.pop() {
+                        self.stack.push(fi);
                     }
                 }
             }
