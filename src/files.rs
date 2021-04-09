@@ -254,18 +254,29 @@ impl Iterator for FileCrawler {
                         .sort_unstable_by(|a, b| a.1.file_name().cmp(&b.1.file_name()));
                     // Check for items already on the stack
                     let mut count = self.stack.len();
+                    let mut needs_sorting = false;
                     if count > 0 {
                         count -= 1;
                         for (fi1, _) in self.temp.iter() {
-                            match self.stack.get(count) {
-                                Some(fi2) => {
-                                    if fi1.path.as_ref().unwrap() == fi2.path.as_ref().unwrap() {
-                                        self.stack.remove(count);
+                            // SAFETY: count is guaranteed to be between zero and self.stack.len()
+                            let fi2 = unsafe { self.stack.get_unchecked(count) };
+                            match fi1.path.as_ref().unwrap().cmp(&fi2.path.as_ref().unwrap()) {
+                                std::cmp::Ordering::Less => {}
+                                std::cmp::Ordering::Equal => {
+                                    self.stack.remove(count);
+                                    if count == 0 {
+                                        break;
+                                    } else {
                                         count -= 1;
                                     }
                                 }
-                                None => {
-                                    break;
+                                std::cmp::Ordering::Greater => {
+                                    needs_sorting = true;
+                                    if count == 0 {
+                                        break;
+                                    } else {
+                                        count -= 1;
+                                    }
                                 }
                             }
                         }
@@ -273,6 +284,12 @@ impl Iterator for FileCrawler {
                     // Add new items to the stack
                     while let Some((fi, _)) = self.temp.pop() {
                         self.stack.push(fi);
+                    }
+                    // If the top of the stack is not sorted
+                    if needs_sorting {
+                        self.stack[count..].sort_unstable_by(|a, b| {
+                            b.path.as_ref().unwrap().cmp(&a.path.as_ref().unwrap())
+                        });
                     }
                 }
             }
