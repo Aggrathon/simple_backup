@@ -140,6 +140,7 @@ pub struct FileCrawler {
     temp: Vec<(FileInfo, DirEntry)>,
     stack: Vec<FileInfo>,
     regex: RegexSet,
+    local: bool,
 }
 
 impl FileCrawler {
@@ -209,6 +210,7 @@ impl FileCrawler {
             stack,
             regex,
             temp: vec![],
+            local,
         })
     }
 }
@@ -228,19 +230,19 @@ impl Iterator for FileCrawler {
                     .map_err(|e| FileAccessError::new(e, item.move_string())))));
                 return Some(Ok(item));
             } else {
-                let dir = try_some!(if item.get_path().as_os_str() == "." {
-                    PathBuf::from("")
-                        .read_dir()
-                        .map_err(|e| FileAccessError::new(e, item.move_string()))
-                } else {
-                    item.get_path()
-                        .read_dir()
-                        .map_err(|e| FileAccessError::new(e, item.move_string()))
-                });
+                let path = item.path.as_ref().unwrap();
+                let local = self.local && path.as_os_str() == ".";
+                let dir = try_some!(path
+                    .read_dir()
+                    .map_err(|e| FileAccessError::new(e, item.move_string())));
                 for f in dir {
                     let entry =
                         try_some!(f.map_err(|e| FileAccessError::new(e, item.move_string())));
-                    let path = entry.path();
+                    let path = if local {
+                        entry.path().clean()
+                    } else {
+                        entry.path()
+                    };
                     let string = path.to_string_lossy();
                     if !self.regex.is_match(&string) {
                         let string = string.to_string();

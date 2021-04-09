@@ -161,7 +161,7 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn local_test() {
+fn local_test() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir().unwrap();
 
     let mut config = Config {
@@ -177,11 +177,12 @@ fn local_test() {
         origin: None,
     };
 
-    let conf = Config::from_yaml(config.to_yaml().unwrap()).unwrap();
+    let conf = Config::from_yaml(config.to_yaml()?)?;
     backup(conf, false, false, false);
 
+    let reader = BackupReader::from_config(config)?;
     restore(
-        BackupReader::from_config(config).unwrap(),
+        reader,
         &dir.path().to_string_lossy(),
         vec![],
         vec![],
@@ -195,6 +196,7 @@ fn local_test() {
     assert!(!dir.path().join(".target").exists());
     assert!(!dir.path().join(".git").exists());
     assert!(!dir.path().join("README.md").exists());
+    Ok(())
 }
 
 #[test]
