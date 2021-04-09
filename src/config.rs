@@ -1,19 +1,15 @@
-use std::{
-    cmp::{max, min},
-    fs::File,
-    io::{Error, ErrorKind},
-    path::{Path, PathBuf},
-};
+use std::cmp::{max, min};
+use std::fs::File;
+use std::io::{Error, ErrorKind};
+use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
 use clap::{ArgMatches, Values};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    parse_date,
-    parse_date::{create_backup_file_name, naive_now},
-    utils::BackupIterator,
-};
+use crate::parse_date;
+use crate::parse_date::{create_backup_file_name, naive_now};
+use crate::utils::BackupIterator;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {

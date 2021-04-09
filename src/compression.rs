@@ -1,9 +1,7 @@
-use std::{
-    fmt::Debug,
-    fs::{create_dir_all, remove_file, File},
-    io::BufReader,
-    path::{Path, PathBuf},
-};
+use std::fmt::Debug;
+use std::fs::{create_dir_all, remove_file, File};
+use std::io::BufReader;
+use std::path::{Path, PathBuf};
 
 use path_clean::PathClean;
 use tar::{Archive, Builder, Entry, Header};
@@ -127,7 +125,8 @@ fn path_from_archive<P: AsRef<Path>>(path: P) -> FileInfo {
 
 #[cfg(test)]
 mod tests {
-    use std::{io::Cursor, path::PathBuf};
+    use std::io::Cursor;
+    use std::path::PathBuf;
 
     use path_absolutize::Absolutize;
     use tar::{Archive, Builder, Header};

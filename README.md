@@ -7,10 +7,10 @@ A minimal application for doing backups.
 - [X] No propriety format, the backups are saved in a normal compressed archive.
 - [X] Modern, state-of-the-art compression using [zstd](https://www.zstd.net).
 - [X] Optional multithreading for increased performance.
-
+<!--></!-->
 - [X] Incremental backups (using last modified from the file metadata).
 - [X] Selective restores (only deleted files, only selected files, or all files).
-
+<!--></!-->
 - [X] Command line interface (declare includes, excludes, and regex-filters).
 - [X] Configurations can be saved for easy reuse (e.g. for incremental backups).
 - [ ] Graphical user interface (not yet implemented).
@@ -42,4 +42,4 @@ rm backup_*.tar.zst config.yml test1.txt dir/test3.txt dir -r
 
 ## Binaries
 
-Precompiled binaries can be found on the [releases page](/releases).
+Precompiled binaries can be found on the [releases page](https://github.com/Aggrathon/simple_backup/releases/).

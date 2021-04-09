@@ -1,19 +1,15 @@
-use std::{
-    error::Error,
-    fmt::{Display, Formatter},
-    fs::create_dir_all,
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::fs::create_dir_all;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
 
-use crate::{
-    compression::{CompressionDecoder, CompressionDecoderEntry, CompressionEncoder},
-    config::Config,
-    files::{FileAccessError, FileCrawler, FileInfo},
-    parse_date::{self, naive_now},
-};
+use crate::compression::{CompressionDecoder, CompressionDecoderEntry, CompressionEncoder};
+use crate::config::Config;
+use crate::files::{FileAccessError, FileCrawler, FileInfo};
+use crate::parse_date::{self, naive_now};
 
 #[derive(Debug)]
 pub enum BackupError {

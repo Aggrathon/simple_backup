@@ -1,7 +1,8 @@
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, ParseError};
-use serde::{de::Error, Deserialize, Deserializer, Serializer};
+use serde::de::Error;
+use serde::{Deserialize, Deserializer, Serializer};
 
 const FORMATS_DT: [&'static str; 13] = [
     "%Y-%m-%d_%H-%M-%S",
