@@ -162,7 +162,7 @@ pub fn get_backup_from_path<'a, S: AsRef<str>>(
 
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
+    use std::{fs::File, path::PathBuf};
 
     use tempfile::tempdir;
 
@@ -188,11 +188,12 @@ mod tests {
         File::create(&f2)?;
         File::create(&f3)?;
         File::create(&f4)?;
-        let mut bi = BackupIterator::timestamp(dir.path());
-        assert_eq!(bi.next().unwrap()?, f2);
-        assert_eq!(bi.next().unwrap()?, f3);
-        assert_eq!(bi.next().unwrap()?, f4);
-        assert!(bi.next().is_none());
+        let bi = BackupIterator::timestamp(dir.path());
+        let bis = bi.collect::<std::io::Result<Vec<PathBuf>>>()?;
+        assert_eq!(bis.len(), 3);
+        assert!(bis.contains(&f2));
+        assert!(bis.contains(&f3));
+        assert!(bis.contains(&f4));
         let mut bi = BackupIterator::timestamp(dir.path());
         assert_eq!(bi.get_latest().unwrap(), f4);
         let mut bi = BackupIterator::timestamp(dir.path());
