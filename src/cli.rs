@@ -4,11 +4,9 @@ use std::path::PathBuf;
 use indicatif::{ProgressBar, ProgressStyle};
 use regex::RegexSet;
 
-use crate::{
-    backup::{BackupReader, BackupWriter},
-    config::Config,
-    files::{FileAccessError, FileInfo},
-};
+use crate::backup::{BackupReader, BackupWriter};
+use crate::config::Config;
+use crate::files::{FileAccessError, FileInfo};
 
 /// Backup files
 pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {

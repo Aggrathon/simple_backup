@@ -7,6 +7,4 @@ imports_layout = "HorizontalVertical"
 group_imports = "StdExternalCrate"
 overflow_delimited_expr = true
 use_try_shorthand = true
-# This replaces `merge_imports = true` at some point:
-# imports_granularity = "Module"
-merge_imports = true
+imports_granularity = "Module"

@@ -2,13 +2,11 @@
 
 use std::fs::{remove_file, File};
 
-use simple_backup::{
-    self,
-    backup::{BackupReader, BackupWriter},
-    cli::{backup, restore},
-    config::Config,
-    parse_date::naive_now,
-};
+use simple_backup;
+use simple_backup::backup::{BackupReader, BackupWriter};
+use simple_backup::cli::{backup, restore};
+use simple_backup::config::Config;
+use simple_backup::parse_date::naive_now;
 use tempfile::tempdir;
 
 #[test]

@@ -1,14 +1,10 @@
-use std::{
-    cmp::Ordering,
-    fs::ReadDir,
-    path::{Path, PathBuf},
-};
+use std::cmp::Ordering;
+use std::fs::ReadDir;
+use std::path::{Path, PathBuf};
 
-use crate::{
-    backup::{BackupError, BackupReader},
-    config::Config,
-    parse_date::parse_backup_file_name,
-};
+use crate::backup::{BackupError, BackupReader};
+use crate::config::Config;
+use crate::parse_date::parse_backup_file_name;
 
 macro_rules! try_some {
     ($value:expr) => {
