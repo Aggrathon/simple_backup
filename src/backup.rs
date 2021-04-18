@@ -156,6 +156,7 @@ impl BackupWriter {
                         .collect(),
                 );
             }
+            self.list.as_mut().unwrap().sort_unstable()
         }
         Ok(self.list.as_mut().unwrap())
     }

@@ -10,10 +10,10 @@ use regex::RegexSet;
 use crate::parse_date;
 
 /// A struct that contains both the PathBuf and String versions of a path
-#[derive(Debug)]
+#[derive(Debug, Eq, Ord)]
 pub struct FileInfo {
-    path: Option<PathBuf>,
     string: Option<String>,
+    path: Option<PathBuf>,
     pub time: Option<NaiveDateTime>,
 }
 
@@ -53,6 +53,38 @@ impl From<&str> for FileInfo {
             string: Some(path.to_string()),
             time: None,
         }
+    }
+}
+
+impl PartialEq for FileInfo {
+    fn eq(&self, other: &Self) -> bool {
+        if let Some(s1) = self.string.as_ref() {
+            if let Some(s2) = other.string.as_ref() {
+                return s1 == s2;
+            }
+        }
+        if let Some(p1) = self.path.as_ref() {
+            if let Some(p2) = other.path.as_ref() {
+                return p1 == p2;
+            }
+        }
+        false
+    }
+}
+
+impl PartialOrd for FileInfo {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if let Some(s1) = self.string.as_ref() {
+            if let Some(s2) = other.string.as_ref() {
+                return Some(s1.cmp(s2));
+            }
+        }
+        if let Some(p1) = self.path.as_ref() {
+            if let Some(p2) = other.path.as_ref() {
+                return Some(p1.cmp(p2));
+            }
+        }
+        None
     }
 }
 
