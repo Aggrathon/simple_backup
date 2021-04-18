@@ -274,7 +274,7 @@ impl<'a> BackupReader<'a> {
     }
 
     /// Read the embedded config from the backup
-    pub fn read_config(&mut self) -> Result<&Config, Box<dyn Error>> {
+    pub fn read_config(&mut self) -> Result<&mut Config, Box<dyn Error>> {
         self.use_decoder()?;
         let entry = self.decoder.entries()?.next();
         if entry.is_none() {
@@ -289,7 +289,15 @@ impl<'a> BackupReader<'a> {
         let mut conf: Config = Config::from_yaml(&s)?;
         conf.origin = Some(self.path.to_string_lossy().to_string());
         self.config = Some(conf);
-        Ok(self.config.as_ref().unwrap())
+        Ok(self.config.as_mut().unwrap())
+    }
+
+    pub fn get_config(&mut self) -> Result<&mut Config, Box<dyn Error>> {
+        if self.config.is_none() {
+            self.read_config()
+        } else {
+            Ok(self.config.as_mut().unwrap())
+        }
     }
 
     /// Read the embedded list of files from the backup
@@ -377,11 +385,7 @@ impl<'a> BackupReader<'a> {
 
     /// Is this an incemental backup
     pub fn is_incremental(&mut self) -> Result<bool, Box<dyn Error>> {
-        if self.config.is_some() {
-            Ok(self.config.as_ref().unwrap().incremental)
-        } else {
-            Ok(self.read_config()?.incremental)
-        }
+        Ok(self.get_config()?.incremental)
     }
 
     /// Try to find the previous backup
@@ -399,6 +403,40 @@ impl<'a> BackupReader<'a> {
             None => Ok(None),
             Some(path) => Ok(Some(BackupReader::read(path)?)),
         }
+    }
+
+    /// Restore all files from (only) this backup
+    #[allow(dead_code)]
+    pub fn restore_this(
+        &mut self,
+        mut path_transform: impl FnMut(FileInfo) -> FileInfo,
+        mut callback: impl FnMut(std::io::Result<FileInfo>),
+        overwrite: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        for res in self.files()? {
+            match res {
+                Ok((fi, mut entry)) => {
+                    let mut path = path_transform(fi);
+                    if !overwrite && path.get_path().exists() {
+                        callback(Err(std::io::Error::new(
+                            std::io::ErrorKind::AlreadyExists,
+                            format!("File '{}' already exists", path.get_string()),
+                        )));
+                    } else {
+                        if let Some(dir) = path.get_path().parent() {
+                            callback(
+                                create_dir_all(dir)
+                                    .and_then(|_| entry.unpack(path.get_path()).and(Ok(path))),
+                            );
+                        } else {
+                            callback(entry.unpack(path.get_path()).and(Ok(path)));
+                        }
+                    }
+                }
+                Err(e) => callback(Err(e)),
+            }
+        }
+        Ok(())
     }
 
     /// Restore all files
@@ -433,12 +471,15 @@ impl<'a> BackupReader<'a> {
         for res in self.files()? {
             match res {
                 Ok((mut fi, mut entry)) => {
-                    while fi.get_string().as_str() > current {
-                        not_found.push(current);
-                        current = match list.next() {
-                            Some(f) => f,
-                            None => break,
-                        };
+                    {
+                        let fis = fi.get_string().as_str();
+                        while fis > current {
+                            not_found.push(current);
+                            current = match list.next() {
+                                Some(f) => f,
+                                None => break,
+                            };
+                        }
                     }
                     if fi.get_string() == current {
                         let mut path = path_transform(fi);

@@ -15,6 +15,16 @@ macro_rules! try_some {
     };
 }
 
+#[cfg(target_os = "windows")]
+pub(crate) fn sanitise_windows_paths<S: AsRef<str>>(path: S) -> String {
+    path.as_ref().replace('\\', "/")
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn sanitise_windows_paths<S: AsRef<str>>(path: S) -> String {
+    path.as_ref().to_string()
+}
+
 const PATTERN_LENGTH: usize = "2020-20-20_20-20-20.tar.zst".len();
 
 fn compare_backup_paths(p1: &PathBuf, p2: &PathBuf) -> Ordering {

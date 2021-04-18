@@ -7,6 +7,7 @@ use regex::RegexSet;
 use crate::backup::{BackupReader, BackupWriter};
 use crate::config::Config;
 use crate::files::{FileAccessError, FileInfo};
+use crate::utils::sanitise_windows_paths;
 
 /// Backup files
 pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
@@ -107,40 +108,58 @@ pub fn restore(
     include: Vec<&str>,
     regex: Vec<&str>,
     flatten: bool,
+    non_incremental: bool,
     force: bool,
     verbose: bool,
     dry: bool,
 ) {
+    let non_incremental = {
+        let mut conf = source.get_config().expect("Could not read the backup");
+        if conf.incremental {
+            if non_incremental {
+                // non_incremental => !config.incremental
+                conf.incremental = false;
+            }
+            non_incremental
+        } else {
+            // !config.incremental => non_incremental
+            true
+        }
+    };
     let list_str: String;
     let list: Vec<String>;
     let include: Vec<&str> = if include.is_empty() {
-        list_str = source
-            .extract_list()
-            .expect("Could not get list of files from backup");
-        if regex.is_empty() {
-            list_str.split('\n').collect()
+        if non_incremental && regex.is_empty() {
+            vec![]
         } else {
-            let regex = RegexSet::new(regex).expect("Could not parse regex");
-            list_str
-                .split('\n')
-                .filter(|f| !regex.is_match(f))
-                .collect()
+            list_str = source
+                .extract_list()
+                .expect("Could not get list of files from backup");
+            if regex.is_empty() {
+                list_str.split('\n').collect()
+            } else {
+                let regex = RegexSet::new(regex).expect("Could not parse regex");
+                list_str
+                    .split('\n')
+                    .filter(|f| !regex.is_match(f))
+                    .collect()
+            }
         }
     } else {
         if regex.is_empty() {
-            list = include.into_iter().map(|f| f.replace('\\', "/")).collect();
+            list = include.into_iter().map(sanitise_windows_paths).collect();
         } else {
             let regex = RegexSet::new(regex).expect("Could not parse regex");
             list = include
                 .into_iter()
                 .filter(|f| !regex.is_match(f))
-                .map(|f| f.replace('\\', "/"))
+                .map(sanitise_windows_paths)
                 .collect();
         }
         list.iter().map(String::as_str).collect()
     };
 
-    if include.is_empty() {
+    if include.is_empty() && !non_incremental {
         eprintln!("No files to backup");
         return;
     }
@@ -172,29 +191,29 @@ pub fn restore(
         };
 
         if flatten {
-            source.restore_selected(
-                include,
-                |mut fi| {
-                    bar.set_message(&fi.move_string());
-                    FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
-                },
-                callback,
-                force,
-            )
+            let path_transform = |mut fi: FileInfo| {
+                bar.set_message(&fi.move_string());
+                FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
+            };
+            if non_incremental && include.is_empty() {
+                source.restore_this(path_transform, callback, force)
+            } else {
+                source.restore_selected(include, path_transform, callback, force)
+            }
         } else {
-            source.restore_selected(
-                include,
-                |mut fi| {
-                    bar.set_message(&fi.move_string());
-                    if fi.get_path().has_root() {
-                        fi
-                    } else {
-                        FileInfo::from(output.join(fi.consume_path()))
-                    }
-                },
-                callback,
-                force,
-            )
+            let path_transform = |mut fi: FileInfo| {
+                bar.set_message(&fi.move_string());
+                if fi.get_path().has_root() {
+                    fi
+                } else {
+                    FileInfo::from(output.join(fi.consume_path()))
+                }
+            };
+            if non_incremental && include.is_empty() {
+                source.restore_this(path_transform, callback, force)
+            } else {
+                source.restore_selected(include, path_transform, callback, force)
+            }
         }
         .expect("Could not restore from backup");
 

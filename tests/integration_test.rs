@@ -53,6 +53,7 @@ fn cli_test() {
         false,
         false,
         false,
+        false,
     );
 
     assert!(f1.exists());
@@ -67,6 +68,7 @@ fn cli_test() {
         vec![],
         vec![&f2.to_string_lossy().replace('\\', "/")],
         false,
+        true,
         true,
         false,
         false,
@@ -83,6 +85,7 @@ fn cli_test() {
         &dir2.to_string_lossy(),
         vec![],
         vec![],
+        true,
         true,
         true,
         false,
@@ -139,23 +142,26 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut br1 = BackupReader::from_config(bw2.config)?;
     let mut br2 = br1.get_previous()?.unwrap();
 
-    br1.restore_all(|fi| fi, |_| (), false, false)?;
+    br1.restore_this(|fi| fi, |_| (), false)?;
     assert!(!f2.exists());
     assert!(f5.exists());
 
     remove_file(&f5)?;
     assert!(!f5.exists());
 
-    br2.restore_all(|fi| fi, |_| (), true, false)?;
+    br2.restore_this(|fi| fi, |_| (), false)?;
     assert!(f2.exists());
     assert!(!f5.exists());
 
     remove_file(&f2)?;
     assert!(!f2.exists());
 
-    br1.restore_all(|fi| fi, |_| (), true, true)?;
-    assert!(f2.exists());
+    br1.restore_this(|fi| fi, |_| (), true)?;
+    assert!(!f2.exists());
     assert!(f5.exists());
+
+    br1.restore_all(|fi| fi, |_| (), false)?;
+    assert!(f2.exists());
 
     Ok(())
 }
@@ -186,6 +192,7 @@ fn local_test() -> Result<(), Box<dyn std::error::Error>> {
         &dir.path().to_string_lossy(),
         vec![],
         vec![],
+        false,
         false,
         false,
         false,
@@ -252,6 +259,7 @@ fn time_test() -> std::io::Result<()> {
         &dir.path().to_string_lossy(),
         vec![],
         vec![],
+        false,
         false,
         false,
         false,

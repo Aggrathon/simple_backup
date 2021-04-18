@@ -207,6 +207,13 @@ fn arg_local<'a>() -> Arg<'a, 'a> {
         .help("Preserve relative (local) paths instead of converting to absolute paths")
 }
 
+fn arg_this<'a>() -> Arg<'a, 'a> {
+    Arg::with_name("this")
+        .short("t")
+        .long("this")
+        .help("Only restore from the selected / latest backup even if it is incremental")
+}
+
 fn main() {
     let matches = App::new(crate_name!())
         .setting(clap::AppSettings::SubcommandsNegateReqs)
@@ -244,6 +251,7 @@ fn main() {
                 .arg(arg_include(true))
                 .arg(arg_regex(true))
                 .arg(arg_flatten())
+                .arg(arg_this())
                 .arg(arg_force())
                 .arg(arg_verbose())
                 .arg(arg_dry()),
@@ -281,6 +289,7 @@ fn main() {
                 .unwrap_or(Values::default())
                 .collect(),
             matches.is_present("flatten"),
+            matches.is_present("this"),
             matches.is_present("force"),
             matches.is_present("verbose"),
             matches.is_present("dry"),
