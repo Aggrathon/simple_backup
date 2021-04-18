@@ -386,8 +386,8 @@ impl<'a> BackupReader<'a> {
 
     /// Try to find the previous backup
     pub fn get_previous(&mut self) -> Result<Option<Self>, Box<dyn Error>> {
-        if self.config.is_none() {
-            self.read_config()?;
+        if !self.is_incremental()? {
+            return Ok(None);
         }
         match self
             .config
@@ -407,12 +407,11 @@ impl<'a> BackupReader<'a> {
         &mut self,
         path_transform: impl FnMut(FileInfo) -> FileInfo,
         callback: impl FnMut(std::io::Result<FileInfo>),
-        incremental: bool,
         overwrite: bool,
     ) -> Result<(), Box<dyn Error>> {
         let list = self.extract_list()?;
         let files = list.split('\n').collect();
-        let res = self.restore_selected(files, path_transform, callback, incremental, overwrite);
+        let res = self.restore_selected(files, path_transform, callback, overwrite);
         self.list = Some(list);
         res
     }
@@ -423,7 +422,6 @@ impl<'a> BackupReader<'a> {
         selection: Vec<&str>,
         mut path_transform: impl FnMut(FileInfo) -> FileInfo,
         mut callback: impl FnMut(std::io::Result<FileInfo>),
-        incremental: bool,
         overwrite: bool,
     ) -> Result<(), Box<dyn Error>> {
         let mut not_found: Vec<&str> = vec![];
@@ -436,9 +434,7 @@ impl<'a> BackupReader<'a> {
             match res {
                 Ok((mut fi, mut entry)) => {
                     while fi.get_string().as_str() > current {
-                        if incremental {
-                            not_found.push(current);
-                        }
+                        not_found.push(current);
                         current = match list.next() {
                             Some(f) => f,
                             None => break,
@@ -473,13 +469,7 @@ impl<'a> BackupReader<'a> {
         if not_found.len() > 0 {
             match self.get_previous()? {
                 Some(mut bw) => {
-                    return bw.restore_selected(
-                        not_found,
-                        path_transform,
-                        callback,
-                        incremental,
-                        overwrite,
-                    )
+                    return bw.restore_selected(not_found, path_transform, callback, overwrite)
                 }
                 None => {
                     for f in not_found.iter() {
