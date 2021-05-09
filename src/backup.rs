@@ -166,6 +166,7 @@ impl BackupWriter {
         &mut self,
         mut on_next: impl FnMut(&mut FileInfo),
         mut on_added: impl FnMut(&mut FileInfo, Result<(), std::io::Error>),
+        on_final: impl FnOnce(),
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut list_string = String::new();
         {
@@ -215,6 +216,7 @@ impl BackupWriter {
                     }
                 }
             }
+            on_final();
             encoder.close()?;
         }
         Ok(())

@@ -104,6 +104,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
                     ));
                 }
             },
+            || bar.set_message("Waiting for compression to complete..."),
         )
         .expect("Could not create backup file");
         bar.disable_steady_tick();
