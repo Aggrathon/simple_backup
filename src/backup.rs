@@ -83,10 +83,10 @@ impl BackupWriter {
     }
 
     /// List all files that are added to the backup
-    pub fn get_files<F: FnMut(Result<&mut FileInfo, FileAccessError>)>(
+    pub fn get_files(
         &mut self,
         all: bool,
-        callback: Option<F>,
+        callback: Option<impl FnMut(Result<&mut FileInfo, FileAccessError>)>,
     ) -> Result<&mut Vec<FileInfo>, Box<dyn std::error::Error>> {
         if self.list.is_some() {
             if callback.is_some() {

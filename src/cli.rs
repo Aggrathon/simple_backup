@@ -2,6 +2,7 @@ use core::panic;
 use std::path::PathBuf;
 
 use indicatif::{ProgressBar, ProgressStyle};
+use number_prefix::NumberPrefix;
 use regex::RegexSet;
 
 use crate::backup::{BackupReader, BackupWriter};
@@ -27,6 +28,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
 
     // Crawl for files
     let mut num_files = 0;
+    let mut total_size = 0;
     if verbose {
         if bw.config.time.is_some() {
             eprintln!("Updated files to backup:");
@@ -38,7 +40,15 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
             Some(|res: Result<&mut FileInfo, FileAccessError>| match res {
                 Ok(fi) => {
                     num_files += 1;
-                    println!("{}", &fi.get_string());
+                    total_size += fi.size;
+                    match NumberPrefix::binary(fi.size as f64) {
+                        NumberPrefix::Standalone(number) => {
+                            println!("{:>6.0} B    {}", number, &fi.get_string());
+                        }
+                        NumberPrefix::Prefixed(prefix, number) => {
+                            println!("{:>6.2} {}B  {}", number, prefix, &fi.get_string());
+                        }
+                    }
                 }
                 Err(e) => {
                     eprintln!("{}", e);
@@ -51,8 +61,9 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
         bw.get_files(
             false,
             Some(|res: Result<&mut FileInfo, FileAccessError>| match res {
-                Ok(_) => {
+                Ok(fi) => {
                     num_files += 1;
+                    total_size += fi.size;
                 }
                 Err(e) => {
                     eprintln!("{}", e);
@@ -73,19 +84,19 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
             eprintln!("");
         }
         eprintln!("Backing up files...");
-        let bar = ProgressBar::new(num_files);
+        let bar = ProgressBar::new(total_size + num_files);
         bar.set_style(ProgressStyle::default_bar().template(
-            "{wide_msg} {pos:>8} / {len:<8}\n{wide_bar} {elapsed_precise} | {eta_precise}",
+            "{wide_msg} {bytes:>8} / {total_bytes:<8}\n{wide_bar} {elapsed_precise:>8} / {duration_precise:<8}",
         ));
         bar.set_message("Compressing file list");
         bar.tick();
         bar.enable_steady_tick(1000);
         bw.write(
-            |fi| bar.set_message(fi.get_string()),
+            |fi| bar.set_message(fi.move_string()),
             |fi: &mut FileInfo, err| match err {
-                Ok(_) => bar.inc(1),
+                Ok(_) => bar.inc(fi.size + 1),
                 Err(e) => {
-                    bar.inc(1);
+                    bar.inc(fi.size + 1);
                     bar.println(format!(
                         "Could not add '{}' to the backup: {}",
                         fi.get_string(),
@@ -174,9 +185,11 @@ pub fn restore(
 
     if !dry {
         let bar = ProgressBar::new(include.len() as u64);
-        bar.set_style(ProgressStyle::default_bar().template(
-            "{wide_msg} {pos:>8} / {len:<8}\n{wide_bar} {elapsed_precise} | {eta_precise}",
-        ));
+        bar.set_style(
+            ProgressStyle::default_bar().template(
+                "{wide_msg} {pos:>8} / {len:<8}\n{wide_bar} {elapsed_precise:>8} / {duration_precise:<8}",
+            ),
+        );
         bar.set_message("Restoring files");
         bar.tick();
         bar.enable_steady_tick(1000);
@@ -192,7 +205,7 @@ pub fn restore(
 
         if flatten {
             let path_transform = |mut fi: FileInfo| {
-                bar.set_message(&fi.move_string());
+                bar.set_message(fi.move_string());
                 FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
             };
             if non_incremental && include.is_empty() {
@@ -202,7 +215,7 @@ pub fn restore(
             }
         } else {
             let path_transform = |mut fi: FileInfo| {
-                bar.set_message(&fi.move_string());
+                bar.set_message(fi.move_string());
                 if fi.get_path().has_root() {
                     fi
                 } else {

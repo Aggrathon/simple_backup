@@ -15,6 +15,7 @@ pub struct FileInfo {
     string: Option<String>,
     path: Option<PathBuf>,
     pub time: Option<NaiveDateTime>,
+    pub size: u64,
 }
 
 impl From<PathBuf> for FileInfo {
@@ -23,6 +24,7 @@ impl From<PathBuf> for FileInfo {
             path: Some(path),
             string: None,
             time: None,
+            size: 0,
         }
     }
 }
@@ -32,6 +34,7 @@ impl From<&Path> for FileInfo {
             path: Some(path.to_path_buf()),
             string: None,
             time: None,
+            size: 0,
         }
     }
 }
@@ -42,6 +45,7 @@ impl From<String> for FileInfo {
             path: None,
             string: Some(path),
             time: None,
+            size: 0,
         }
     }
 }
@@ -52,6 +56,7 @@ impl From<&str> for FileInfo {
             path: None,
             string: Some(path.to_string()),
             time: None,
+            size: 0,
         }
     }
 }
@@ -95,6 +100,7 @@ impl FileInfo {
             path: Some(path),
             string: Some(string),
             time: None,
+            size: 0,
         }
     }
 
@@ -293,6 +299,7 @@ impl Iterator for FileCrawler {
                 item.time = Some(parse_date::system_to_naive(try_some!(md
                     .modified()
                     .map_err(|e| FileAccessError::new(e, item.move_string())))));
+                item.size = md.len();
                 return Some(Ok(item));
             } else {
                 let string = item.move_string();
