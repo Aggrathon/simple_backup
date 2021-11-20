@@ -174,7 +174,7 @@ fn arg_quality<'a>() -> Arg<'a, 'a> {
         .value_name("NUM")
         .help("Compression quality (1-22)")
         .takes_value(true)
-        .default_value("22")
+        .default_value("21")
         .validator(|v: String| match v.parse::<u32>() {
             Ok(v) => {
                 if v >= 1 && v <= 22 {
@@ -221,22 +221,10 @@ fn main() {
         // .author(crate_authors!())
         .version(crate_version!())
         .about(crate_description!())
-        .arg(arg_include(false))
-        .arg(arg_exclude())
-        .arg(arg_regex(false))
-        .arg(arg_output(false))
-        .arg(arg_incremental())
-        .arg(arg_time(true))
-        .arg(arg_local())
-        .arg(arg_threads())
-        .arg(arg_force())
-        .arg(arg_verbose())
-        .arg(arg_quality())
-        .arg(arg_dry())
         .subcommand(
             SubCommand::with_name("backup")
                 .version(crate_version!())
-                .about("Backup using arguments from a config file")
+                .about("Backup using a config file")
                 .arg(arg_conf_file(false))
                 .arg(arg_verbose())
                 .arg(arg_force())
@@ -246,15 +234,15 @@ fn main() {
         .subcommand(
             SubCommand::with_name("restore")
                 .version(crate_version!())
-                .about("Restore from a backup.")
+                .about("Restore from a backup")
                 .arg(arg_source())
                 .arg(arg_output(true))
                 .arg(arg_include(true))
                 .arg(arg_regex(true))
                 .arg(arg_flatten())
                 .arg(arg_this())
-                .arg(arg_force())
                 .arg(arg_verbose())
+                .arg(arg_force())
                 .arg(arg_dry()),
         )
         .subcommand(SubCommand::with_name("gui").about("Start a graphical user interface"))
@@ -272,6 +260,23 @@ fn main() {
                 .arg(arg_threads())
                 .arg(arg_quality())
                 .arg(arg_dry()),
+        )
+        .subcommand(
+            SubCommand::with_name("direct")
+                .version(crate_version!())
+                .about("Backup using command line arguments directly")
+                .arg(arg_include(false))
+                .arg(arg_exclude())
+                .arg(arg_regex(false))
+                .arg(arg_output(false))
+                .arg(arg_incremental())
+                .arg(arg_time(true))
+                .arg(arg_local())
+                .arg(arg_verbose())
+                .arg(arg_force())
+                .arg(arg_threads())
+                .arg(arg_quality())
+                .arg(arg_dry())
         )
         .get_matches();
 
@@ -318,7 +323,7 @@ fn main() {
                 .write_yaml(matches.value_of("file").unwrap())
                 .expect("Could not serialise config");
         }
-    } else {
+    } else if let Some(matches) = matches.subcommand_matches("direct") {
         // Backup using arguments
         let config = Config::from_args(&matches);
         cli::backup(
@@ -327,5 +332,7 @@ fn main() {
             matches.is_present("force"),
             matches.is_present("dry"),
         );
+    } else {
+        // TODO if GUI then: gui::gui();
     }
 }
