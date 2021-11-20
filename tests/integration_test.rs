@@ -54,6 +54,7 @@ fn cli_test() {
         false,
         false,
         false,
+        true,
     );
 
     assert!(f1.exists());
@@ -72,6 +73,7 @@ fn cli_test() {
         true,
         false,
         false,
+        true,
     );
 
     assert!(f1.exists());
@@ -90,6 +92,7 @@ fn cli_test() {
         true,
         false,
         false,
+        true,
     );
 
     assert!(dir2.join("a.txt").exists());
@@ -184,7 +187,7 @@ fn local_test() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let conf = Config::from_yaml(config.to_yaml()?)?;
-    backup(conf, false, false, false);
+    backup(conf, false, false, false, true);
 
     let reader = BackupReader::from_config(config)?;
     restore(
@@ -197,6 +200,7 @@ fn local_test() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         false,
+        true,
     );
 
     assert!(dir.path().join("Cargo.toml").exists());
@@ -234,7 +238,7 @@ fn time_test() -> std::io::Result<()> {
     File::create(&f3)?;
     File::create(&f4)?;
 
-    backup(config, false, false, false);
+    backup(config, false, false, false, true);
 
     remove_file(&f1)?;
     remove_file(&f2)?;
@@ -264,6 +268,7 @@ fn time_test() -> std::io::Result<()> {
         false,
         false,
         false,
+        true,
     );
 
     assert!(!f1.exists());

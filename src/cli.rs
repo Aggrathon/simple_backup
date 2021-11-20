@@ -12,7 +12,7 @@ use crate::files::{FileAccessError, FileInfo};
 use crate::utils::sanitise_windows_paths;
 
 /// Backup files
-pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
+pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool) {
     let (mut bw, error) = BackupWriter::new(config);
     if error.is_some() {
         eprintln!(
@@ -58,7 +58,9 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
         )
         .expect("Could not crawl for files");
     } else {
-        println!("Crawling for files...");
+        if !quiet {
+            println!("Crawling for files...");
+        }
         bw.get_files(
             false,
             Some(|res: Result<&mut FileInfo, FileAccessError>| match res {
@@ -84,8 +86,14 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool) {
         if verbose {
             eprintln!("");
         }
-        eprintln!("Backing up files...");
-        let bar = ProgressBar::new(total_size + num_files);
+        if !quiet {
+            eprintln!("Backing up files...");
+        }
+        let bar = if quiet {
+            ProgressBar::hidden()
+        } else {
+            ProgressBar::new(total_size + num_files)
+        };
         bar.set_style(ProgressStyle::default_bar().template(
             "{wide_msg} {bytes:>8} / {total_bytes:<8}\n{wide_bar} {elapsed_precise:>8} / {duration_precise:<8}",
         ));
@@ -125,6 +133,7 @@ pub fn restore(
     force: bool,
     verbose: bool,
     dry: bool,
+    quiet: bool,
 ) {
     let non_incremental = {
         let mut conf = source.get_config().expect("Could not read the backup");
@@ -173,7 +182,9 @@ pub fn restore(
     };
 
     if include.is_empty() && !non_incremental {
-        eprintln!("No files to backup");
+        if !quiet {
+            eprintln!("No files to backup");
+        }
         return;
     }
 
@@ -186,7 +197,11 @@ pub fn restore(
     }
 
     if !dry {
-        let bar = ProgressBar::new(include.len() as u64);
+        let bar = if quiet {
+            ProgressBar::hidden()
+        } else {
+            ProgressBar::new(include.len() as u64)
+        };
         bar.set_style(
             ProgressStyle::default_bar().template(
                 "{wide_msg} {pos:>8} / {len:<8}\n{wide_bar} {elapsed_precise:>8} / {duration_precise:<8}",

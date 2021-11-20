@@ -299,6 +299,7 @@ fn main() {
             matches.is_present("force"),
             matches.is_present("verbose"),
             matches.is_present("dry"),
+            false,
         );
     } else if let Some(_) = matches.subcommand_matches("gui") {
         // Start a graphical user interface
@@ -312,6 +313,7 @@ fn main() {
             matches.is_present("verbose"),
             matches.is_present("force"),
             matches.is_present("dry"),
+            false,
         );
     } else if let Some(matches) = matches.subcommand_matches("config") {
         // Create a config file
@@ -331,6 +333,7 @@ fn main() {
             matches.is_present("verbose"),
             matches.is_present("force"),
             matches.is_present("dry"),
+            false,
         );
     } else {
         // TODO if GUI then: gui::gui();
