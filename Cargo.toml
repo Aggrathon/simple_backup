@@ -18,7 +18,7 @@ regex = "1.4"
 path-clean = "0.1"
 path-absolutize = "3.0"
 indicatif = { version = "0.16", features = ["improved_unicode"] }
-zstd = { version="0.7", features = ["zstdmt"] }
+zstd = { version="0.9", features = ["zstdmt"] }
 number_prefix = "0.4"
 
 [dev-dependencies]
