@@ -1,3 +1,4 @@
+/// This module contains the objects for reading and writing backups
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs::create_dir_all;

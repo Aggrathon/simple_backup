@@ -1,3 +1,4 @@
+/// This module contains the FileInfo struct and a file crawler
 use std::fmt::Display;
 use std::fs::DirEntry;
 use std::path::{Path, PathBuf};

@@ -1,3 +1,4 @@
+/// This module contains utility functions (such as getting backups and configs)
 use std::cmp::Ordering;
 use std::fs::ReadDir;
 use std::path::{Path, PathBuf};

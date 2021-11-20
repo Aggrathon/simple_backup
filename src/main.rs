@@ -1,3 +1,4 @@
+/// This is the main module that handles parsing the commandline arguments
 #[macro_use]
 extern crate clap;
 

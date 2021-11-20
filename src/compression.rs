@@ -1,3 +1,4 @@
+/// This module contains the objects for handling compressed archive files
 use std::fmt::Debug;
 use std::fs::{create_dir_all, remove_file, File};
 use std::io::BufReader;

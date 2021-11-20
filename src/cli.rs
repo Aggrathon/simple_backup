@@ -1,3 +1,4 @@
+/// This module contains the logic for running the program from a commandline
 use core::panic;
 use std::path::PathBuf;
 

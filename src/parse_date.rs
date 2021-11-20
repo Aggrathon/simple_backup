@@ -1,3 +1,4 @@
+/// This module contains date parsing, serialisation and deserialisation helpers
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, ParseError};

@@ -1,3 +1,4 @@
+/// This module creates a library of the program (for testing)
 #[macro_use]
 pub mod utils;
 pub mod backup;

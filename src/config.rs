@@ -1,3 +1,4 @@
+/// This module contains the config object (including serialisation, deserialisation, and parsing command line arguments)
 use std::cmp::{max, min};
 use std::fs::File;
 use std::io::{Error, ErrorKind};
