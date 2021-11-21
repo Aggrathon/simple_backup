@@ -43,3 +43,7 @@ rm backup_*.tar.zst config.yml test1.txt dir/test3.txt dir -r
 ## Binaries
 
 Precompiled binaries can be found on the [releases page](https://github.com/Aggrathon/simple_backup/releases/).
+
+### Compilation
+
+Download this repo and run: `cargo build --release`. To compile without the GUI functionality, add `--no-default-features`.

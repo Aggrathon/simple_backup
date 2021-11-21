@@ -216,7 +216,7 @@ fn arg_this<'a>() -> Arg<'a, 'a> {
 }
 
 fn main() {
-    let matches = App::new(crate_name!())
+    let app = App::new(crate_name!())
         .setting(clap::AppSettings::SubcommandsNegateReqs)
         // .author(crate_authors!())
         .version(crate_version!())
@@ -277,8 +277,10 @@ fn main() {
                 .arg(arg_threads())
                 .arg(arg_quality())
                 .arg(arg_dry())
-        )
-        .get_matches();
+        );
+    #[cfg(not(feature = "gui"))]
+    let app = app.setting(clap::AppSettings::SubcommandRequiredElseHelp);
+    let matches = app.get_matches();
 
     if let Some(matches) = matches.subcommand_matches("restore") {
         // Restore backed up files
@@ -336,6 +338,7 @@ fn main() {
             false,
         );
     } else {
-        // TODO if GUI then: gui::gui();
+        #[cfg(feature = "gui")]
+        gui::gui();
     }
 }
