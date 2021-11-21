@@ -9,6 +9,7 @@ mod cli;
 mod compression;
 mod config;
 mod files;
+#[cfg(feature = "gui")]
 mod gui;
 mod parse_date;
 
@@ -196,8 +197,15 @@ fn arg_threads<'a>() -> Arg<'a, 'a> {
         .takes_value(true)
         .default_value("1")
         .validator(|v: String| match v.parse::<u32>() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(String::from("Must be a number equal or greater than zero")),
+            Ok(i) => {
+                let cpus = num_cpus::get() as u32;
+                if i < 1 || i > cpus {
+                    Err(format!("Must be a number between 1-{}", cpus))
+                } else {
+                    Ok(())
+                }
+            }
+            Err(_) => Err(String::from("Must be a number equal or greater than one")),
         })
 }
 
@@ -305,6 +313,9 @@ fn main() {
         );
     } else if let Some(_) = matches.subcommand_matches("gui") {
         // Start a graphical user interface
+        #[cfg(not(feature = "gui"))]
+        println!("GUI is not supported (this executable has been compiled without GUI support)!");
+        #[cfg(feature = "gui")]
         gui::gui();
     } else if let Some(matches) = matches.subcommand_matches("backup") {
         // Backup using an existing config

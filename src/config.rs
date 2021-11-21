@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::parse_date;
 use crate::parse_date::{create_backup_file_name, naive_now};
-use crate::utils::BackupIterator;
+use crate::utils::{clamp, BackupIterator};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -37,8 +37,8 @@ impl Config {
             exclude: vec![],
             regex: vec![],
             output: ".".to_string(),
-            incremental: false,
-            quality: 22,
+            incremental: true,
+            quality: 21,
             local: false,
             threads: 1,
             time: None,
@@ -70,13 +70,16 @@ impl Config {
                 .value_of("quality")
                 .and_then(|v| Some(v.parse::<i32>().expect("Could not parse number")))
             {
-                Some(i) => max(min(i, 22), 1),
-                None => 22,
+                Some(i) => clamp(i, 1, 22),
+                None => 21,
             },
-            threads: args
+            threads: match args
                 .value_of("threads")
                 .and_then(|v| Some(v.parse::<u32>().expect("Could not parse number")))
-                .unwrap_or(1),
+            {
+                Some(i) => clamp(i, 1, num_cpus::get() as u32),
+                None => 1,
+            },
             local: args.is_present("local"),
             time: args
                 .value_of("time")
@@ -84,6 +87,16 @@ impl Config {
                 .unwrap_or(None),
             origin: None,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn set_quality(&mut self, quality: i32) {
+        self.quality = clamp(quality, 1, 22);
+    }
+
+    #[allow(dead_code)]
+    pub fn set_threads(&mut self, threads: u32) {
+        self.threads = clamp(threads, 1, num_cpus::get() as u32);
     }
 
     /// Read a config from a yaml file

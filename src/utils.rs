@@ -1,5 +1,5 @@
 /// This module contains utility functions (such as getting backups and configs)
-use std::cmp::Ordering;
+use std::cmp::{Ordering, PartialOrd};
 use std::fs::ReadDir;
 use std::path::{Path, PathBuf};
 
@@ -24,6 +24,21 @@ pub(crate) fn sanitise_windows_paths<S: AsRef<str>>(path: S) -> String {
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn sanitise_windows_paths<S: AsRef<str>>(path: S) -> String {
     path.as_ref().to_string()
+}
+
+pub fn clamp<T>(value: T, min: T, max: T) -> T
+where
+    T: PartialOrd,
+{
+    if value > min {
+        if value < max {
+            value
+        } else {
+            max
+        }
+    } else {
+        min
+    }
 }
 
 const PATTERN_LENGTH: usize = "2020-20-20_20-20-20.tar.zst".len();
