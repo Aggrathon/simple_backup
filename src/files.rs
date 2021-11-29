@@ -279,7 +279,7 @@ impl FileCrawler {
         };
         if let Ok(_) = self
             .stack
-            .binary_search_by(|fi| fi.path.as_ref().unwrap().cmp(p))
+            .binary_search_by(|fi| p.cmp(fi.path.as_ref().unwrap()))
         {
             return true;
         }
@@ -447,6 +447,7 @@ mod tests {
             1
         );
     }
+
     #[test]
     fn file_crawler_rel() {
         let main_path = Path::new("src").join("main.rs");
@@ -480,7 +481,7 @@ mod tests {
     #[test]
     fn file_crawler_check() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let fc = FileCrawler::new(
-            &vec!["src".to_string()],
+            &vec!["src".to_string(), "tests".to_string()],
             &vec!["src/main.rs".to_string()],
             &vec!["config.*".to_string()],
             false,
@@ -502,7 +503,7 @@ mod tests {
     #[test]
     fn file_crawler_check_local() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let fc = FileCrawler::new(
-            &vec!["src".to_string()],
+            &vec!["src".to_string(), "tests".to_string()],
             &vec!["src/main.rs".to_string()],
             &vec!["config.*".to_string()],
             true,
