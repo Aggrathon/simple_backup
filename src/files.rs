@@ -39,6 +39,16 @@ impl From<&Path> for FileInfo {
         }
     }
 }
+impl From<&DirEntry> for FileInfo {
+    fn from(de: &DirEntry) -> Self {
+        Self {
+            path: Some(de.path()),
+            string: None,
+            time: None,
+            size: 0,
+        }
+    }
+}
 
 impl From<String> for FileInfo {
     fn from(path: String) -> Self {
@@ -252,6 +262,38 @@ impl FileCrawler {
             local,
         })
     }
+
+    pub fn check_path(&self, path: &mut FileInfo, parent_included: Option<bool>) -> bool {
+        let p = path.get_path();
+        let p2;
+        let p = if !self.local && !p.is_absolute() {
+            match p.absolutize() {
+                Ok(p) => {
+                    p2 = p.to_path_buf();
+                    &p2
+                }
+                Err(_) => p,
+            }
+        } else {
+            p
+        };
+        if let Ok(_) = self
+            .stack
+            .binary_search_by(|fi| fi.path.as_ref().unwrap().cmp(p))
+        {
+            return true;
+        }
+        if self.regex.is_match(path.get_string()) {
+            return false;
+        }
+        match parent_included {
+            Some(parent) => parent,
+            None => match path.get_path().parent() {
+                Some(path) => self.check_path(&mut FileInfo::from(path), None),
+                None => false,
+            },
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -433,6 +475,47 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn file_crawler_check() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let fc = FileCrawler::new(
+            &vec!["src".to_string()],
+            &vec!["src/main.rs".to_string()],
+            &vec!["config.*".to_string()],
+            false,
+        )?;
+        let path = Path::new(".").absolutize()?;
+        let path = path.as_ref();
+        let path2 = path.join("src");
+        assert!(!fc.check_path(&mut FileInfo::from(path), None));
+        assert!(fc.check_path(&mut FileInfo::from(path), Some(true)));
+        assert!(fc.check_path(&mut FileInfo::from(path2.as_path()), None));
+        assert!(!fc.check_path(&mut FileInfo::from(path2.join("main.rs")), Some(true)));
+        assert!(!fc.check_path(&mut FileInfo::from(path2.join("main.rs")), None));
+        assert!(fc.check_path(&mut FileInfo::from(path2.join("gui.rs")), Some(true)));
+        assert!(fc.check_path(&mut FileInfo::from(path2.join("gui.rs")), None));
+        assert!(!fc.check_path(&mut FileInfo::from(path2.join("config.rs")), None));
+        Ok(())
+    }
+
+    #[test]
+    fn file_crawler_check_local() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let fc = FileCrawler::new(
+            &vec!["src".to_string()],
+            &vec!["src/main.rs".to_string()],
+            &vec!["config.*".to_string()],
+            true,
+        )?;
+        assert!(!fc.check_path(&mut FileInfo::from("."), None));
+        assert!(fc.check_path(&mut FileInfo::from("."), Some(true)));
+        assert!(fc.check_path(&mut FileInfo::from("src"), None));
+        assert!(!fc.check_path(&mut FileInfo::from("src/main.rs"), Some(true)));
+        assert!(!fc.check_path(&mut FileInfo::from("src/main.rs"), None));
+        assert!(fc.check_path(&mut FileInfo::from("src/gui.rs"), Some(true)));
+        assert!(fc.check_path(&mut FileInfo::from("src/gui.rs"), None));
+        assert!(!fc.check_path(&mut FileInfo::from("src/config.rs"), None));
+        Ok(())
     }
 
     #[test]
