@@ -1,11 +1,11 @@
 /// This module contains the config object (including serialisation, deserialisation, and parsing command line arguments)
-use std::cmp::{max, min};
 use std::fs::File;
 use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
 use clap::{ArgMatches, Values};
+use path_absolutize::Absolutize;
 use serde::{Deserialize, Serialize};
 
 use crate::parse_date;
@@ -128,16 +128,56 @@ impl Config {
     }
 
     pub fn sort(&mut self) {
-        self.include.sort();
-        self.exclude.sort();
+        self.include.sort_unstable();
+        self.exclude.sort_unstable();
     }
 
     /// Get the path fro a new backup
     pub fn get_output(&self) -> PathBuf {
         if self.output.ends_with(".tar.zst") {
             PathBuf::from(&self.output)
+        } else if self.output.len() == 0 {
+            match self.origin.as_ref() {
+                Some(p) => {
+                    let p = PathBuf::from(p);
+                    match p.parent() {
+                        Some(p) => p.join(create_backup_file_name(naive_now())),
+                        None => p.join(create_backup_file_name(naive_now())),
+                    }
+                }
+                None => Path::new(".").join(create_backup_file_name(naive_now())),
+            }
         } else {
             Path::new(&self.output).join(create_backup_file_name(naive_now()))
+        }
+    }
+
+    pub fn get_dir(&self) -> PathBuf {
+        let path = if self.output.ends_with(".tar.zst") {
+            match PathBuf::from(&self.output).parent() {
+                Some(p) => p.to_path_buf(),
+                None => PathBuf::from("."),
+            }
+        } else if self.output.len() == 0 {
+            match self.origin.as_ref() {
+                Some(p) => match PathBuf::from(p).parent() {
+                    Some(p) => p.to_path_buf(),
+                    None => PathBuf::from("."),
+                },
+                None => PathBuf::from("."),
+            }
+        } else {
+            PathBuf::from(&self.output)
+        };
+        if self.local {
+            path
+        } else if path.is_absolute() {
+            path
+        } else {
+            match path.absolutize() {
+                Ok(p) => p.to_path_buf(),
+                Err(_) => PathBuf::new(),
+            }
         }
     }
 

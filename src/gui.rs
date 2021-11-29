@@ -1,19 +1,21 @@
 #![cfg(feature = "gui")]
-use std::{borrow::Cow, cmp::max};
-
-/// This module *will contain* the logic for running the program through a GUI
-use crate::config::Config;
-use iced::{
-    button, executor, pane_grid, pick_list, scrollable, text_input, Align, Application, Button,
-    Checkbox, Column, Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings,
-    Space, Text, TextInput,
+/// This module contains the logic for running the program through a GUI
+use crate::{
+    config::Config,
+    files::{FileCrawler, FileInfo},
 };
+use iced::{
+    button, executor, pane_grid, pick_list, scrollable, Align, Application, Checkbox, Column,
+    Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings, Space, Text,
+};
+use rfd::FileDialog;
 
 pub fn gui() {
     ApplicationState::run(Settings::default()).unwrap();
 }
 
-#[derive(Debug, Clone)]
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum Message {
     PaneResized(pane_grid::ResizeEvent),
     PaneDragged(pane_grid::DragEvent),
@@ -24,6 +26,18 @@ pub(crate) enum Message {
     Restore,
     ToggleIncremental(bool),
     ThreadCount(u32),
+    AddInclude(usize),
+    RemoveInclude(usize),
+    CopyInclude(usize),
+    AddExclude(usize),
+    RemoveExclude(usize),
+    CopyExclude(usize),
+    AddFilter,
+    RemoveFilter(usize),
+    EditFilter(usize),
+    OpenFolder(usize),
+    GoUp,
+    DialogFolder,
     None,
 }
 
@@ -55,38 +69,50 @@ impl Application for ApplicationState {
     fn update(
         &mut self,
         message: Self::Message,
-        _clipboard: &mut iced::Clipboard,
+        clipboard: &mut iced::Clipboard,
     ) -> iced::Command<Self::Message> {
         match message {
-            Message::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
-                if let ApplicationState::Config(state) = self {
-                    state.panes.resize(&split, ratio);
-                }
+            Message::CreateConfig => {
+                *self = ApplicationState::Config(ConfigState::new(true));
+                Command::none()
             }
-            Message::PaneDragged(pane_grid::DragEvent::Dropped { pane, target }) => {
-                if let ApplicationState::Config(state) = self {
-                    state.panes.swap(&pane, &target);
+            Message::EditConfig => {
+                if let Some(file) = FileDialog::new()
+                    .set_directory(dirs::home_dir().unwrap_or_default())
+                    .set_title("Open Config File")
+                    .add_filter("Config Files", &["yml"])
+                    .pick_file()
+                {
+                    match Config::read_yaml(file) {
+                        Ok(config) => *self = ApplicationState::Config(ConfigState::from(config)),
+                        Err(_) => todo!(),
+                    }
                 }
+                Command::none()
             }
-            Message::PaneDragged(_) => {}
-            Message::CreateConfig => *self = ApplicationState::Config(ConfigState::new()),
-            Message::EditConfig => todo!(),
-            Message::Backup => todo!(),
-            Message::Restore => todo!(),
-            Message::None => eprintln!("Unspecified GUI message"),
-            Message::Main => *self = ApplicationState::Main(MainState::new()),
-            Message::ToggleIncremental(t) => {
-                if let ApplicationState::Config(state) = self {
-                    state.config.incremental = t;
-                }
+            Message::Backup => {
+                *self = ApplicationState::Backup(BackupState {});
+                Command::none()
             }
-            Message::ThreadCount(text) => {
-                if let ApplicationState::Config(state) = self {
-                    state.config.set_threads(text);
-                }
+            Message::Restore => {
+                *self = ApplicationState::Restore(RestoreState {});
+                Command::none()
             }
+            Message::None => {
+                eprintln!("Unspecified GUI message");
+                Command::none()
+            }
+            Message::Main => {
+                *self = ApplicationState::Main(MainState::new());
+                Command::none()
+            }
+            _ => match self {
+                ApplicationState::Main(_) => Command::none(),
+                ApplicationState::Config(state) => state.update(message, clipboard),
+                ApplicationState::Backup(_) => todo!(),
+                ApplicationState::Restore(_) => todo!(),
+            },
         }
-        Command::none()
     }
 
     fn view(&mut self) -> Element<'_, Self::Message> {
@@ -122,7 +148,7 @@ impl MainState {
             presets::text_title("simple_backup").into(),
             Space::with_height(Length::Shrink).into(),
             presets::button_main(&mut self.create, "Create", Message::CreateConfig).into(),
-            presets::button_main(&mut self.edit, "Edit", Message::None)
+            presets::button_main(&mut self.edit, "Edit", Message::EditConfig)
                 // .on_press(Message::EditConfig)
                 .into(),
             presets::button_main(&mut self.backup, "Backup", Message::None)
@@ -153,33 +179,38 @@ struct ConfigState {
     backup: button::State,
     threads: pick_list::State<u32>,
     thread_alt: Vec<u32>,
+    files: pane_grid::Pane,
+    includes: pane_grid::Pane,
+    excludes: pane_grid::Pane,
+    filters: pane_grid::Pane,
+    current_dir: FileInfo,
 }
 
 impl ConfigState {
-    fn new() -> Self {
+    fn new(open_home: bool) -> Self {
         let (mut panes, files) = pane_grid::State::new(Pane::new(ConfigPane::Files));
-        let (incs, _) = panes
+        let (includes, _) = panes
             .split(
                 pane_grid::Axis::Vertical,
                 &files,
                 Pane::new(ConfigPane::Includes),
             )
             .unwrap();
-        let (excs, _) = panes
+        let (excludes, _) = panes
             .split(
                 pane_grid::Axis::Horizontal,
-                &incs,
+                &includes,
                 Pane::new(ConfigPane::Excludes),
             )
             .unwrap();
-        let (filts, _) = panes
+        let (filters, _) = panes
             .split(
                 pane_grid::Axis::Horizontal,
-                &excs,
+                &excludes,
                 Pane::new(ConfigPane::Filters),
             )
             .unwrap();
-        Self {
+        let mut state = Self {
             config: Config::new(),
             panes,
             back: button::State::new(),
@@ -187,11 +218,32 @@ impl ConfigState {
             backup: button::State::new(),
             threads: pick_list::State::default(),
             thread_alt: (1u32..num_cpus::get() as u32 + 1).collect(),
+            files,
+            includes,
+            excludes,
+            filters,
+            current_dir: FileInfo::from(dirs::home_dir().unwrap_or_default()),
+        };
+        if open_home {
+            state.refresh_files();
         }
+        state
+    }
+
+    fn from(mut config: Config) -> Self {
+        config.sort();
+        let mut state = Self::new(false);
+        state.current_dir = FileInfo::from(config.get_dir());
+        state.config = config;
+        state.refresh_includes();
+        state.refresh_excludes();
+        state.refresh_filters();
+        state.refresh_files();
+        state
     }
 
     fn view(&mut self) -> Element<Message> {
-        let pane_grid = PaneGrid::new(&mut self.panes, |id, pane| pane.content())
+        let pane_grid = PaneGrid::new(&mut self.panes, |_, pane| pane.content())
             .on_resize(10, Message::PaneResized)
             .on_drag(Message::PaneDragged)
             .spacing(5);
@@ -230,6 +282,221 @@ impl ConfigState {
             .padding(2)
             .into()
     }
+
+    fn update(
+        &mut self,
+        message: Message,
+        clipboard: &mut iced::Clipboard,
+    ) -> iced::Command<Message> {
+        match message {
+            Message::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
+                self.panes.resize(&split, ratio)
+            }
+            Message::PaneDragged(pane_grid::DragEvent::Dropped { pane, target }) => {
+                self.panes.swap(&pane, &target)
+            }
+            Message::PaneDragged(_) => {}
+            Message::ToggleIncremental(t) => self.config.incremental = t,
+            Message::ThreadCount(text) => self.config.set_threads(text),
+            Message::AddInclude(i) => {
+                let pane = self.panes.get_mut(&self.files).unwrap();
+                if let Some(li) = pane.items.get_mut(i) {
+                    let s = std::mem::replace(&mut li.text, String::new());
+                    if let Ok(i) = self.config.exclude.binary_search(&s) {
+                        self.config.exclude.remove(i);
+                        self.refresh_excludes();
+                    }
+                    self.config.include.push(s);
+                    self.config.include.sort_unstable();
+                    self.refresh_includes();
+                    self.refresh_files();
+                }
+            }
+            Message::RemoveInclude(i) => {
+                if i < self.config.include.len() {
+                    self.config.include.remove(i);
+                    self.refresh_includes();
+                    self.refresh_files();
+                }
+            }
+            Message::CopyInclude(i) => {
+                if let Some(s) = self.config.include.get(i) {
+                    clipboard.write(s.to_string());
+                }
+            }
+            Message::AddExclude(i) => {
+                let pane = self.panes.get_mut(&self.files).unwrap();
+                if let Some(li) = pane.items.get_mut(i) {
+                    let s = std::mem::replace(&mut li.text, String::new());
+                    if let Ok(i) = self.config.include.binary_search(&s) {
+                        self.config.include.remove(i);
+                        self.refresh_includes();
+                    }
+                    self.config.exclude.push(s);
+                    self.config.exclude.sort_unstable();
+                    self.refresh_excludes();
+                    self.refresh_files();
+                }
+            }
+            Message::RemoveExclude(i) => {
+                if i < self.config.exclude.len() {
+                    self.config.exclude.remove(i);
+                    self.refresh_excludes();
+                    self.refresh_files();
+                }
+            }
+            Message::CopyExclude(i) => {
+                if let Some(s) = self.config.exclude.get(i) {
+                    clipboard.write(s.to_string());
+                }
+            }
+            Message::AddFilter => todo!(),
+            Message::RemoveFilter(i) => {
+                if i < self.config.regex.len() {
+                    self.config.regex.remove(i);
+                    self.refresh_filters();
+                    self.refresh_files();
+                }
+            }
+            Message::EditFilter(i) => todo!("Edit filter {}", i),
+            Message::OpenFolder(i) => {
+                let pane = self.panes.get_mut(&self.files).unwrap();
+                if let Some(li) = pane.items.get_mut(i) {
+                    self.current_dir =
+                        FileInfo::from(std::mem::replace(&mut li.text, String::new()));
+                    self.refresh_files();
+                }
+            }
+            Message::DialogFolder => {
+                if let Some(folder) = FileDialog::new()
+                    .set_directory(self.current_dir.get_path())
+                    .set_title("Open Directory")
+                    .pick_folder()
+                {
+                    self.current_dir = FileInfo::from(folder);
+                    self.refresh_files();
+                }
+            }
+            Message::GoUp => {
+                if let Some(dir) = self.current_dir.get_path().parent() {
+                    self.current_dir = FileInfo::from(dir);
+                    self.refresh_files();
+                }
+            }
+            _ => eprintln!("Unexpected GUI message"),
+        }
+        Command::none()
+    }
+
+    fn refresh_files(&mut self) {
+        let pane = self.panes.get_mut(&self.files).unwrap();
+        pane.items.clear();
+        match FileCrawler::new(
+            &self.config.include,
+            &self.config.exclude,
+            &self.config.regex,
+            self.config.local,
+        ) {
+            Ok(fc) => {
+                let parent = fc.check_path(&mut self.current_dir, None);
+                pane.items.push(ListItem::new(
+                    ListState::ParentFolder,
+                    self.current_dir.get_string().to_string(),
+                    if self.current_dir.get_path().parent().is_some() {
+                        Message::GoUp
+                    } else {
+                        Message::None
+                    },
+                    if parent {
+                        Message::None
+                    } else {
+                        Message::AddInclude(0)
+                    },
+                    if parent {
+                        Message::AddExclude(0)
+                    } else {
+                        Message::None
+                    },
+                ));
+                match self.current_dir.get_path().read_dir() {
+                    Ok(rd) => {
+                        for (i, de) in rd.into_iter().enumerate() {
+                            match de {
+                                Ok(de) => match de.metadata() {
+                                    Ok(md) => {
+                                        let dir = md.is_dir();
+                                        let mut fi = FileInfo::from(&de);
+                                        let inc = fc.check_path(&mut fi, Some(parent));
+                                        pane.items.push(ListItem::file(
+                                            fi.move_string(),
+                                            inc,
+                                            dir,
+                                            i + 1,
+                                        ));
+                                    }
+                                    Err(e) => pane.items.push(ListItem::error(format!("{}", e))),
+                                },
+                                Err(e) => pane.items.push(ListItem::error(format!("{}", e))),
+                            }
+                        }
+                    }
+                    Err(e) => pane.items.push(ListItem::error(format!("{}", e))),
+                }
+            }
+            Err(e) => pane.items.push(ListItem::new(
+                ListState::Error,
+                format!("{}", e),
+                Message::None,
+                Message::None,
+                Message::None,
+            )),
+        };
+    }
+
+    fn refresh_includes(&mut self) {
+        let pane = self.panes.get_mut(&self.includes).unwrap();
+        pane.items.clear();
+        pane.items
+            .extend(self.config.include.iter().enumerate().map(|(i, s)| {
+                ListItem::new(
+                    ListState::CopyItem,
+                    s.to_string(),
+                    Message::CopyInclude(i),
+                    Message::None,
+                    Message::RemoveInclude(i),
+                )
+            }));
+    }
+
+    fn refresh_excludes(&mut self) {
+        let pane = self.panes.get_mut(&self.excludes).unwrap();
+        pane.items.clear();
+        pane.items
+            .extend(self.config.exclude.iter().enumerate().map(|(i, s)| {
+                ListItem::new(
+                    ListState::CopyItem,
+                    s.to_string(),
+                    Message::CopyExclude(i),
+                    Message::None,
+                    Message::RemoveExclude(i),
+                )
+            }));
+    }
+
+    fn refresh_filters(&mut self) {
+        let pane = self.panes.get_mut(&self.filters).unwrap();
+        pane.items.clear();
+        pane.items
+            .extend(self.config.regex.iter().enumerate().map(|(i, s)| {
+                ListItem::new(
+                    ListState::EditItem,
+                    s.to_string(),
+                    Message::EditFilter(i),
+                    Message::None,
+                    Message::RemoveFilter(i),
+                )
+            }));
+    }
 }
 
 enum ConfigPane {
@@ -243,6 +510,7 @@ struct Pane {
     content: ConfigPane,
     scroll: scrollable::State,
     top_button: button::State,
+    items: Vec<ListItem>,
 }
 
 impl Pane {
@@ -251,6 +519,7 @@ impl Pane {
             content,
             scroll: scrollable::State::new(),
             top_button: button::State::new(),
+            items: vec![],
         }
     }
 
@@ -258,40 +527,171 @@ impl Pane {
         let content = Scrollable::new(&mut self.scroll)
             .width(Length::Fill)
             .spacing(10);
-        // let content = self
-        //     .items
-        //     .iter_mut()
-        //     .fold(content, |content, item| content.push(item.row()));
+        let content = self
+            .items
+            .iter_mut()
+            .fold(content, |content, item| content.push(item.view()));
         match self.content {
             ConfigPane::Files => presets::pane_border(
                 "Files",
-                "Open",
-                &mut self.top_button,
-                Message::None,
+                Some(("Open", &mut self.top_button, Message::DialogFolder)),
                 content.into(),
             ),
-            ConfigPane::Includes => presets::pane_border(
-                "Includes",
-                "Add",
-                &mut self.top_button,
-                Message::None,
-                content.into(),
-            ),
-            ConfigPane::Excludes => presets::pane_border(
-                "Excludes",
-                "Add",
-                &mut self.top_button,
-                Message::None,
-                content.into(),
-            ),
+            ConfigPane::Includes => presets::pane_border("Includes", None, content.into()),
+            ConfigPane::Excludes => presets::pane_border("Excludes", None, content.into()),
             ConfigPane::Filters => presets::pane_border(
                 "Filters",
-                "Add",
-                &mut self.top_button,
-                Message::None,
+                Some(("Add", &mut self.top_button, Message::AddFilter)),
                 content.into(),
             ),
         }
+    }
+}
+
+enum ListState {
+    File,
+    ParentFolder,
+    CopyItem,
+    EditItem,
+    Error,
+}
+
+struct ListItem {
+    state: ListState,
+    open_state: button::State,
+    open_action: Message,
+    text: String,
+    add_state: button::State,
+    add_action: Message,
+    remove_state: button::State,
+    remove_action: Message,
+}
+
+impl ListItem {
+    fn new(
+        state: ListState,
+        text: String,
+        open_action: Message,
+        add_action: Message,
+        remove_action: Message,
+    ) -> Self {
+        Self {
+            state,
+            text,
+            open_action,
+            add_action,
+            remove_action,
+            open_state: button::State::new(),
+            add_state: button::State::new(),
+            remove_state: button::State::new(),
+        }
+    }
+
+    fn error(text: String) -> Self {
+        Self::new(
+            ListState::Error,
+            text,
+            Message::None,
+            Message::None,
+            Message::None,
+        )
+    }
+
+    fn file(text: String, included: bool, is_dir: bool, index: usize) -> Self {
+        let open = if is_dir {
+            Message::OpenFolder(index)
+        } else {
+            Message::None
+        };
+        if included {
+            Self::new(
+                ListState::File,
+                text,
+                open,
+                Message::None,
+                Message::AddExclude(index),
+            )
+        } else {
+            Self::new(
+                ListState::File,
+                text,
+                open,
+                Message::AddInclude(index),
+                Message::None,
+            )
+        }
+    }
+
+    fn view(&mut self) -> Element<Message> {
+        let row = Row::new()
+            .width(Length::Fill)
+            .padding(5)
+            .spacing(3)
+            .align_items(Align::Center);
+        let row = match self.state {
+            ListState::File => {
+                if let Message::None = self.open_action {
+                    row.push(presets::space_icon())
+                } else {
+                    row.push(presets::button_icon(
+                        &mut self.open_state,
+                        ">",
+                        self.open_action,
+                        false,
+                    ))
+                }
+            }
+            ListState::ParentFolder => row.push(presets::button_icon(
+                &mut self.open_state,
+                "<",
+                self.open_action,
+                true,
+            )),
+            ListState::CopyItem => {
+                if let Message::None = self.open_action {
+                    row
+                } else {
+                    row.push(presets::tooltip(
+                        presets::button_icon(&mut self.open_state, "C", self.open_action, false)
+                            .into(),
+                        "Copy",
+                    ))
+                }
+            }
+            ListState::Error => row,
+            ListState::EditItem => row.push(presets::tooltip(
+                presets::button_icon(&mut self.open_state, "E", self.open_action, false).into(),
+                "Edit",
+            )),
+        };
+        let row = if let ListState::Error = self.state {
+            row.push(presets::text_error(&self.text).width(Length::Fill))
+        } else {
+            row.push(Text::new(&self.text).width(Length::Fill))
+        };
+        let row = match self.state {
+            ListState::File | ListState::ParentFolder => row
+                .push(presets::button_icon(
+                    &mut self.add_state,
+                    "+",
+                    self.add_action,
+                    false,
+                ))
+                .push(presets::button_icon(
+                    &mut self.remove_state,
+                    "-",
+                    self.remove_action,
+                    true,
+                )),
+            ListState::CopyItem | ListState::EditItem => row.push(presets::button_icon(
+                &mut self.remove_state,
+                "-",
+                self.remove_action,
+                true,
+            )),
+            ListState::Error => row,
+        };
+        row.into()
     }
 }
 
@@ -300,14 +700,20 @@ struct BackupState {}
 struct RestoreState {}
 
 mod presets {
-    use iced::{button, container, pane_grid, Button, Color, Element, Length, Row, Space, Text};
+    use iced::{
+        button, container, pane_grid, tooltip, Button, Color, Element, Length, Row, Space, Text,
+        Tooltip,
+    };
 
     use super::Message;
 
-    const APP_COLOR: Color = Color::from_rgb(78.0 / 255.0, 155.0 / 255.0, 71.0 / 255.0);
+    const APP_COLOR: Color = Color::from_rgb(78.0 / 255.0, 155.0 / 255.0, 71.0 / 255.0); //#4E9B47
+    const COMP_COLOR: Color = Color::from_rgb(148.0 / 255.0, 71.0 / 255.0, 155.0 / 255.0); //#94479b
     const GREY_COLOR: Color = Color::from_rgb(0.65, 0.65, 0.65);
+    const LIGHT_COLOR: Color = Color::from_rgb(0.9, 0.9, 0.9);
     const SMALL_RADIUS: f32 = 3.0;
     const LARGE_RADIUS: f32 = 5.0;
+    const ICON_BUTTON_WIDTH: u16 = 30;
 
     pub(crate) fn button_color<'a>(
         state: &'a mut button::State,
@@ -323,6 +729,33 @@ mod presets {
         } else {
             but.on_press(action)
         }
+    }
+
+    pub(crate) fn button_icon<'a>(
+        state: &'a mut button::State,
+        text: &str,
+        action: Message,
+        negative: bool,
+    ) -> Button<'a, Message> {
+        let label = Text::new(text)
+            .horizontal_alignment(iced::HorizontalAlignment::Center)
+            .vertical_alignment(iced::VerticalAlignment::Center);
+        let but = Button::new(state, label)
+            .style(if negative {
+                ButtonStyle::NegativeButton
+            } else {
+                ButtonStyle::ColorButton
+            })
+            .width(Length::Units(ICON_BUTTON_WIDTH));
+        if let Message::None = action {
+            but
+        } else {
+            but.on_press(action)
+        }
+    }
+
+    pub(crate) fn space_icon() -> Space {
+        Space::with_width(Length::Units(ICON_BUTTON_WIDTH))
     }
 
     pub(crate) fn button_main<'a>(
@@ -350,38 +783,51 @@ mod presets {
             .horizontal_alignment(iced::HorizontalAlignment::Center)
     }
 
+    pub(crate) fn text_error(text: &str) -> Text {
+        Text::new(text)
+            .color(COMP_COLOR)
+            .horizontal_alignment(iced::HorizontalAlignment::Center)
+    }
+
     pub(crate) fn pane_border<'a>(
         title: &str,
-        button: &str,
-        button_state: &'a mut button::State,
-        button_action: Message,
+        button: Option<(&str, &'a mut button::State, Message)>,
         content: Element<'a, Message>,
     ) -> pane_grid::Content<'a, Message> {
         let title = Row::with_children(vec![
             Space::with_width(Length::Shrink).into(),
-            Text::new(title).into(),
-            Space::with_width(Length::Fill).into(),
-            button_color(button_state, button, button_action).into(),
+            Text::new(title)
+                .vertical_alignment(iced::VerticalAlignment::Center)
+                .into(),
         ])
         .align_items(iced::Align::Center)
         .spacing(5)
-        .padding(2);
-        let title_bar = pane_grid::TitleBar::new(title).style(Container::PaneTitleBar);
-
+        .padding(5);
+        let mut title_bar = pane_grid::TitleBar::new(title).style(Container::PaneTitleBar);
+        if let Some((text, state, action)) = button {
+            title_bar = title_bar
+                .controls(button_color(state, text, action))
+                .always_show_controls();
+        }
         pane_grid::Content::new(content)
             .title_bar(title_bar)
             .style(Container::Pane)
     }
 
+    pub(crate) fn tooltip<'a>(content: Element<'a, Message>, tip: &str) -> Tooltip<'a, Message> {
+        Tooltip::new(content, tip, tooltip::Position::Right).style(Container::Tooltip)
+    }
+
     pub enum ButtonStyle {
         MainButton,
         ColorButton,
-        Button,
+        NegativeButton,
     }
 
     pub enum Container {
         PaneTitleBar,
         Pane,
+        Tooltip,
     }
 
     impl container::StyleSheet for Container {
@@ -400,6 +846,11 @@ mod presets {
                     border_radius: SMALL_RADIUS,
                     ..Default::default()
                 },
+                Container::Tooltip => container::Style {
+                    background: Some(LIGHT_COLOR.into()),
+                    border_radius: SMALL_RADIUS,
+                    ..container::Style::default()
+                },
             }
         }
     }
@@ -407,10 +858,6 @@ mod presets {
     impl button::StyleSheet for ButtonStyle {
         fn active(&self) -> button::Style {
             match &self {
-                ButtonStyle::Button => button::Style {
-                    background: Some(APP_COLOR.into()),
-                    ..Default::default()
-                },
                 ButtonStyle::MainButton => button::Style {
                     background: Some(APP_COLOR.into()),
                     text_color: Color::WHITE,
@@ -419,6 +866,12 @@ mod presets {
                 },
                 ButtonStyle::ColorButton => button::Style {
                     background: Some(APP_COLOR.into()),
+                    text_color: Color::WHITE,
+                    border_radius: SMALL_RADIUS,
+                    ..Default::default()
+                },
+                ButtonStyle::NegativeButton => button::Style {
+                    background: Some(COMP_COLOR.into()),
                     text_color: Color::WHITE,
                     border_radius: SMALL_RADIUS,
                     ..Default::default()
