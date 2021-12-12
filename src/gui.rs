@@ -1,4 +1,6 @@
 #![cfg(feature = "gui")]
+use std::path::PathBuf;
+
 /// This module contains the logic for running the program through a GUI
 use crate::{
     config::Config,
@@ -41,6 +43,7 @@ pub(crate) enum Message {
     OpenFolder(usize),
     GoUp,
     DialogFolder,
+    SaveConfig,
     None,
 }
 
@@ -295,7 +298,7 @@ impl ConfigState {
             )
             .into(),
             Space::with_width(Length::Fill).into(),
-            presets::button_color(&mut self.save, "Save", Message::None).into(),
+            presets::button_color(&mut self.save, "Save", Message::SaveConfig).into(),
             presets::button_color(&mut self.backup, "Backup", Message::None).into(),
         ])
         .spacing(presets::INNER_SPACING)
@@ -428,6 +431,33 @@ impl ConfigState {
                 if let Some(dir) = self.current_dir.get_path().parent() {
                     self.current_dir = FileInfo::from(dir);
                     self.refresh_files();
+                }
+            }
+            Message::SaveConfig => {
+                if let Some(file) = FileDialog::new()
+                    .set_directory(
+                        self.config
+                            .origin
+                            .as_ref()
+                            .and_then(|s| Some(PathBuf::from(s)))
+                            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default()),
+                    )
+                    .set_title("Save config file")
+                    .set_file_name("config.yml")
+                    .add_filter("Config file", &["yml"])
+                    .save_file()
+                {
+                    match self.config.write_yaml(file) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            MessageDialog::new()
+                                .set_description(&e.to_string())
+                                .set_level(rfd::MessageLevel::Error)
+                                .set_buttons(rfd::MessageButtons::Ok)
+                                .set_title("Problem saving config")
+                                .show();
+                        }
+                    };
                 }
             }
             _ => eprintln!("Unexpected GUI message"),
