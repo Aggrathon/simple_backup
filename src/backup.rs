@@ -17,6 +17,10 @@ pub enum BackupError {
     NoConfig(PathBuf),
     NoList(PathBuf),
     NoBackup(PathBuf),
+    ArchiveError(std::io::Error),
+    FileError(std::io::Error),
+    YamlError(serde_yaml::Error),
+    InvalidPath(String),
 }
 
 impl Display for BackupError {
@@ -37,7 +41,19 @@ impl Display for BackupError {
                 )
             }
             BackupError::NoBackup(path) => {
-                write!(f, "Could not the backup: {}", path.to_string_lossy())
+                write!(f, "Could not find a backup: {}", path.to_string_lossy())
+            }
+            BackupError::ArchiveError(e) => {
+                write!(f, "Could not read the backup: {}", e)
+            }
+            BackupError::FileError(e) => {
+                write!(f, "Could not read the file: {}", e)
+            }
+            BackupError::YamlError(e) => {
+                write!(f, "Could not parse the config: {}", e)
+            }
+            BackupError::InvalidPath(path) => {
+                write!(f, "The path must be either a config (.yml), a backup (.tar.zst), or a directory containing backups: {}", path)
             }
         }
     }
@@ -55,7 +71,7 @@ pub struct BackupWriter {
 
 impl BackupWriter {
     /// Create a new backup
-    pub fn new(config: Config) -> (Self, Option<Box<dyn Error>>) {
+    pub fn new(config: Config) -> (Self, Option<BackupError>) {
         let (prev_time, error) = if config.incremental {
             match config.time {
                 Some(t) => (Some(t), None),
@@ -234,10 +250,11 @@ pub struct BackupReader<'a> {
 
 impl<'a> BackupReader<'a> {
     /// Read a backup
-    pub fn read<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+    pub fn read<P: AsRef<Path>>(path: P) -> Result<Self, BackupError> {
+        let decoder = CompressionDecoder::read(&path).map_err(|e| BackupError::ArchiveError(e))?;
         Ok(BackupReader {
             path: path.as_ref().to_path_buf(),
-            decoder: CompressionDecoder::read(path)?,
+            decoder,
             used: false,
             list: None,
             config: None,
@@ -260,9 +277,10 @@ impl<'a> BackupReader<'a> {
         })
     }
 
-    fn use_decoder(&mut self) -> std::io::Result<()> {
+    fn use_decoder(&mut self) -> Result<(), BackupError> {
         if self.used {
-            self.decoder = CompressionDecoder::read(&self.path)?;
+            self.decoder =
+                CompressionDecoder::read(&self.path).map_err(|e| BackupError::ArchiveError(e))?;
         } else {
             self.used = true;
         }
@@ -270,32 +288,40 @@ impl<'a> BackupReader<'a> {
     }
 
     /// Read a backup, but only return the embedded config
-    pub fn read_config_only<P: AsRef<Path>>(path: P) -> Result<Config, Box<dyn Error>> {
+    pub fn read_config_only<P: AsRef<Path>>(path: P) -> Result<Config, BackupError> {
         let mut br = BackupReader::read(path)?;
         br.read_config()?;
         Ok(br.config.unwrap())
     }
 
     /// Read the embedded config from the backup
-    pub fn read_config(&mut self) -> Result<&mut Config, Box<dyn Error>> {
+    pub fn read_config(&mut self) -> Result<&mut Config, BackupError> {
         self.use_decoder()?;
-        let entry = self.decoder.entries()?.next();
-        if entry.is_none() {
-            return Err(Box::new(BackupError::NoConfig(self.path.clone())));
-        }
-        let mut entry = entry.unwrap()?;
+        let entry = self
+            .decoder
+            .entries()
+            .map_err(|e| BackupError::ArchiveError(e))?
+            .next();
+        let mut entry = match entry {
+            Some(Ok(e)) => e,
+            Some(Err(e)) => return Err(BackupError::ArchiveError(e)),
+            None => return Err(BackupError::NoConfig(self.path.clone())),
+        };
         if entry.0.get_string() != "config.yml" {
-            return Err(Box::new(BackupError::NoConfig(self.path.clone())));
+            return Err(BackupError::NoConfig(self.path.clone()));
         }
         let mut s = String::new();
-        entry.1.read_to_string(&mut s)?;
-        let mut conf: Config = Config::from_yaml(&s)?;
+        entry
+            .1
+            .read_to_string(&mut s)
+            .map_err(|e| BackupError::ArchiveError(e))?;
+        let mut conf: Config = Config::from_yaml(&s).map_err(|e| BackupError::YamlError(e))?;
         conf.origin = Some(self.path.to_string_lossy().to_string());
         self.config = Some(conf);
         Ok(self.config.as_mut().unwrap())
     }
 
-    pub fn get_config(&mut self) -> Result<&mut Config, Box<dyn Error>> {
+    pub fn get_config(&mut self) -> Result<&mut Config, BackupError> {
         if self.config.is_none() {
             self.read_config()
         } else {
@@ -332,10 +358,14 @@ impl<'a> BackupReader<'a> {
     /// Iterator over the files in the backup
     pub fn files(
         &mut self,
-    ) -> std::io::Result<impl Iterator<Item = std::io::Result<CompressionDecoderEntry<'_, 'a>>>>
+    ) -> Result<impl Iterator<Item = std::io::Result<CompressionDecoderEntry<'_, 'a>>>, BackupError>
     {
         self.use_decoder()?;
-        Ok(self.decoder.entries()?.skip(2))
+        Ok(self
+            .decoder
+            .entries()
+            .map_err(|e| BackupError::ArchiveError(e))?
+            .skip(2))
     }
 
     /// Read the embedded config and file list, and return the iterator over the files

@@ -141,9 +141,9 @@ enum ConfigPathType<P: AsRef<Path>> {
 
 impl<P: AsRef<Path>> ConfigPathType<P> {
     /// Parse a path to get how the config should be extracted
-    pub fn parse<S: AsRef<str>>(path: P, string: S) -> std::io::Result<Self> {
+    pub fn parse<S: AsRef<str>>(path: P, string: S) -> Result<Self, BackupError> {
         let p = path.as_ref();
-        let md = p.metadata()?;
+        let md = p.metadata().map_err(|e| BackupError::FileError(e))?;
         if md.is_dir() {
             return Ok(Self::Dir(path));
         } else if md.is_file() {
@@ -153,20 +153,35 @@ impl<P: AsRef<Path>> ConfigPathType<P> {
                 return Ok(Self::Backup(path));
             }
         }
-        Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "The path must be either a config (.yml), a backup (.tar.zst), or a directory containing backups",
+        Err(BackupError::InvalidPath(
+            path.as_ref().to_string_lossy().to_string(),
         ))
     }
 }
 
 /// Get a config based upon the path
-pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, Box<dyn std::error::Error>> {
+pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, BackupError> {
     match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
-        ConfigPathType::Config(path) => Ok(Config::read_yaml(path)?),
+        ConfigPathType::Config(path) => {
+            Config::read_yaml(path).map_err(|e| BackupError::FileError(e))
+        }
         ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
         ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
-            None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
+            None => Err(BackupError::NoBackup(path.to_path_buf())),
+            Some(path) => BackupReader::read_config_only(path),
+        },
+    }
+}
+
+/// Get a config based upon the path
+pub fn get_config_from_pathbuf(path: PathBuf) -> Result<Config, BackupError> {
+    match ConfigPathType::parse(path.as_path(), path.to_string_lossy())? {
+        ConfigPathType::Config(path) => {
+            Config::read_yaml(path).map_err(|e| BackupError::FileError(e))
+        }
+        ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
+        ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
+            None => Err(BackupError::NoBackup(path.to_path_buf())),
             Some(path) => BackupReader::read_config_only(path),
         },
     }

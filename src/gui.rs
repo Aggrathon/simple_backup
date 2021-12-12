@@ -3,12 +3,13 @@
 use crate::{
     config::Config,
     files::{FileCrawler, FileInfo},
+    utils::get_config_from_pathbuf,
 };
 use iced::{
     button, executor, pane_grid, pick_list, scrollable, Align, Application, Checkbox, Column,
     Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings, Space, Text,
 };
-use rfd::FileDialog;
+use rfd::{FileDialog, MessageDialog};
 
 pub fn gui() {
     ApplicationState::run(Settings::default()).unwrap();
@@ -79,13 +80,22 @@ impl Application for ApplicationState {
             Message::EditConfig => {
                 if let Some(file) = FileDialog::new()
                     .set_directory(dirs::home_dir().unwrap_or_default())
-                    .set_title("Open Config File")
-                    .add_filter("Config Files", &["yml"])
+                    .set_title("Open existing config or backup file")
+                    .add_filter("Config and backup files", &["yml", "tar.zst"])
+                    .add_filter("Config files", &["yml"])
+                    .add_filter("Backup files", &["tar.zst"])
                     .pick_file()
                 {
-                    match Config::read_yaml(file) {
+                    match get_config_from_pathbuf(file) {
                         Ok(config) => *self = ApplicationState::Config(ConfigState::from(config)),
-                        Err(_) => todo!(),
+                        Err(e) => {
+                            MessageDialog::new()
+                                .set_description(&e.to_string())
+                                .set_level(rfd::MessageLevel::Error)
+                                .set_buttons(rfd::MessageButtons::Ok)
+                                .set_title("Problem with reading config")
+                                .show();
+                        }
                     }
                 }
                 Command::none()
@@ -160,8 +170,7 @@ impl MainState {
             Space::with_height(Length::Fill).into(),
         ])
         .align_items(Align::Center)
-        .spacing(10);
-
+        .spacing(presets::LARGE_SPACING);
         Row::with_children(vec![
             Space::with_width(Length::Fill).into(),
             col.into(),
@@ -246,7 +255,7 @@ impl ConfigState {
         let pane_grid = PaneGrid::new(&mut self.panes, |_, pane| pane.content())
             .on_resize(10, Message::PaneResized)
             .on_drag(Message::PaneDragged)
-            .spacing(5);
+            .spacing(presets::OUTER_SPACING);
         let bar = Row::with_children(vec![
             presets::button_color(&mut self.back, "Back", Message::Main).into(),
             Space::with_width(Length::Fill).into(),
@@ -274,12 +283,12 @@ impl ConfigState {
             presets::button_color(&mut self.save, "Save", Message::None).into(),
             presets::button_color(&mut self.backup, "Backup", Message::None).into(),
         ])
-        .spacing(5)
+        .spacing(presets::INNER_SPACING)
         .align_items(Align::Center);
         Column::with_children(vec![pane_grid.into(), bar.into()])
             .width(Length::Fill)
-            .spacing(2)
-            .padding(2)
+            .spacing(presets::INNER_SPACING)
+            .padding(presets::INNER_SPACING)
             .into()
     }
 
@@ -526,7 +535,7 @@ impl Pane {
     fn content(&mut self) -> pane_grid::Content<Message> {
         let content = Scrollable::new(&mut self.scroll)
             .width(Length::Fill)
-            .spacing(10);
+            .spacing(presets::OUTER_SPACING);
         let content = self
             .items
             .iter_mut()
@@ -625,33 +634,30 @@ impl ListItem {
     fn view(&mut self) -> Element<Message> {
         let row = Row::new()
             .width(Length::Fill)
-            .padding(5)
-            .spacing(3)
+            .padding(presets::OUTER_SPACING)
+            .spacing(presets::INNER_SPACING)
             .align_items(Align::Center);
         let row = match self.state {
             ListState::File => {
                 if let Message::None = self.open_action {
                     row.push(presets::space_icon())
                 } else {
-                    row.push(presets::button_icon(
-                        &mut self.open_state,
-                        ">",
-                        self.open_action,
-                        false,
+                    row.push(presets::tooltip_right(
+                        presets::button_icon(&mut self.open_state, ">", self.open_action, false)
+                            .into(),
+                        "Open",
                     ))
                 }
             }
-            ListState::ParentFolder => row.push(presets::button_icon(
-                &mut self.open_state,
-                "<",
-                self.open_action,
-                true,
+            ListState::ParentFolder => row.push(presets::tooltip_right(
+                presets::button_icon(&mut self.open_state, "<", self.open_action, true).into(),
+                "Go Up",
             )),
             ListState::CopyItem => {
                 if let Message::None = self.open_action {
                     row
                 } else {
-                    row.push(presets::tooltip(
+                    row.push(presets::tooltip_right(
                         presets::button_icon(&mut self.open_state, "C", self.open_action, false)
                             .into(),
                         "Copy",
@@ -659,7 +665,7 @@ impl ListItem {
                 }
             }
             ListState::Error => row,
-            ListState::EditItem => row.push(presets::tooltip(
+            ListState::EditItem => row.push(presets::tooltip_right(
                 presets::button_icon(&mut self.open_state, "E", self.open_action, false).into(),
                 "Edit",
             )),
@@ -671,26 +677,22 @@ impl ListItem {
         };
         let row = match self.state {
             ListState::File | ListState::ParentFolder => row
-                .push(presets::button_icon(
-                    &mut self.add_state,
-                    "+",
-                    self.add_action,
-                    false,
+                .push(presets::tooltip_left(
+                    presets::button_icon(&mut self.add_state, "+", self.add_action, false).into(),
+                    "Include",
                 ))
-                .push(presets::button_icon(
-                    &mut self.remove_state,
-                    "-",
-                    self.remove_action,
-                    true,
+                .push(presets::tooltip_left(
+                    presets::button_icon(&mut self.remove_state, "-", self.remove_action, true)
+                        .into(),
+                    "Exclude",
                 )),
-            ListState::CopyItem | ListState::EditItem => row.push(presets::button_icon(
-                &mut self.remove_state,
-                "-",
-                self.remove_action,
-                true,
+            ListState::CopyItem | ListState::EditItem => row.push(presets::tooltip_left(
+                presets::button_icon(&mut self.remove_state, "-", self.remove_action, true).into(),
+                "Remove",
             )),
             ListState::Error => row,
         };
+        let row = row.push(presets::space_scroll());
         row.into()
     }
 }
@@ -714,6 +716,9 @@ mod presets {
     const SMALL_RADIUS: f32 = 3.0;
     const LARGE_RADIUS: f32 = 5.0;
     const ICON_BUTTON_WIDTH: u16 = 30;
+    pub const INNER_SPACING: u16 = 3;
+    pub const OUTER_SPACING: u16 = 6;
+    pub const LARGE_SPACING: u16 = 6;
 
     pub(crate) fn button_color<'a>(
         state: &'a mut button::State,
@@ -756,6 +761,10 @@ mod presets {
 
     pub(crate) fn space_icon() -> Space {
         Space::with_width(Length::Units(ICON_BUTTON_WIDTH))
+    }
+
+    pub(crate) fn space_scroll() -> Space {
+        Space::with_width(Length::Units(0))
     }
 
     pub(crate) fn button_main<'a>(
@@ -801,8 +810,8 @@ mod presets {
                 .into(),
         ])
         .align_items(iced::Align::Center)
-        .spacing(5)
-        .padding(5);
+        .spacing(INNER_SPACING)
+        .padding(INNER_SPACING);
         let mut title_bar = pane_grid::TitleBar::new(title).style(Container::PaneTitleBar);
         if let Some((text, state, action)) = button {
             title_bar = title_bar
@@ -814,8 +823,18 @@ mod presets {
             .style(Container::Pane)
     }
 
-    pub(crate) fn tooltip<'a>(content: Element<'a, Message>, tip: &str) -> Tooltip<'a, Message> {
+    pub(crate) fn tooltip_right<'a>(
+        content: Element<'a, Message>,
+        tip: &str,
+    ) -> Tooltip<'a, Message> {
         Tooltip::new(content, tip, tooltip::Position::Right).style(Container::Tooltip)
+    }
+
+    pub(crate) fn tooltip_left<'a>(
+        content: Element<'a, Message>,
+        tip: &str,
+    ) -> Tooltip<'a, Message> {
+        Tooltip::new(content, tip, tooltip::Position::Left).style(Container::Tooltip)
     }
 
     pub enum ButtonStyle {
