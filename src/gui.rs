@@ -550,7 +550,8 @@ impl Pane {
     fn content(&mut self) -> pane_grid::Content<Message> {
         let content = Scrollable::new(&mut self.scroll)
             .width(Length::Fill)
-            .spacing(presets::OUTER_SPACING);
+            .spacing(presets::INNER_SPACING)
+            .padding(presets::OUTER_SPACING);
         let content = self
             .items
             .iter_mut()
@@ -649,7 +650,7 @@ impl ListItem {
     fn view(&mut self) -> Element<Message> {
         let row = Row::new()
             .width(Length::Fill)
-            .padding(presets::OUTER_SPACING)
+            // .padding(presets::OUTER_SPACING)
             .spacing(presets::INNER_SPACING)
             .align_items(Align::Center);
         let row = match self.state {
