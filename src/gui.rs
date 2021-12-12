@@ -27,6 +27,7 @@ pub(crate) enum Message {
     Restore,
     ToggleIncremental(bool),
     ThreadCount(u32),
+    CompressionQuality(i32),
     AddInclude(usize),
     RemoveInclude(usize),
     CopyInclude(usize),
@@ -188,6 +189,8 @@ struct ConfigState {
     backup: button::State,
     threads: pick_list::State<u32>,
     thread_alt: Vec<u32>,
+    compression: pick_list::State<i32>,
+    compression_alt: Vec<i32>,
     files: pane_grid::Pane,
     includes: pane_grid::Pane,
     excludes: pane_grid::Pane,
@@ -227,6 +230,8 @@ impl ConfigState {
             backup: button::State::new(),
             threads: pick_list::State::default(),
             thread_alt: (1u32..num_cpus::get() as u32 + 1).collect(),
+            compression: pick_list::State::default(),
+            compression_alt: (1..23).collect(),
             files,
             includes,
             excludes,
@@ -267,15 +272,24 @@ impl ConfigState {
             )
             .into(),
             Text::new(if self.config.threads > 1 {
-                " Threads "
+                " Threads"
             } else {
-                " Thread  "
+                " Thread "
             })
             .into(),
-            Space::with_width(Length::Units(10)).into(),
+            Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
+            PickList::new(
+                &mut self.compression,
+                &self.compression_alt,
+                Some(self.config.quality),
+                Message::CompressionQuality,
+            )
+            .into(),
+            Text::new("Compression quality").into(),
+            Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
             Checkbox::new(
                 self.config.incremental,
-                "Incremental Backups",
+                "Incremental backups",
                 Message::ToggleIncremental,
             )
             .into(),
@@ -307,6 +321,7 @@ impl ConfigState {
             Message::PaneDragged(_) => {}
             Message::ToggleIncremental(t) => self.config.incremental = t,
             Message::ThreadCount(text) => self.config.set_threads(text),
+            Message::CompressionQuality(text) => self.config.set_quality(text),
             Message::AddInclude(i) => {
                 let pane = self.panes.get_mut(&self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {

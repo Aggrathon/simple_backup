@@ -30,7 +30,6 @@ pub struct Config {
 
 impl Config {
     /// Create an empty config
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Config {
             include: vec![],
@@ -40,7 +39,7 @@ impl Config {
             incremental: true,
             quality: 21,
             local: false,
-            threads: 1,
+            threads: 4,
             time: None,
             origin: None,
         }
@@ -89,12 +88,10 @@ impl Config {
         }
     }
 
-    #[allow(dead_code)]
     pub fn set_quality(&mut self, quality: i32) {
         self.quality = clamp(quality, 1, 22);
     }
 
-    #[allow(dead_code)]
     pub fn set_threads(&mut self, threads: u32) {
         self.threads = clamp(threads, 1, num_cpus::get() as u32);
     }
