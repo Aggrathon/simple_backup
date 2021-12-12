@@ -6,9 +6,10 @@ use crate::{
     utils::get_config_from_pathbuf,
 };
 use iced::{
-    button, executor, pane_grid, pick_list, scrollable, Align, Application, Checkbox, Column,
-    Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings, Space, Text,
+    button, executor, pane_grid, pick_list, scrollable, text_input, Align, Application, Checkbox,
+    Column, Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings, Space, Text,
 };
+use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
 
 pub fn gui() {
@@ -16,7 +17,7 @@ pub fn gui() {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) enum Message {
     PaneResized(pane_grid::ResizeEvent),
     PaneDragged(pane_grid::DragEvent),
@@ -36,7 +37,7 @@ pub(crate) enum Message {
     CopyExclude(usize),
     AddFilter,
     RemoveFilter(usize),
-    EditFilter(usize),
+    EditFilter(usize, String),
     OpenFolder(usize),
     GoUp,
     DialogFolder,
@@ -374,7 +375,10 @@ impl ConfigState {
                     clipboard.write(s.to_string());
                 }
             }
-            Message::AddFilter => todo!(),
+            Message::AddFilter => {
+                self.config.regex.push(String::new());
+                self.refresh_filters();
+            }
             Message::RemoveFilter(i) => {
                 if i < self.config.regex.len() {
                     self.config.regex.remove(i);
@@ -382,7 +386,26 @@ impl ConfigState {
                     self.refresh_files();
                 }
             }
-            Message::EditFilter(i) => todo!("Edit filter {}", i),
+            Message::EditFilter(i, s) => {
+                let pane = self.panes.get_mut(&self.filters).unwrap();
+                let mut refresh = false;
+                if let Some(item) = pane.items.get_mut(i) {
+                    if !item.text.eq(&s) {
+                        if Regex::new(&s).is_ok() {
+                            item.status = true;
+                            refresh = true;
+                            self.config.regex[i].replace_range(.., &s);
+                        } else {
+                            refresh = item.status;
+                            item.status = false;
+                        }
+                        item.text = s;
+                    }
+                }
+                if refresh {
+                    self.refresh_files();
+                }
+            }
             Message::OpenFolder(i) => {
                 let pane = self.panes.get_mut(&self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
@@ -424,23 +447,10 @@ impl ConfigState {
             Ok(fc) => {
                 let parent = fc.check_path(&mut self.current_dir, None);
                 pane.items.push(ListItem::new(
-                    ListState::ParentFolder,
+                    ListState::ParentFolder(self.current_dir.get_path().parent().is_some()),
                     self.current_dir.get_string().to_string(),
-                    if self.current_dir.get_path().parent().is_some() {
-                        Message::GoUp
-                    } else {
-                        Message::None
-                    },
-                    if parent {
-                        Message::None
-                    } else {
-                        Message::AddInclude(0)
-                    },
-                    if parent {
-                        Message::AddExclude(0)
-                    } else {
-                        Message::None
-                    },
+                    0,
+                    parent,
                 ));
                 match self.current_dir.get_path().read_dir() {
                     Ok(rd) => {
@@ -467,59 +477,44 @@ impl ConfigState {
                     Err(e) => pane.items.push(ListItem::error(format!("{}", e))),
                 }
             }
-            Err(e) => pane.items.push(ListItem::new(
-                ListState::Error,
-                format!("{}", e),
-                Message::None,
-                Message::None,
-                Message::None,
-            )),
+            Err(e) => pane.items.push(ListItem::error(format!("{}", e))),
         };
     }
 
     fn refresh_includes(&mut self) {
         let pane = self.panes.get_mut(&self.includes).unwrap();
         pane.items.clear();
-        pane.items
-            .extend(self.config.include.iter().enumerate().map(|(i, s)| {
-                ListItem::new(
-                    ListState::CopyItem,
-                    s.to_string(),
-                    Message::CopyInclude(i),
-                    Message::None,
-                    Message::RemoveInclude(i),
-                )
-            }));
+        pane.items.extend(
+            self.config
+                .include
+                .iter()
+                .enumerate()
+                .map(|(i, s)| ListItem::new(ListState::Include, s.to_string(), i, false)),
+        );
     }
 
     fn refresh_excludes(&mut self) {
         let pane = self.panes.get_mut(&self.excludes).unwrap();
         pane.items.clear();
-        pane.items
-            .extend(self.config.exclude.iter().enumerate().map(|(i, s)| {
-                ListItem::new(
-                    ListState::CopyItem,
-                    s.to_string(),
-                    Message::CopyExclude(i),
-                    Message::None,
-                    Message::RemoveExclude(i),
-                )
-            }));
+        pane.items.extend(
+            self.config
+                .exclude
+                .iter()
+                .enumerate()
+                .map(|(i, s)| ListItem::new(ListState::Exclude, s.to_string(), i, false)),
+        );
     }
 
     fn refresh_filters(&mut self) {
         let pane = self.panes.get_mut(&self.filters).unwrap();
         pane.items.clear();
-        pane.items
-            .extend(self.config.regex.iter().enumerate().map(|(i, s)| {
-                ListItem::new(
-                    ListState::EditItem,
-                    s.to_string(),
-                    Message::EditFilter(i),
-                    Message::None,
-                    Message::RemoveFilter(i),
-                )
-            }));
+        pane.items.extend(
+            self.config
+                .regex
+                .iter()
+                .enumerate()
+                .map(|(i, s)| ListItem::edit(s.to_string(), i)),
+        );
     }
 }
 
@@ -575,37 +570,31 @@ impl Pane {
 
 enum ListState {
     File,
-    ParentFolder,
-    CopyItem,
-    EditItem,
+    Folder,
+    ParentFolder(bool),
+    Include,
+    Exclude,
+    Filter(text_input::State),
     Error,
 }
 
 struct ListItem {
     state: ListState,
-    open_state: button::State,
-    open_action: Message,
+    index: usize,
+    status: bool,
     text: String,
+    open_state: button::State,
     add_state: button::State,
-    add_action: Message,
     remove_state: button::State,
-    remove_action: Message,
 }
 
 impl ListItem {
-    fn new(
-        state: ListState,
-        text: String,
-        open_action: Message,
-        add_action: Message,
-        remove_action: Message,
-    ) -> Self {
+    fn new(state: ListState, text: String, index: usize, status: bool) -> Self {
         Self {
             state,
+            index,
+            status,
             text,
-            open_action,
-            add_action,
-            remove_action,
             open_state: button::State::new(),
             add_state: button::State::new(),
             remove_state: button::State::new(),
@@ -613,38 +602,25 @@ impl ListItem {
     }
 
     fn error(text: String) -> Self {
-        Self::new(
-            ListState::Error,
-            text,
-            Message::None,
-            Message::None,
-            Message::None,
-        )
+        Self::new(ListState::Error, text, 0, false)
     }
 
     fn file(text: String, included: bool, is_dir: bool, index: usize) -> Self {
-        let open = if is_dir {
-            Message::OpenFolder(index)
+        if is_dir {
+            Self::new(ListState::Folder, text, index, included)
         } else {
-            Message::None
-        };
-        if included {
-            Self::new(
-                ListState::File,
-                text,
-                open,
-                Message::None,
-                Message::AddExclude(index),
-            )
-        } else {
-            Self::new(
-                ListState::File,
-                text,
-                open,
-                Message::AddInclude(index),
-                Message::None,
-            )
+            Self::new(ListState::File, text, index, included)
         }
+    }
+
+    fn edit(text: String, index: usize) -> Self {
+        let valid = text.is_empty() || Regex::new(&text).is_ok();
+        Self::new(
+            ListState::Filter(text_input::State::new()),
+            text,
+            index,
+            valid,
+        )
     }
 
     fn view(&mut self) -> Element<Message> {
@@ -654,58 +630,130 @@ impl ListItem {
             .spacing(presets::INNER_SPACING)
             .align_items(Align::Center);
         let row = match self.state {
-            ListState::File => {
-                if let Message::None = self.open_action {
-                    row.push(presets::space_icon())
-                } else {
-                    row.push(presets::tooltip_right(
-                        presets::button_icon(&mut self.open_state, ">", self.open_action, false)
-                            .into(),
-                        "Open",
-                    ))
-                }
-            }
-            ListState::ParentFolder => row.push(presets::tooltip_right(
-                presets::button_icon(&mut self.open_state, "<", self.open_action, true).into(),
+            ListState::File => row.push(presets::space_icon()),
+            ListState::Folder => row.push(presets::tooltip_right(
+                presets::button_icon(
+                    &mut self.open_state,
+                    ">",
+                    Message::OpenFolder(self.index),
+                    false,
+                )
+                .into(),
+                "Open",
+            )),
+            ListState::ParentFolder(up) => row.push(presets::tooltip_right(
+                presets::button_icon(
+                    &mut self.open_state,
+                    "<",
+                    if up { Message::GoUp } else { Message::None },
+                    true,
+                )
+                .into(),
                 "Go Up",
             )),
-            ListState::CopyItem => {
-                if let Message::None = self.open_action {
-                    row
-                } else {
-                    row.push(presets::tooltip_right(
-                        presets::button_icon(&mut self.open_state, "C", self.open_action, false)
-                            .into(),
-                        "Copy",
-                    ))
-                }
-            }
-            ListState::Error => row,
-            ListState::EditItem => row.push(presets::tooltip_right(
-                presets::button_icon(&mut self.open_state, "E", self.open_action, false).into(),
-                "Edit",
+            ListState::Include => row.push(presets::tooltip_right(
+                presets::button_icon(
+                    &mut self.open_state,
+                    "C",
+                    Message::CopyInclude(self.index),
+                    false,
+                )
+                .into(),
+                "Copy",
             )),
+            ListState::Exclude => row.push(presets::tooltip_right(
+                presets::button_icon(
+                    &mut self.open_state,
+                    "C",
+                    Message::CopyExclude(self.index),
+                    false,
+                )
+                .into(),
+                "Copy",
+            )),
+            ListState::Error | ListState::Filter(..) => row,
         };
-        let row = if let ListState::Error = self.state {
-            row.push(presets::text_error(&self.text).width(Length::Fill))
-        } else {
-            row.push(Text::new(&self.text).width(Length::Fill))
+        let row = match &mut self.state {
+            ListState::Error => row.push(presets::text_error(&self.text).width(Length::Fill)),
+            ListState::Filter(..) => row,
+            _ => row.push(Text::new(&self.text).width(Length::Fill)),
         };
-        let row = match self.state {
-            ListState::File | ListState::ParentFolder => row
+        let row = match &mut self.state {
+            ListState::File | ListState::Folder | ListState::ParentFolder(_) => row
                 .push(presets::tooltip_left(
-                    presets::button_icon(&mut self.add_state, "+", self.add_action, false).into(),
+                    presets::button_icon(
+                        &mut self.add_state,
+                        "+",
+                        if self.status {
+                            Message::None
+                        } else {
+                            Message::AddInclude(self.index)
+                        },
+                        false,
+                    )
+                    .into(),
                     "Include",
                 ))
                 .push(presets::tooltip_left(
-                    presets::button_icon(&mut self.remove_state, "-", self.remove_action, true)
-                        .into(),
+                    presets::button_icon(
+                        &mut self.remove_state,
+                        "-",
+                        if self.status {
+                            Message::AddExclude(self.index)
+                        } else {
+                            Message::None
+                        },
+                        true,
+                    )
+                    .into(),
                     "Exclude",
                 )),
-            ListState::CopyItem | ListState::EditItem => row.push(presets::tooltip_left(
-                presets::button_icon(&mut self.remove_state, "-", self.remove_action, true).into(),
+            ListState::Include => row.push(presets::tooltip_left(
+                presets::button_icon(
+                    &mut self.remove_state,
+                    "-",
+                    Message::RemoveInclude(self.index),
+                    true,
+                )
+                .into(),
                 "Remove",
             )),
+            ListState::Exclude => row.push(presets::tooltip_left(
+                presets::button_icon(
+                    &mut self.remove_state,
+                    "-",
+                    Message::RemoveExclude(self.index),
+                    true,
+                )
+                .into(),
+                "Remove",
+            )),
+            ListState::Filter(state) => {
+                let i = self.index;
+                let mess = move |t| Message::EditFilter(i, t);
+                let row = row.push(presets::regex_field(
+                    state,
+                    &self.text,
+                    "Regex filter",
+                    self.status,
+                    mess,
+                ));
+                if !self.status {
+                    row.push(presets::text_error("Invalid"))
+                } else {
+                    row
+                }
+                .push(presets::tooltip_left(
+                    presets::button_icon(
+                        &mut self.remove_state,
+                        "-",
+                        Message::RemoveFilter(self.index),
+                        true,
+                    )
+                    .into(),
+                    "Remove",
+                ))
+            }
             ListState::Error => row,
         };
         let row = row.push(presets::space_scroll());
@@ -719,16 +767,18 @@ struct RestoreState {}
 
 mod presets {
     use iced::{
-        button, container, pane_grid, tooltip, Button, Color, Element, Length, Row, Space, Text,
-        Tooltip,
+        button, container, pane_grid, text_input, tooltip, Button, Color, Element, Length, Row,
+        Space, Text, TextInput, Tooltip,
     };
 
     use super::Message;
 
     const APP_COLOR: Color = Color::from_rgb(78.0 / 255.0, 155.0 / 255.0, 71.0 / 255.0); //#4E9B47
+    const APP2_COLOR: Color = Color::from_rgb(172.0 / 255.0, 215.0 / 255.0, 168.0 / 255.0); //#acd7a8
     const COMP_COLOR: Color = Color::from_rgb(148.0 / 255.0, 71.0 / 255.0, 155.0 / 255.0); //#94479b
     const GREY_COLOR: Color = Color::from_rgb(0.65, 0.65, 0.65);
     const LIGHT_COLOR: Color = Color::from_rgb(0.9, 0.9, 0.9);
+    const DARK_COLOR: Color = Color::from_rgb(0.3, 0.3, 0.3);
     const SMALL_RADIUS: f32 = 3.0;
     const LARGE_RADIUS: f32 = 5.0;
     const ICON_BUTTON_WIDTH: u16 = 30;
@@ -828,7 +878,7 @@ mod presets {
         .align_items(iced::Align::Center)
         .spacing(INNER_SPACING)
         .padding(INNER_SPACING);
-        let mut title_bar = pane_grid::TitleBar::new(title).style(Container::PaneTitleBar);
+        let mut title_bar = pane_grid::TitleBar::new(title).style(ContainerStyle::PaneTitleBar);
         if let Some((text, state, action)) = button {
             title_bar = title_bar
                 .controls(button_color(state, text, action))
@@ -836,21 +886,41 @@ mod presets {
         }
         pane_grid::Content::new(content)
             .title_bar(title_bar)
-            .style(Container::Pane)
+            .style(ContainerStyle::Pane)
     }
 
     pub(crate) fn tooltip_right<'a>(
         content: Element<'a, Message>,
         tip: &str,
     ) -> Tooltip<'a, Message> {
-        Tooltip::new(content, tip, tooltip::Position::Right).style(Container::Tooltip)
+        Tooltip::new(content, tip, tooltip::Position::Right).style(ContainerStyle::Tooltip)
     }
 
     pub(crate) fn tooltip_left<'a>(
         content: Element<'a, Message>,
         tip: &str,
     ) -> Tooltip<'a, Message> {
-        Tooltip::new(content, tip, tooltip::Position::Left).style(Container::Tooltip)
+        Tooltip::new(content, tip, tooltip::Position::Left).style(ContainerStyle::Tooltip)
+    }
+
+    pub(crate) fn regex_field<'a, F>(
+        state: &'a mut text_input::State,
+        value: &'a String,
+        placeholder: &str,
+        valid_regex: bool,
+        mess: F,
+    ) -> TextInput<'a, Message>
+    where
+        F: 'static + Fn(String) -> Message,
+    {
+        let inp = TextInput::new(state, placeholder, value, mess).padding(LARGE_SPACING);
+        if value.is_empty() {
+            inp.style(InputStyle::Normal)
+        } else if valid_regex {
+            inp.style(InputStyle::Working)
+        } else {
+            inp.style(InputStyle::Problem)
+        }
     }
 
     pub enum ButtonStyle {
@@ -859,29 +929,35 @@ mod presets {
         NegativeButton,
     }
 
-    pub enum Container {
+    pub enum ContainerStyle {
         PaneTitleBar,
         Pane,
         Tooltip,
     }
 
-    impl container::StyleSheet for Container {
+    pub enum InputStyle {
+        Normal,
+        Working,
+        Problem,
+    }
+
+    impl container::StyleSheet for ContainerStyle {
         fn style(&self) -> container::Style {
             match &self {
-                Container::PaneTitleBar => container::Style {
+                ContainerStyle::PaneTitleBar => container::Style {
                     text_color: Some(Color::WHITE),
                     background: Some(GREY_COLOR.into()),
                     border_radius: SMALL_RADIUS,
                     ..Default::default()
                 },
-                Container::Pane => container::Style {
+                ContainerStyle::Pane => container::Style {
                     background: Some(Color::WHITE.into()),
                     border_width: 2.0,
                     border_color: GREY_COLOR,
                     border_radius: SMALL_RADIUS,
                     ..Default::default()
                 },
-                Container::Tooltip => container::Style {
+                ContainerStyle::Tooltip => container::Style {
                     background: Some(LIGHT_COLOR.into()),
                     border_radius: SMALL_RADIUS,
                     ..container::Style::default()
@@ -912,6 +988,38 @@ mod presets {
                     ..Default::default()
                 },
             }
+        }
+    }
+
+    impl text_input::StyleSheet for InputStyle {
+        fn active(&self) -> text_input::Style {
+            text_input::Style {
+                background: Color::WHITE.into(),
+                border_color: GREY_COLOR,
+                border_radius: SMALL_RADIUS,
+                border_width: 1.0,
+                ..Default::default()
+            }
+        }
+
+        fn focused(&self) -> text_input::Style {
+            text_input::Style { ..self.active() }
+        }
+
+        fn placeholder_color(&self) -> Color {
+            LIGHT_COLOR
+        }
+
+        fn value_color(&self) -> Color {
+            match self {
+                InputStyle::Normal => DARK_COLOR,
+                InputStyle::Working => DARK_COLOR,
+                InputStyle::Problem => COMP_COLOR,
+            }
+        }
+
+        fn selection_color(&self) -> Color {
+            APP2_COLOR
         }
     }
 }

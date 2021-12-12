@@ -127,9 +127,10 @@ impl Config {
     pub fn sort(&mut self) {
         self.include.sort_unstable();
         self.exclude.sort_unstable();
+        self.regex.retain(|s| !s.is_empty());
     }
 
-    /// Get the path fro a new backup
+    /// Get the path for a new backup
     pub fn get_output(&self) -> PathBuf {
         if self.output.ends_with(".tar.zst") {
             PathBuf::from(&self.output)

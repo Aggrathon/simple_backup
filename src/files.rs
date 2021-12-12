@@ -251,6 +251,7 @@ impl FileCrawler {
             filter
                 .as_ref()
                 .into_iter()
+                .filter(|s| !s.as_ref().is_empty())
                 .map(|s| s.as_ref())
                 .chain(exc.iter().map(|s| s.as_str())),
         )?;
