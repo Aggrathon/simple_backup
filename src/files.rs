@@ -146,7 +146,7 @@ impl FileInfo {
         } else if self.path.is_none() {
             self.string.as_ref().unwrap().to_string()
         } else {
-            std::mem::replace(&mut self.string, None).unwrap()
+            std::mem::take(&mut self.string).unwrap()
         }
     }
 }

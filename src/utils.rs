@@ -111,7 +111,7 @@ impl Iterator for BackupIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.constant.is_some() {
-            std::mem::replace(&mut self.constant, None)
+            std::mem::take(&mut self.constant)
         } else if let Some(dir) = &mut self.dir {
             for entry in dir {
                 let path = try_some!(entry.map(|e| e.path()));

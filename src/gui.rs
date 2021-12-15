@@ -44,6 +44,8 @@ pub(crate) enum Message {
     GoUp,
     DialogFolder,
     SaveConfig,
+    SortName,
+    SortSize,
     None,
 }
 
@@ -52,6 +54,28 @@ enum ApplicationState {
     Config(ConfigState),
     Backup(BackupState),
     Restore(RestoreState),
+}
+
+fn open_config() -> Option<Config> {
+    FileDialog::new()
+        .set_directory(dirs::home_dir().unwrap_or_default())
+        .set_title("Open existing config or backup file")
+        .add_filter("Config and backup files", &["yml", "tar.zst"])
+        .add_filter("Config files", &["yml"])
+        .add_filter("Backup files", &["tar.zst"])
+        .pick_file()
+        .and_then(|file| match get_config_from_pathbuf(file) {
+            Ok(config) => Some(config),
+            Err(e) => {
+                MessageDialog::new()
+                    .set_description(&e.to_string())
+                    .set_level(rfd::MessageLevel::Error)
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .set_title("Problem with reading config")
+                    .show();
+                None
+            }
+        })
 }
 
 impl Application for ApplicationState {
@@ -83,30 +107,23 @@ impl Application for ApplicationState {
                 Command::none()
             }
             Message::EditConfig => {
-                if let Some(file) = FileDialog::new()
-                    .set_directory(dirs::home_dir().unwrap_or_default())
-                    .set_title("Open existing config or backup file")
-                    .add_filter("Config and backup files", &["yml", "tar.zst"])
-                    .add_filter("Config files", &["yml"])
-                    .add_filter("Backup files", &["tar.zst"])
-                    .pick_file()
-                {
-                    match get_config_from_pathbuf(file) {
-                        Ok(config) => *self = ApplicationState::Config(ConfigState::from(config)),
-                        Err(e) => {
-                            MessageDialog::new()
-                                .set_description(&e.to_string())
-                                .set_level(rfd::MessageLevel::Error)
-                                .set_buttons(rfd::MessageButtons::Ok)
-                                .set_title("Problem with reading config")
-                                .show();
-                        }
-                    }
+                if let ApplicationState::Backup(state) = self {
+                    *self = ApplicationState::Config(ConfigState::from(std::mem::take(
+                        &mut state.config,
+                    )))
+                } else if let Some(config) = open_config() {
+                    *self = ApplicationState::Config(ConfigState::from(config))
                 }
                 Command::none()
             }
             Message::Backup => {
-                *self = ApplicationState::Backup(BackupState {});
+                if let ApplicationState::Config(state) = self {
+                    *self = ApplicationState::Backup(BackupState::new(std::mem::take(
+                        &mut state.config,
+                    )))
+                } else if let Some(config) = open_config() {
+                    *self = ApplicationState::Backup(BackupState::new(config))
+                };
                 Command::none()
             }
             Message::Restore => {
@@ -124,7 +141,7 @@ impl Application for ApplicationState {
             _ => match self {
                 ApplicationState::Main(_) => Command::none(),
                 ApplicationState::Config(state) => state.update(message, clipboard),
-                ApplicationState::Backup(_) => todo!(),
+                ApplicationState::Backup(state) => state.update(message, clipboard),
                 ApplicationState::Restore(_) => todo!(),
             },
         }
@@ -134,7 +151,7 @@ impl Application for ApplicationState {
         match self {
             ApplicationState::Main(state) => state.view(),
             ApplicationState::Config(state) => state.view(),
-            ApplicationState::Backup(_) => todo!(),
+            ApplicationState::Backup(state) => state.view(),
             ApplicationState::Restore(_) => todo!(),
         }
     }
@@ -163,15 +180,9 @@ impl MainState {
             presets::text_title("simple_backup").into(),
             Space::with_height(Length::Shrink).into(),
             presets::button_main(&mut self.create, "Create", Message::CreateConfig).into(),
-            presets::button_main(&mut self.edit, "Edit", Message::EditConfig)
-                // .on_press(Message::EditConfig)
-                .into(),
-            presets::button_main(&mut self.backup, "Backup", Message::None)
-                // .on_press(Message::Backup)
-                .into(),
-            presets::button_main(&mut self.config, "Restore", Message::None)
-                // .on_press(Message::Restore)
-                .into(),
+            presets::button_main(&mut self.edit, "Edit", Message::EditConfig).into(),
+            presets::button_main(&mut self.backup, "Backup", Message::Backup).into(),
+            presets::button_main(&mut self.config, "Restore", Message::None).into(),
             Space::with_height(Length::Fill).into(),
         ])
         .align_items(Align::Center)
@@ -266,7 +277,7 @@ impl ConfigState {
             .on_drag(Message::PaneDragged)
             .spacing(presets::OUTER_SPACING);
         let bar = Row::with_children(vec![
-            presets::button_color(&mut self.back, "Back", Message::Main).into(),
+            presets::button_nav(&mut self.back, "Back", Message::Main, false).into(),
             Space::with_width(Length::Fill).into(),
             PickList::new(
                 &mut self.threads,
@@ -298,8 +309,8 @@ impl ConfigState {
             )
             .into(),
             Space::with_width(Length::Fill).into(),
-            presets::button_color(&mut self.save, "Save", Message::SaveConfig).into(),
-            presets::button_color(&mut self.backup, "Backup", Message::None).into(),
+            presets::button_nav(&mut self.save, "Save", Message::SaveConfig, true).into(),
+            presets::button_nav(&mut self.backup, "Backup", Message::Backup, true).into(),
         ])
         .spacing(presets::INNER_SPACING)
         .align_items(Align::Center);
@@ -329,7 +340,7 @@ impl ConfigState {
             Message::AddInclude(i) => {
                 let pane = self.panes.get_mut(&self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
-                    let s = std::mem::replace(&mut li.text, String::new());
+                    let s = std::mem::take(&mut li.text);
                     if let Ok(i) = self.config.exclude.binary_search(&s) {
                         self.config.exclude.remove(i);
                         self.refresh_excludes();
@@ -355,7 +366,7 @@ impl ConfigState {
             Message::AddExclude(i) => {
                 let pane = self.panes.get_mut(&self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
-                    let s = std::mem::replace(&mut li.text, String::new());
+                    let s = std::mem::take(&mut li.text);
                     if let Ok(i) = self.config.include.binary_search(&s) {
                         self.config.include.remove(i);
                         self.refresh_includes();
@@ -412,8 +423,7 @@ impl ConfigState {
             Message::OpenFolder(i) => {
                 let pane = self.panes.get_mut(&self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
-                    self.current_dir =
-                        FileInfo::from(std::mem::replace(&mut li.text, String::new()));
+                    self.current_dir = FileInfo::from(std::mem::take(&mut li.text));
                     self.refresh_files();
                 }
             }
@@ -791,7 +801,99 @@ impl ListItem {
     }
 }
 
-struct BackupState {}
+struct BackupState {
+    config: Config,
+    scroll_state: scrollable::State,
+    edit_button: button::State,
+    backup_button: button::State,
+    name_button: button::State,
+    size_button: button::State,
+    name_sort: bool,
+}
+
+impl BackupState {
+    fn new(config: Config) -> Self {
+        Self {
+            config,
+            scroll_state: scrollable::State::new(),
+            edit_button: button::State::new(),
+            backup_button: button::State::new(),
+            name_button: button::State::new(),
+            size_button: button::State::new(),
+            name_sort: true,
+        }
+    }
+
+    fn view(&mut self) -> Element<Message> {
+        let trow = Row::with_children(vec![
+            presets::button_grey(
+                &mut self.name_button,
+                "Name",
+                Message::SortName,
+                !self.name_sort,
+            )
+            .width(Length::Fill)
+            .into(),
+            presets::button_grey(
+                &mut self.size_button,
+                "Size",
+                Message::SortSize,
+                self.name_sort,
+            )
+            .width(Length::Units(100))
+            .into(),
+        ])
+        .spacing(presets::INNER_SPACING);
+        let scroll = Scrollable::new(&mut self.scroll_state)
+            .height(Length::Fill)
+            .width(Length::Fill)
+            .spacing(presets::INNER_SPACING);
+        // .padding(presets::OUTER_SPACING);
+        let scroll = scroll.push(
+            Row::with_children(vec![
+                Text::new("Scanning for files to backup...")
+                    .width(Length::Fill)
+                    .into(),
+                Text::new("5.00 GB")
+                    .width(Length::Units(100))
+                    .horizontal_alignment(iced::HorizontalAlignment::Right)
+                    .into(),
+                presets::space_scroll().into(),
+            ])
+            .spacing(presets::INNER_SPACING),
+        );
+        let brow = Row::with_children(vec![
+            presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false).into(),
+            Space::with_width(Length::Fill).into(),
+            presets::button_nav(&mut self.backup_button, "Backup", Message::None, true).into(),
+        ])
+        .spacing(presets::INNER_SPACING);
+        Column::with_children(vec![trow.into(), scroll.into(), brow.into()])
+            .width(Length::Fill)
+            .spacing(presets::INNER_SPACING)
+            .padding(presets::INNER_SPACING)
+            .into()
+    }
+
+    fn update(
+        &mut self,
+        message: Message,
+        _clipboard: &mut iced::Clipboard,
+    ) -> iced::Command<Message> {
+        match message {
+            Message::SortName => {
+                self.name_sort = true;
+                // TODO
+            }
+            Message::SortSize => {
+                self.name_sort = false;
+                // TODO
+            }
+            _ => eprintln!("Unexpected GUI message"),
+        }
+        Command::none()
+    }
+}
 
 struct RestoreState {}
 
@@ -825,6 +927,48 @@ mod presets {
             .horizontal_alignment(iced::HorizontalAlignment::Center)
             .vertical_alignment(iced::VerticalAlignment::Center);
         let but = Button::new(state, label).style(ButtonStyle::ColorButton);
+        if let Message::None = action {
+            but
+        } else {
+            but.on_press(action)
+        }
+    }
+    pub(crate) fn button_grey<'a>(
+        state: &'a mut button::State,
+        text: &str,
+        action: Message,
+        light: bool,
+    ) -> Button<'a, Message> {
+        let label = Text::new(text)
+            .horizontal_alignment(iced::HorizontalAlignment::Center)
+            .vertical_alignment(iced::VerticalAlignment::Center);
+        let but = if light {
+            Button::new(state, label).style(ButtonStyle::LightButton)
+        } else {
+            Button::new(state, label).style(ButtonStyle::GreyButton)
+        };
+        if let Message::None = action {
+            but
+        } else {
+            but.on_press(action)
+        }
+    }
+
+    pub(crate) fn button_nav<'a>(
+        state: &'a mut button::State,
+        text: &str,
+        action: Message,
+        forward: bool,
+    ) -> Button<'a, Message> {
+        let label = Text::new(text)
+            .width(Length::Units(64))
+            .horizontal_alignment(iced::HorizontalAlignment::Center)
+            .vertical_alignment(iced::VerticalAlignment::Center);
+        let but = Button::new(state, label).style(if forward {
+            ButtonStyle::ColorButton
+        } else {
+            ButtonStyle::NegativeButton
+        });
         if let Message::None = action {
             but
         } else {
@@ -954,6 +1098,8 @@ mod presets {
     }
 
     pub enum ButtonStyle {
+        GreyButton,
+        LightButton,
         MainButton,
         ColorButton,
         NegativeButton,
@@ -999,6 +1145,18 @@ mod presets {
     impl button::StyleSheet for ButtonStyle {
         fn active(&self) -> button::Style {
             match &self {
+                ButtonStyle::GreyButton => button::Style {
+                    background: Some(GREY_COLOR.into()),
+                    text_color: Color::WHITE,
+                    border_radius: SMALL_RADIUS,
+                    ..Default::default()
+                },
+                ButtonStyle::LightButton => button::Style {
+                    background: Some(LIGHT_COLOR.into()),
+                    text_color: Color::BLACK,
+                    border_radius: SMALL_RADIUS,
+                    ..Default::default()
+                },
                 ButtonStyle::MainButton => button::Style {
                     background: Some(APP_COLOR.into()),
                     text_color: Color::WHITE,

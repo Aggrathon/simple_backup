@@ -352,7 +352,7 @@ impl<'a> BackupReader<'a> {
         if self.list.is_none() {
             self.read_list()?;
         }
-        Ok(std::mem::replace(&mut self.list, None).unwrap())
+        Ok(std::mem::take(&mut self.list).unwrap())
     }
 
     /// Iterator over the files in the backup
