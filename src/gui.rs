@@ -142,7 +142,7 @@ impl Application for ApplicationState {
                 Command::none()
             }
             Message::Restore => {
-                *self = ApplicationState::Restore(RestoreState {});
+                *self = ApplicationState::Restore(RestoreState::new());
                 Command::none()
             }
             Message::None => {
@@ -157,7 +157,7 @@ impl Application for ApplicationState {
                 ApplicationState::Main(_) => Command::none(),
                 ApplicationState::Config(state) => state.update(message, clipboard),
                 ApplicationState::Backup(state) => state.update(message, clipboard),
-                ApplicationState::Restore(_) => todo!(),
+                ApplicationState::Restore(state) => state.update(message, clipboard),
             },
         }
     }
@@ -167,7 +167,7 @@ impl Application for ApplicationState {
             ApplicationState::Main(state) => state.view(),
             ApplicationState::Config(state) => state.view(),
             ApplicationState::Backup(state) => state.view(),
-            ApplicationState::Restore(_) => todo!(),
+            ApplicationState::Restore(state) => state.view(),
         }
     }
 
@@ -1333,7 +1333,42 @@ impl BackupState {
 }
 
 struct RestoreState {
+    back: button::State,
+}
+
+impl RestoreState {
     //TODO Restore GUI
+    fn new() -> Self {
+        Self {
+            back: button::State::new(),
+        }
+    }
+
+    fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
+        match message {
+            _ => {}
+        }
+        Command::none()
+    }
+
+    fn view(&mut self) -> Element<Message> {
+        let note = presets::text_error("Not implemented yet!")
+            .vertical_alignment(iced::VerticalAlignment::Center)
+            .horizontal_alignment(iced::HorizontalAlignment::Center)
+            .width(Length::Fill)
+            .height(Length::Fill);
+        let brow = Row::with_children(vec![
+            presets::button_nav(&mut self.back, "Back", Message::Main, false).into(),
+            Space::with_width(Length::Fill).into(),
+        ])
+        .align_items(Align::Center)
+        .spacing(presets::INNER_SPACING);
+        Column::with_children(vec![note.into(), brow.into()])
+            .width(Length::Fill)
+            .spacing(presets::INNER_SPACING)
+            .padding(presets::INNER_SPACING)
+            .into()
+    }
 }
 
 mod presets {
@@ -1490,7 +1525,7 @@ mod presets {
         ])
         .align_items(iced::Align::Center)
         .spacing(INNER_SPACING)
-        .padding(INNER_SPACING);
+        .padding(OUTER_SPACING);
         let mut title_bar = pane_grid::TitleBar::new(title).style(ContainerStyle::PaneTitleBar);
         if let Some((text, state, action)) = button {
             title_bar = title_bar
