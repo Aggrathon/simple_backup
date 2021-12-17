@@ -1,24 +1,25 @@
 #![cfg(feature = "gui")]
-use std::path::PathBuf;
-
 /// This module contains the logic for running the program through a GUI
 use crate::{
+    backup::{BackupError, BackupWriter},
     config::Config,
     files::{FileCrawler, FileInfo},
     utils::get_config_from_pathbuf,
 };
 use iced::{
     button, executor, pane_grid, pick_list, scrollable, text_input, Align, Application, Checkbox,
-    Column, Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings, Space, Text,
+    Column, Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings, Space,
+    Subscription, Text,
 };
+use number_prefix::NumberPrefix;
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
+use std::{path::PathBuf, sync::mpsc::Receiver, thread::JoinHandle};
 
 pub fn gui() {
     ApplicationState::run(Settings::default()).unwrap();
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) enum Message {
     PaneResized(pane_grid::ResizeEvent),
@@ -46,6 +47,11 @@ pub(crate) enum Message {
     SaveConfig,
     SortName,
     SortSize,
+    SortTime,
+    StartBackup,
+    CancelBackup,
+    Export,
+    Tick,
     None,
 }
 
@@ -90,9 +96,9 @@ impl Application for ApplicationState {
     fn title(&self) -> String {
         match self {
             ApplicationState::Main(_) => String::from("simple_backup"),
-            ApplicationState::Config(_) => String::from("simple_backup"),
-            ApplicationState::Backup(_) => String::from("simple_backup"),
-            ApplicationState::Restore(_) => String::from("simple_backup"),
+            ApplicationState::Config(_) => String::from("simple_backup - Config"),
+            ApplicationState::Backup(_) => String::from("simple_backup - Backup"),
+            ApplicationState::Restore(_) => String::from("simple_backup - Restore"),
         }
     }
 
@@ -118,6 +124,10 @@ impl Application for ApplicationState {
             }
             Message::Backup => {
                 if let ApplicationState::Config(state) = self {
+                    *self = ApplicationState::Backup(BackupState::new(std::mem::take(
+                        &mut state.config,
+                    )))
+                } else if let ApplicationState::Backup(state) = self {
                     *self = ApplicationState::Backup(BackupState::new(std::mem::take(
                         &mut state.config,
                     )))
@@ -153,6 +163,13 @@ impl Application for ApplicationState {
             ApplicationState::Config(state) => state.view(),
             ApplicationState::Backup(state) => state.view(),
             ApplicationState::Restore(_) => todo!(),
+        }
+    }
+
+    fn subscription(&self) -> iced::Subscription<Self::Message> {
+        match self {
+            ApplicationState::Backup(state) => state.subscription(),
+            _ => Subscription::none(),
         }
     }
 }
@@ -801,6 +818,52 @@ impl ListItem {
     }
 }
 
+struct ThreadWrapper<T1, T2> {
+    queue: Receiver<T1>,
+    handle: JoinHandle<T2>,
+}
+
+impl From<Config> for ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
+    fn from(config: Config) -> Self {
+        let (send, queue) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let (mut writer, error) = BackupWriter::new(config);
+            #[allow(unused_must_use)]
+            if let Some(e) = error {
+                send.send(Err(e));
+            }
+            let error = writer.iter_files(false, |res| {
+                send.send(match res {
+                    Ok(fi) => Ok(fi.clone()),
+                    Err(e) => Err(BackupError::FileAccessError(e)),
+                })
+                .is_ok()
+            });
+            #[allow(unused_must_use)]
+            if let Err(e) = error {
+                send.send(Err(e));
+            }
+            std::mem::drop(send);
+            writer
+        });
+        Self { queue, handle }
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum ListSort {
+    Name,
+    Size,
+    Time,
+}
+
+enum BackupStage {
+    Scanning(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
+    Viewing(BackupWriter),
+    Performing,
+    None,
+}
+
 struct BackupState {
     config: Config,
     scroll_state: scrollable::State,
@@ -808,11 +871,21 @@ struct BackupState {
     backup_button: button::State,
     name_button: button::State,
     size_button: button::State,
-    name_sort: bool,
+    time_button: button::State,
+    export_button: button::State,
+    list_sort: ListSort,
+    error: String,
+    count: u32,
+    size: u64,
+    stage: BackupStage,
+    // backing_up: bool,
+    // writer: Option<BackupWriter>,
+    // crawler: Option<ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>>,
 }
 
 impl BackupState {
     fn new(config: Config) -> Self {
+        let crawler = ThreadWrapper::from(config.clone());
         Self {
             config,
             scroll_state: scrollable::State::new(),
@@ -820,78 +893,262 @@ impl BackupState {
             backup_button: button::State::new(),
             name_button: button::State::new(),
             size_button: button::State::new(),
-            name_sort: true,
+            time_button: button::State::new(),
+            export_button: button::State::new(),
+            list_sort: ListSort::Name,
+            error: String::new(),
+            count: 0,
+            size: 0,
+            stage: BackupStage::Scanning(crawler)
+            // writer: None,
+            // backing_up: false,
+            // crawler,
         }
     }
 
-    fn view(&mut self) -> Element<Message> {
-        let trow = Row::with_children(vec![
-            presets::button_grey(
-                &mut self.name_button,
-                "Name",
-                Message::SortName,
-                !self.name_sort,
-            )
-            .width(Length::Fill)
-            .into(),
-            presets::button_grey(
-                &mut self.size_button,
-                "Size",
-                Message::SortSize,
-                self.name_sort,
-            )
-            .width(Length::Units(100))
-            .into(),
-        ])
-        .spacing(presets::INNER_SPACING);
-        let scroll = Scrollable::new(&mut self.scroll_state)
-            .height(Length::Fill)
-            .width(Length::Fill)
-            .spacing(presets::INNER_SPACING);
-        // .padding(presets::OUTER_SPACING);
-        let scroll = scroll.push(
-            Row::with_children(vec![
-                Text::new("Scanning for files to backup...")
-                    .width(Length::Fill)
-                    .into(),
-                Text::new("5.00 GB")
-                    .width(Length::Units(100))
-                    .horizontal_alignment(iced::HorizontalAlignment::Right)
-                    .into(),
-                presets::space_scroll().into(),
-            ])
-            .spacing(presets::INNER_SPACING),
-        );
-        let brow = Row::with_children(vec![
-            presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false).into(),
-            Space::with_width(Length::Fill).into(),
-            presets::button_nav(&mut self.backup_button, "Backup", Message::None, true).into(),
-        ])
-        .spacing(presets::INNER_SPACING);
-        Column::with_children(vec![trow.into(), scroll.into(), brow.into()])
-            .width(Length::Fill)
-            .spacing(presets::INNER_SPACING)
-            .padding(presets::INNER_SPACING)
-            .into()
-    }
-
-    fn update(
-        &mut self,
-        message: Message,
-        _clipboard: &mut iced::Clipboard,
-    ) -> iced::Command<Message> {
+    fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
         match message {
+            Message::Tick => {
+                if let BackupStage::Scanning(crawler) = &mut self.stage {
+                    for _ in 0..1000 {
+                        match crawler.queue.try_recv() {
+                            Ok(res) => match res {
+                                Ok(fi) => {
+                                    self.count += 1;
+                                    self.size += fi.size
+                                }
+                                Err(e) => {
+                                    self.error.push('\n');
+                                    self.error.push_str(&e.to_string())
+                                }
+                            },
+                            Err(e) => match e {
+                                std::sync::mpsc::TryRecvError::Empty => {
+                                    break;
+                                }
+                                std::sync::mpsc::TryRecvError::Disconnected => {
+                                    if let BackupStage::Scanning(crawler) =
+                                        std::mem::replace(&mut self.stage, BackupStage::None)
+                                    {
+                                        match crawler.handle.join() {
+                                            Ok(bw) => self.stage = BackupStage::Viewing(bw),
+                                            Err(_) => self.error.push_str(
+                                                "\nFailure when finalising the list of files",
+                                            ),
+                                        }
+                                    }
+                                    break;
+                                }
+                            },
+                        }
+                    }
+                }
+                // TODO backup
+            }
             Message::SortName => {
-                self.name_sort = true;
-                // TODO
+                self.list_sort = ListSort::Name;
+                if let BackupStage::Viewing(writer) = &mut self.stage {
+                    writer.list.as_mut().unwrap().sort_unstable();
+                }
             }
             Message::SortSize => {
-                self.name_sort = false;
-                // TODO
+                self.list_sort = ListSort::Size;
+                if let BackupStage::Viewing(writer) = &mut self.stage {
+                    writer
+                        .list
+                        .as_mut()
+                        .unwrap()
+                        .sort_unstable_by(|a, b| b.size.cmp(&a.size));
+                }
+            }
+            Message::SortTime => {
+                self.list_sort = ListSort::Time;
+                if let BackupStage::Viewing(writer) = &mut self.stage {
+                    writer
+                        .list
+                        .as_mut()
+                        .unwrap()
+                        .sort_unstable_by(|a, b| b.time.unwrap().cmp(&a.time.unwrap()));
+                }
+            }
+            Message::StartBackup => {
+                self.list_sort = ListSort::Name;
+                if let BackupStage::Viewing(writer) = &mut self.stage {
+                    writer.list.as_mut().unwrap().sort_unstable();
+                    //TODO
+                }
+            }
+            Message::CancelBackup => {
+                if let BackupStage::Viewing(writer) = &mut self.stage {
+                    writer.list.as_mut().unwrap().sort_unstable();
+                    todo!()
+                }
+            }
+            Message::Export => {
+                todo!()
             }
             _ => eprintln!("Unexpected GUI message"),
         }
         Command::none()
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        match self.stage {
+            BackupStage::Scanning(_) => {
+                iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::Tick)
+            }
+            _ => Subscription::none(),
+        }
+    }
+
+    fn view(&mut self) -> Element<Message> {
+        let mut scroll = Scrollable::new(&mut self.scroll_state)
+            .height(Length::Fill)
+            .width(Length::Fill)
+            .spacing(presets::INNER_SPACING);
+        let status = match NumberPrefix::binary(self.size as f64) {
+            NumberPrefix::Standalone(number) => {
+                format!(
+                    "{:>6} files of total size {:>6.2} KiB",
+                    self.count,
+                    number / 1024.0
+                )
+            }
+            NumberPrefix::Prefixed(prefix, number) => {
+                format!(
+                    "{:>6} files of total size {:>6.2} {}B",
+                    self.count, number, prefix
+                )
+            }
+        };
+        match &mut self.stage {
+            BackupStage::Scanning(_) => {
+                if !self.error.is_empty() {
+                    scroll = scroll.push(
+                        presets::text_error(&self.error)
+                            .horizontal_alignment(iced::HorizontalAlignment::Left),
+                    );
+                }
+                let brow = Row::with_children(vec![
+                    presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false)
+                        .into(),
+                    Space::with_width(Length::Fill).into(),
+                    Text::new(format!("Scanning for files to backup: {}\n", status)).into(),
+                    Space::with_width(Length::Fill).into(),
+                    presets::button_nav(&mut self.backup_button, "Backup", Message::None, true)
+                        .into(),
+                ])
+                .spacing(presets::INNER_SPACING);
+                Column::with_children(vec![scroll.into(), brow.into()])
+                    .width(Length::Fill)
+                    .spacing(presets::INNER_SPACING)
+                    .padding(presets::INNER_SPACING)
+                    .into()
+            }
+            BackupStage::Viewing(writer) => {
+                let trow = Row::with_children(vec![
+                    presets::button_grey(
+                        &mut self.name_button,
+                        "Name",
+                        Message::SortName,
+                        self.list_sort != ListSort::Name,
+                    )
+                    .width(Length::Fill)
+                    .into(),
+                    presets::button_grey(
+                        &mut self.size_button,
+                        "Size",
+                        Message::SortSize,
+                        self.list_sort != ListSort::Size,
+                    )
+                    .width(Length::Units(102))
+                    .into(),
+                    presets::button_grey(
+                        &mut self.time_button,
+                        "Time",
+                        Message::SortTime,
+                        self.list_sort != ListSort::Time,
+                    )
+                    .width(Length::Units(182))
+                    .into(),
+                ])
+                .spacing(presets::INNER_SPACING);
+                scroll = writer
+                    .list
+                    .as_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .take(100)
+                    .fold(scroll, |s, f| {
+                        s.push(
+                            Row::with_children(vec![
+                                Text::new(f.get_string()).width(Length::Fill).into(),
+                                Text::new(match NumberPrefix::binary(f.size as f64) {
+                                    NumberPrefix::Standalone(num) => {
+                                        format!("{:.2} KiB", num / 1024.0)
+                                    }
+                                    NumberPrefix::Prefixed(pre, num) => {
+                                        format!("{:.2} {}B", num, pre)
+                                    }
+                                })
+                                .width(Length::Units(102))
+                                .horizontal_alignment(iced::HorizontalAlignment::Right)
+                                .into(),
+                                Text::new(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
+                                    .width(Length::Units(182))
+                                    .horizontal_alignment(iced::HorizontalAlignment::Right)
+                                    .into(),
+                                presets::space_scroll().into(),
+                            ])
+                            .spacing(presets::INNER_SPACING),
+                        )
+                    });
+                if writer.list.as_ref().unwrap().len() > 100 {
+                    scroll = scroll.push(
+                        Row::with_children(vec![
+                            Space::with_width(Length::Fill).into(),
+                            presets::button_color(
+                                &mut self.export_button,
+                                "Export full list",
+                                Message::Export,
+                            )
+                            .into(),
+                            Space::with_width(Length::Fill).into(),
+                        ])
+                        .spacing(presets::INNER_SPACING),
+                    );
+                }
+                if !self.error.is_empty() {
+                    scroll = scroll.push(
+                        presets::text_error(&self.error)
+                            .horizontal_alignment(iced::HorizontalAlignment::Left),
+                    );
+                }
+                let brow = Row::with_children(vec![
+                    presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false)
+                        .into(),
+                    Space::with_width(Length::Fill).into(),
+                    Text::new(&status).into(),
+                    Space::with_width(Length::Fill).into(),
+                    presets::button_nav(
+                        &mut self.backup_button,
+                        "Backup",
+                        Message::StartBackup,
+                        true,
+                    )
+                    .into(),
+                ]);
+                Column::with_children(vec![trow.into(), scroll.into(), brow.into()])
+                    .width(Length::Fill)
+                    .spacing(presets::INNER_SPACING)
+                    .padding(presets::INNER_SPACING)
+                    .into()
+            }
+            BackupStage::Performing => todo!(),
+            BackupStage::None => {
+                presets::text_error("This should not be possible: `stage == None`").into()
+            }
+        }
     }
 }
 

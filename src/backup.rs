@@ -21,6 +21,9 @@ pub enum BackupError {
     FileError(std::io::Error),
     YamlError(serde_yaml::Error),
     InvalidPath(String),
+    Cancel,
+    FileAccessError(FileAccessError),
+    GenericError(std::io::Error),
 }
 
 impl Display for BackupError {
@@ -55,6 +58,11 @@ impl Display for BackupError {
             BackupError::InvalidPath(path) => {
                 write!(f, "The path must be either a config (.yml), a backup (.tar.zst), or a directory containing backups: {}", path)
             }
+            BackupError::Cancel => {
+                write!(f, "The operation has been cancelled")
+            }
+            BackupError::FileAccessError(e) => e.fmt(f),
+            BackupError::GenericError(e) => e.fmt(f),
         }
     }
 }
@@ -100,25 +108,49 @@ impl BackupWriter {
     }
 
     /// List all files that are added to the backup
-    pub fn get_files(
+    pub fn get_files(&mut self) -> Result<&mut Vec<FileInfo>, Box<dyn std::error::Error>> {
+        if self.list.is_none() {
+            let fc = FileCrawler::new(
+                &self.config.include,
+                &self.config.exclude,
+                &self.config.regex,
+                self.config.local,
+            )?;
+            let mut list: Vec<FileInfo> = fc
+                .into_iter()
+                .filter_map(|fi| match fi {
+                    Ok(fi) => Some(fi),
+                    Err(_) => None,
+                })
+                .collect();
+            list.sort_unstable();
+            self.list = Some(list);
+        }
+        Ok(self.list.as_mut().unwrap())
+    }
+
+    /// Iterate through all files that are added to the backup
+    pub fn iter_files(
         &mut self,
         all: bool,
-        callback: Option<impl FnMut(Result<&mut FileInfo, FileAccessError>)>,
-    ) -> Result<&mut Vec<FileInfo>, Box<dyn std::error::Error>> {
+        callback: impl FnMut(Result<&mut FileInfo, FileAccessError>) -> bool,
+    ) -> Result<(), BackupError> {
+        let mut callback = callback;
         if self.list.is_some() {
-            if callback.is_some() {
-                let mut callback = callback.unwrap();
-                if all || self.prev_time.is_none() {
-                    self.list.as_mut().unwrap().iter_mut().for_each(|fi| {
-                        callback(Ok(fi));
-                    });
-                } else {
-                    let time = self.prev_time.unwrap();
-                    self.list.as_mut().unwrap().iter_mut().for_each(|fi| {
-                        if fi.time.unwrap() >= time {
-                            callback(Ok(fi));
+            if all || self.prev_time.is_none() {
+                for fi in self.list.as_mut().unwrap().iter_mut() {
+                    if !callback(Ok(fi)) {
+                        return Err(BackupError::Cancel);
+                    }
+                }
+            } else {
+                let time = self.prev_time.unwrap();
+                for fi in self.list.as_mut().unwrap().iter_mut() {
+                    if fi.time.unwrap() >= time {
+                        if !callback(Ok(fi)) {
+                            return Err(BackupError::Cancel);
                         }
-                    });
+                    }
                 }
             }
         } else {
@@ -127,55 +159,47 @@ impl BackupWriter {
                 &self.config.exclude,
                 &self.config.regex,
                 self.config.local,
-            )?;
-            if callback.is_none() {
-                self.list = Some(
-                    fc.into_iter()
-                        .filter_map(|fi| match fi {
-                            Ok(fi) => Some(fi),
-                            Err(_) => None,
-                        })
-                        .collect(),
-                );
-            } else if all || self.prev_time.is_none() {
-                let mut callback = callback.unwrap();
-                self.list = Some(
-                    fc.into_iter()
-                        .filter_map(|fi| match fi {
-                            Ok(mut fi) => {
-                                callback(Ok(&mut fi));
-                                Some(fi)
+            )
+            .map_err(BackupError::GenericError)?;
+            let mut list = Vec::<FileInfo>::with_capacity(500);
+            if all || self.prev_time.is_none() {
+                for res in fc.into_iter() {
+                    if !match res {
+                        Ok(mut fi) => {
+                            if callback(Ok(&mut fi)) {
+                                list.push(fi);
+                                true
+                            } else {
+                                false
                             }
-                            Err(e) => {
-                                callback(Err(e));
-                                None
-                            }
-                        })
-                        .collect(),
-                );
+                        }
+                        Err(e) => callback(Err(e)),
+                    } {
+                        return Err(BackupError::Cancel);
+                    }
+                }
             } else {
                 let time = self.prev_time.unwrap();
-                let mut callback = callback.unwrap();
-                self.list = Some(
-                    fc.into_iter()
-                        .filter_map(|fi| match fi {
-                            Ok(mut fi) => {
-                                if fi.time.unwrap() >= time {
-                                    callback(Ok(&mut fi));
-                                }
-                                Some(fi)
+                for res in fc.into_iter() {
+                    if !match res {
+                        Ok(mut fi) => {
+                            if fi.time.unwrap() >= time && !callback(Ok(&mut fi)) {
+                                false
+                            } else {
+                                list.push(fi);
+                                true
                             }
-                            Err(e) => {
-                                callback(Err(e));
-                                None
-                            }
-                        })
-                        .collect(),
-                );
+                        }
+                        Err(e) => callback(Err(e)),
+                    } {
+                        return Err(BackupError::Cancel);
+                    }
+                }
             }
-            self.list.as_mut().unwrap().sort_unstable()
+            list.sort_unstable();
+            self.list = Some(list);
         }
-        Ok(self.list.as_mut().unwrap())
+        Ok(())
     }
 
     /// Write (and compress) the backup to disk
@@ -187,7 +211,7 @@ impl BackupWriter {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut list_string = String::new();
         {
-            let list = self.get_files(true, None::<fn(Result<&mut FileInfo, FileAccessError>)>)?;
+            let list = self.get_files()?;
             list_string.reserve(list.len() * 200);
             list.iter_mut().for_each(|fi| {
                 #[cfg(target_os = "windows")]

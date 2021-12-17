@@ -12,7 +12,7 @@ use crate::parse_date;
 use crate::parse_date::{create_backup_file_name, naive_now};
 use crate::utils::{clamp, BackupIterator};
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Config {
     pub include: Vec<String>,
     pub exclude: Vec<String>,

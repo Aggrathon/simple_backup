@@ -11,7 +11,7 @@ use regex::RegexSet;
 use crate::parse_date;
 
 /// A struct that contains both the PathBuf and String versions of a path
-#[derive(Debug, Eq, Ord)]
+#[derive(Debug, Eq, Ord, Clone)]
 pub struct FileInfo {
     string: Option<String>,
     path: Option<PathBuf>,
@@ -206,7 +206,7 @@ impl FileCrawler {
         exclude: VS2,
         filter: VS3,
         local: bool,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, std::io::Error> {
         let mut stack: Vec<FileInfo>;
         let exc: Vec<String>;
         if local {
@@ -254,7 +254,8 @@ impl FileCrawler {
                 .filter(|s| !s.as_ref().is_empty())
                 .map(|s| s.as_ref())
                 .chain(exc.iter().map(|s| s.as_str())),
-        )?;
+        )
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
         Ok(Self {
             stack,
