@@ -39,6 +39,7 @@ fn cli_test() {
     let mut bw1 = BackupWriter::new(config).0;
     bw1.export_list(&f4, false).unwrap();
     bw1.export_list(&f3, true).unwrap();
+    bw1.iter_files().unwrap().skip(1).next();
     bw1.write(|_, _| Ok(()), || ()).unwrap();
 
     remove_file(&f1).unwrap();

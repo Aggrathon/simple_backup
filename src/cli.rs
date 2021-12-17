@@ -36,7 +36,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
         } else {
             eprintln!("Files to backup:");
         }
-        bw.iter_files(false, |res: Result<&mut FileInfo, FileAccessError>| {
+        bw.foreach_file(false, |res: Result<&mut FileInfo, FileAccessError>| {
             match res {
                 Ok(fi) => {
                     num_files += 1;
@@ -59,7 +59,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
         if !quiet {
             println!("Crawling for files...");
         }
-        bw.iter_files(false, |res: Result<&mut FileInfo, FileAccessError>| {
+        bw.foreach_file(false, |res: Result<&mut FileInfo, FileAccessError>| {
             match res {
                 Ok(fi) => {
                     num_files += 1;

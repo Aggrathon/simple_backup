@@ -137,8 +137,18 @@ impl BackupWriter {
         Ok(self.list.as_mut().unwrap())
     }
 
+    pub fn iter_files<'a>(
+        &'a mut self,
+    ) -> Result<impl std::iter::Iterator<Item = &mut FileInfo> + 'a, BackupError> {
+        let time = self.prev_time.clone();
+        Ok(self
+            .get_files()?
+            .iter_mut()
+            .filter(move |fi| fi.time >= time))
+    }
+
     /// Iterate through all files that are added to the backup
-    pub fn iter_files(
+    pub fn foreach_file(
         &mut self,
         all: bool,
         callback: impl FnMut(Result<&mut FileInfo, FileAccessError>) -> Result<(), BackupError>,
@@ -283,7 +293,7 @@ impl BackupWriter {
         let f = File::create(path).map_err(BackupError::GenericError)?;
         let mut f = BufWriter::new(f);
         write!(f, "{:19}, {:10}, {}", "Time", "Size", "Path").map_err(BackupError::GenericError)?;
-        self.iter_files(all, |res| {
+        self.foreach_file(all, |res| {
             if let Ok(fi) = res {
                 match NumberPrefix::binary(fi.size as f64) {
                     NumberPrefix::Standalone(number) => {

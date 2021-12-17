@@ -831,7 +831,7 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
             if let Some(e) = error {
                 send.send(Err(e));
             }
-            let error = writer.iter_files(false, |res| {
+            let error = writer.foreach_file(true, |res| {
                 send.send(match res {
                     Ok(fi) => Ok(fi.clone()),
                     Err(e) => Err(BackupError::FileAccessError(e)),
@@ -937,11 +937,11 @@ impl BackupState {
                             Ok(res) => match res {
                                 Ok(fi) => {
                                     self.total_count += 1;
-                                    self.total_size += fi.size
+                                    self.total_size += fi.size;
                                 }
                                 Err(e) => {
                                     self.error.push('\n');
-                                    self.error.push_str(&e.to_string())
+                                    self.error.push_str(&e.to_string());
                                 }
                             },
                             Err(e) => match e {
@@ -953,7 +953,25 @@ impl BackupState {
                                         std::mem::replace(&mut self.stage, BackupStage::Failure)
                                     {
                                         match crawler.handle.join() {
-                                            Ok(bw) => self.stage = BackupStage::Viewing(bw),
+                                            Ok(mut bw) => {
+                                                if self.config.incremental && bw.prev_time.is_some()
+                                                {
+                                                    self.total_count = 0;
+                                                    self.total_size = 0;
+                                                    if let Err(e) = bw.foreach_file(false, |res| {
+                                                        #[allow(unused_must_use)]
+                                                        if let Ok(fi) = res {
+                                                            self.total_count += 1;
+                                                            self.total_size += fi.size;
+                                                        }
+                                                        Ok(())
+                                                    }) {
+                                                        self.error.push('\n');
+                                                        self.error.push_str(&e.to_string());
+                                                    };
+                                                }
+                                                self.stage = BackupStage::Viewing(bw);
+                                            }
                                             Err(_) => self.error.push_str(
                                                 "\nFailure when finalising the list of files",
                                             ),
@@ -1115,7 +1133,7 @@ impl BackupState {
                         .into(),
                     Space::with_width(Length::Fill).into(),
                     Text::new(format!(
-                        "Scanning for files to backup: {} of total size {}\n",
+                        "Scanning for files to backup: {} with total size {}\n",
                         self.total_count,
                         format_size(self.total_size)
                     ))
@@ -1161,31 +1179,25 @@ impl BackupState {
                     .into(),
                 ])
                 .spacing(presets::INNER_SPACING);
-                scroll = writer
-                    .list
-                    .as_mut()
-                    .unwrap()
-                    .iter_mut()
-                    .take(100)
-                    .fold(scroll, |s, f| {
-                        s.push(
-                            Row::with_children(vec![
-                                Text::new(f.get_string()).width(Length::Fill).into(),
-                                Text::new(format_size(f.size))
-                                    .width(Length::Units(102))
-                                    .horizontal_alignment(iced::HorizontalAlignment::Right)
-                                    .into(),
-                                Text::new(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
-                                    .width(Length::Units(182))
-                                    .horizontal_alignment(iced::HorizontalAlignment::Right)
-                                    .into(),
-                                presets::space_scroll().into(),
-                            ])
-                            .align_items(Align::Center)
-                            .spacing(presets::INNER_SPACING),
-                        )
-                    });
-                if writer.list.as_ref().unwrap().len() > 100 {
+                scroll = writer.iter_files().unwrap().take(100).fold(scroll, |s, f| {
+                    s.push(
+                        Row::with_children(vec![
+                            Text::new(f.get_string()).width(Length::Fill).into(),
+                            Text::new(format_size(f.size))
+                                .width(Length::Units(102))
+                                .horizontal_alignment(iced::HorizontalAlignment::Right)
+                                .into(),
+                            Text::new(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
+                                .width(Length::Units(182))
+                                .horizontal_alignment(iced::HorizontalAlignment::Right)
+                                .into(),
+                            presets::space_scroll().into(),
+                        ])
+                        .align_items(Align::Center)
+                        .spacing(presets::INNER_SPACING),
+                    )
+                });
+                if self.total_count > 100 {
                     scroll = scroll.push(
                         Row::with_children(vec![
                             Space::with_width(Length::Fill).into(),
@@ -1206,17 +1218,28 @@ impl BackupState {
                             .horizontal_alignment(iced::HorizontalAlignment::Left),
                     );
                 }
+                let diff = writer.list.as_ref().unwrap().len() - self.total_count as usize;
+                let status = if diff > 0 {
+                    format!(
+                        "{} files with total size {} ({} files have not changed)",
+                        self.total_count,
+                        format_size(self.total_size),
+                        diff
+                    )
+                } else {
+                    format!(
+                        "{} files with total size {}",
+                        self.total_count,
+                        format_size(self.total_size)
+                    )
+                };
                 let brow = Row::with_children(vec![
                     presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false)
                         .into(),
                     Space::with_width(Length::Fill).into(),
-                    Text::new(format!(
-                        "{} files of total size {}",
-                        self.total_count,
-                        format_size(self.total_size)
-                    ))
-                    .vertical_alignment(iced::VerticalAlignment::Center)
-                    .into(),
+                    Text::new(status)
+                        .vertical_alignment(iced::VerticalAlignment::Center)
+                        .into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav(
                         &mut self.backup_button,
