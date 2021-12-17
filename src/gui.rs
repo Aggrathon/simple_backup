@@ -838,7 +838,7 @@ impl From<Config> for ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>
                     Ok(fi) => Ok(fi.clone()),
                     Err(e) => Err(BackupError::FileAccessError(e)),
                 })
-                .is_ok()
+                .map_err(|_| BackupError::Cancel)
             });
             #[allow(unused_must_use)]
             if let Err(e) = error {
@@ -989,8 +989,27 @@ impl BackupState {
                 }
             }
             Message::Export => {
-                // TODO save the file list to a text file
-                todo!()
+                if let BackupStage::Viewing(writer) = &mut self.stage {
+                    if let Some(file) = FileDialog::new()
+                        .set_directory(
+                            self.config
+                                .origin
+                                .as_ref()
+                                .and_then(|s| Some(PathBuf::from(s)))
+                                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default()),
+                        )
+                        .set_title("Save list of files to backup")
+                        .set_file_name("files.txt")
+                        .add_filter("Text file", &["txt"])
+                        .add_filter("Csv file", &["csv"])
+                        .save_file()
+                    {
+                        if let Err(e) = writer.export_list(file, false) {
+                            self.error.push('\n');
+                            self.error.push_str(&e.to_string());
+                        }
+                    }
+                }
             }
             _ => eprintln!("Unexpected GUI message"),
         }

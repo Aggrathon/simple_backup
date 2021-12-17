@@ -1,11 +1,12 @@
 /// This module contains the objects for reading and writing backups
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::fs::create_dir_all;
-use std::io::Read;
+use std::fs::{create_dir_all, File};
+use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
+use number_prefix::NumberPrefix;
 
 use crate::compression::{CompressionDecoder, CompressionDecoderEntry, CompressionEncoder};
 use crate::config::Config;
@@ -133,23 +134,19 @@ impl BackupWriter {
     pub fn iter_files(
         &mut self,
         all: bool,
-        callback: impl FnMut(Result<&mut FileInfo, FileAccessError>) -> bool,
+        callback: impl FnMut(Result<&mut FileInfo, FileAccessError>) -> Result<(), BackupError>,
     ) -> Result<(), BackupError> {
         let mut callback = callback;
         if self.list.is_some() {
             if all || self.prev_time.is_none() {
                 for fi in self.list.as_mut().unwrap().iter_mut() {
-                    if !callback(Ok(fi)) {
-                        return Err(BackupError::Cancel);
-                    }
+                    callback(Ok(fi))?
                 }
             } else {
                 let time = self.prev_time.unwrap();
                 for fi in self.list.as_mut().unwrap().iter_mut() {
                     if fi.time.unwrap() >= time {
-                        if !callback(Ok(fi)) {
-                            return Err(BackupError::Cancel);
-                        }
+                        callback(Ok(fi))?
                     }
                 }
             }
@@ -164,35 +161,25 @@ impl BackupWriter {
             let mut list = Vec::<FileInfo>::with_capacity(500);
             if all || self.prev_time.is_none() {
                 for res in fc.into_iter() {
-                    if !match res {
+                    match res {
                         Ok(mut fi) => {
-                            if callback(Ok(&mut fi)) {
-                                list.push(fi);
-                                true
-                            } else {
-                                false
-                            }
+                            callback(Ok(&mut fi))?;
+                            list.push(fi);
                         }
-                        Err(e) => callback(Err(e)),
-                    } {
-                        return Err(BackupError::Cancel);
+                        Err(e) => callback(Err(e))?,
                     }
                 }
             } else {
                 let time = self.prev_time.unwrap();
                 for res in fc.into_iter() {
-                    if !match res {
+                    match res {
                         Ok(mut fi) => {
-                            if fi.time.unwrap() >= time && !callback(Ok(&mut fi)) {
-                                false
-                            } else {
-                                list.push(fi);
-                                true
+                            if fi.time.unwrap() >= time {
+                                callback(Ok(&mut fi))?
                             }
+                            list.push(fi);
                         }
-                        Err(e) => callback(Err(e)),
-                    } {
-                        return Err(BackupError::Cancel);
+                        Err(e) => callback(Err(e))?,
                     }
                 }
             }
@@ -260,6 +247,40 @@ impl BackupWriter {
             on_final();
             encoder.close()?;
         }
+        Ok(())
+    }
+
+    pub fn export_list<P: AsRef<Path>>(&mut self, path: P, all: bool) -> Result<(), BackupError> {
+        let f = File::create(path).map_err(BackupError::GenericError)?;
+        let mut f = BufWriter::new(f);
+        write!(f, "{:19}, {:10}, {}", "Time", "Size", "Path").map_err(BackupError::GenericError)?;
+        self.iter_files(all, |res| {
+            if let Ok(fi) = res {
+                match NumberPrefix::binary(fi.size as f64) {
+                    NumberPrefix::Standalone(number) => {
+                        write!(
+                            f,
+                            "\n{}, {:>6.2} KiB, {}",
+                            fi.time.unwrap().format("%Y-%m-%d %H:%M:%S"),
+                            number / 1024.0,
+                            &fi.get_string()
+                        )
+                    }
+                    NumberPrefix::Prefixed(prefix, number) => {
+                        write!(
+                            f,
+                            "\n{}, {:>6.2} {}B, {}",
+                            fi.time.unwrap().format("%Y-%m-%d %H:%M:%S"),
+                            number,
+                            prefix,
+                            &fi.get_string()
+                        )
+                    }
+                }
+                .map_err(BackupError::GenericError)?
+            }
+            Ok(())
+        })?;
         Ok(())
     }
 }

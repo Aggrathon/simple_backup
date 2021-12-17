@@ -36,47 +36,39 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
         } else {
             eprintln!("Files to backup:");
         }
-        bw.iter_files(
-            false,
-            |res: Result<&mut FileInfo, FileAccessError>| match res {
+        bw.iter_files(false, |res: Result<&mut FileInfo, FileAccessError>| {
+            match res {
                 Ok(fi) => {
                     num_files += 1;
                     total_size += fi.size;
                     match NumberPrefix::binary(fi.size as f64) {
                         NumberPrefix::Standalone(number) => {
-                            println!("{:>6.0} KiB  {}", number / 1024.0, &fi.get_string());
+                            println!("{:>6.2} KiB  {}", number / 1024.0, &fi.get_string());
                         }
                         NumberPrefix::Prefixed(prefix, number) => {
                             println!("{:>6.2} {}B  {}", number, prefix, &fi.get_string());
                         }
                     }
-                    true
                 }
-                Err(e) => {
-                    eprintln!("{}", e);
-                    true
-                }
-            },
-        )
+                Err(e) => eprintln!("{}", e),
+            }
+            Ok(())
+        })
         .expect("Could not crawl for files");
     } else {
         if !quiet {
             println!("Crawling for files...");
         }
-        bw.iter_files(
-            false,
-            |res: Result<&mut FileInfo, FileAccessError>| match res {
+        bw.iter_files(false, |res: Result<&mut FileInfo, FileAccessError>| {
+            match res {
                 Ok(fi) => {
                     num_files += 1;
                     total_size += fi.size;
-                    true
                 }
-                Err(e) => {
-                    eprintln!("{}", e);
-                    true
-                }
-            },
-        )
+                Err(e) => eprintln!("{}", e),
+            }
+            Ok(())
+        })
         .expect("Could not crawl for files");
     }
 
