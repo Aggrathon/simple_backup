@@ -17,7 +17,7 @@ pub struct Config {
     pub include: Vec<String>,
     pub exclude: Vec<String>,
     pub regex: Vec<String>,
-    pub output: String,
+    pub output: PathBuf,
     pub incremental: bool,
     pub quality: i32,
     pub local: bool,
@@ -25,7 +25,7 @@ pub struct Config {
     #[serde(with = "parse_date")]
     pub time: Option<NaiveDateTime>,
     #[serde(skip)]
-    pub origin: Option<String>,
+    pub origin: Option<PathBuf>,
 }
 
 impl Config {
@@ -35,7 +35,7 @@ impl Config {
             include: vec![],
             exclude: vec![],
             regex: vec![],
-            output: ".".to_string(),
+            output: PathBuf::new(),
             incremental: true,
             quality: 21,
             local: false,
@@ -63,7 +63,7 @@ impl Config {
                 .unwrap_or(Values::default())
                 .map(|x| x.to_string())
                 .collect(),
-            output: args.value_of("output").unwrap_or(".").to_string(),
+            output: PathBuf::from(args.value_of("output").unwrap_or(".")),
             incremental: args.is_present("incremental"),
             quality: match args
                 .value_of("quality")
@@ -96,12 +96,26 @@ impl Config {
         self.threads = clamp(threads, 1, num_cpus::get() as u32);
     }
 
+    pub fn set_output(&mut self, path: PathBuf) {
+        if self.origin.is_none() {
+            self.origin = Some(path.clone());
+        }
+        self.output = path;
+    }
+
+    pub fn get_origin(&self) -> PathBuf {
+        self.origin
+            .as_ref()
+            .map(|p| p.clone())
+            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
+    }
+
     /// Read a config from a yaml file
     pub fn read_yaml<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let reader = File::open(&path)?;
         let mut conf: Config =
             serde_yaml::from_reader(reader).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
-        conf.origin = Some(path.as_ref().to_string_lossy().to_string());
+        conf.origin = Some(path.as_ref().to_path_buf());
         Ok(conf)
     }
 
@@ -132,10 +146,9 @@ impl Config {
 
     /// Get the path for a new backup
     pub fn get_output(&self) -> PathBuf {
-        if self.output.len() == 0 {
+        if self.output.as_os_str().len() == 0 {
             match self.origin.as_ref() {
                 Some(p) => {
-                    let p = PathBuf::from(p);
                     if p.exists() && !p.is_file() {
                         p.parent()
                             .unwrap()
@@ -159,9 +172,9 @@ impl Config {
                 Some(p) => p.to_path_buf(),
                 None => PathBuf::from("."),
             }
-        } else if self.output.len() == 0 {
+        } else if self.output.as_os_str().len() == 0 {
             match self.origin.as_ref() {
-                Some(p) => match PathBuf::from(p).parent() {
+                Some(p) => match p.parent() {
                     Some(p) => p.to_path_buf(),
                     None => PathBuf::from("."),
                 },

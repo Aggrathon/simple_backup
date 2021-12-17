@@ -51,7 +51,7 @@ impl Display for BackupError {
                 write!(f, "Could not read the backup: {}", e)
             }
             BackupError::FileError(e) => {
-                write!(f, "Could not read the file: {}", e)
+                write!(f, "Could not access the file: {}", e)
             }
             BackupError::YamlError(e) => {
                 write!(f, "Could not parse the config: {}", e)
@@ -69,6 +69,12 @@ impl Display for BackupError {
 }
 
 impl std::error::Error for BackupError {}
+
+impl From<serde_yaml::Error> for BackupError {
+    fn from(e: serde_yaml::Error) -> Self {
+        BackupError::YamlError(e)
+    }
+}
 
 pub struct BackupWriter {
     pub path: PathBuf,
@@ -109,14 +115,15 @@ impl BackupWriter {
     }
 
     /// List all files that are added to the backup
-    pub fn get_files(&mut self) -> Result<&mut Vec<FileInfo>, Box<dyn std::error::Error>> {
+    pub fn get_files(&mut self) -> Result<&mut Vec<FileInfo>, BackupError> {
         if self.list.is_none() {
             let fc = FileCrawler::new(
                 &self.config.include,
                 &self.config.exclude,
                 &self.config.regex,
                 self.config.local,
-            )?;
+            )
+            .map_err(BackupError::GenericError)?;
             let mut list: Vec<FileInfo> = fc
                 .into_iter()
                 .filter_map(|fi| match fi {
@@ -193,9 +200,9 @@ impl BackupWriter {
     pub fn write(
         &mut self,
         mut on_next: impl FnMut(&mut FileInfo),
-        mut on_added: impl FnMut(&mut FileInfo, Result<(), std::io::Error>),
+        mut on_added: impl FnMut(&mut FileInfo, Result<(), BackupError>),
         on_final: impl FnOnce(),
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), BackupError> {
         let mut list_string = String::new();
         {
             let list = self.get_files()?;
@@ -211,10 +218,15 @@ impl BackupWriter {
         }
         {
             let mut encoder =
-                CompressionEncoder::create(&self.path, self.config.quality, self.config.threads)?;
+                CompressionEncoder::create(&self.path, self.config.quality, self.config.threads)
+                    .map_err(BackupError::GenericError)?;
             self.config.time = Some(self.time);
-            encoder.append_data("config.yml", self.config.to_yaml()?)?;
-            encoder.append_data("files.csv", list_string)?;
+            encoder
+                .append_data("config.yml", self.config.to_yaml()?)
+                .map_err(BackupError::GenericError)?;
+            encoder
+                .append_data("files.csv", list_string)
+                .map_err(BackupError::GenericError)?;
 
             let prev_time = self.prev_time.clone();
             let list = self.list.as_mut().unwrap();
@@ -226,26 +238,30 @@ impl BackupWriter {
                                 Ok(time) => {
                                     if parse_date::system_to_naive(time) >= prev_time {
                                         on_next(fi);
-                                        let res = encoder.append_file(fi.get_path());
+                                        let res = encoder
+                                            .append_file(fi.get_path())
+                                            .map_err(BackupError::GenericError);
                                         on_added(fi, res);
                                     }
                                 }
-                                Err(e) => on_added(fi, Err(e)),
+                                Err(e) => on_added(fi, Err(BackupError::GenericError(e))),
                             },
-                            Err(e) => on_added(fi, Err(e)),
+                            Err(e) => on_added(fi, Err(BackupError::GenericError(e))),
                         }
                     }
                 }
                 None => {
                     for fi in list.iter_mut() {
                         on_next(fi);
-                        let res = encoder.append_file(fi.get_path());
+                        let res = encoder
+                            .append_file(fi.get_path())
+                            .map_err(BackupError::GenericError);
                         on_added(fi, res);
                     }
                 }
             }
             on_final();
-            encoder.close()?;
+            encoder.close().map_err(BackupError::GenericError)?;
         }
         Ok(())
     }
@@ -361,7 +377,7 @@ impl<'a> BackupReader<'a> {
             .read_to_string(&mut s)
             .map_err(|e| BackupError::ArchiveError(e))?;
         let mut conf: Config = Config::from_yaml(&s).map_err(|e| BackupError::YamlError(e))?;
-        conf.origin = Some(self.path.to_string_lossy().to_string());
+        conf.origin = Some(self.path.clone());
         self.config = Some(conf);
         Ok(self.config.as_mut().unwrap())
     }
@@ -439,7 +455,7 @@ impl<'a> BackupReader<'a> {
         let mut s = String::new();
         entry.1.read_to_string(&mut s)?;
         let mut conf: Config = Config::from_yaml(&s)?;
-        conf.origin = Some(self.path.to_string_lossy().to_string());
+        conf.origin = Some(self.path.clone());
         self.config = Some(conf);
         // Read File List
         let entry = entries.next();

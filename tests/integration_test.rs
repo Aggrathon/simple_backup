@@ -27,7 +27,7 @@ fn cli_test() {
         include: vec![dir.path().to_string_lossy().to_string()],
         exclude: vec![],
         regex: vec![],
-        output: dir3.to_string_lossy().to_string(),
+        output: dir3,
         incremental: true,
         quality: 11,
         threads: 1,
@@ -36,6 +36,8 @@ fn cli_test() {
         origin: None,
     };
     let mut bw1 = BackupWriter::new(config).0;
+    bw1.export_list(&f4, false).unwrap();
+    bw1.export_list(&f3, true).unwrap();
     bw1.write(|_| (), |_, _| (), || ()).unwrap();
 
     remove_file(&f1).unwrap();
@@ -117,7 +119,7 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
         include: vec![dir.path().to_string_lossy().to_string()],
         exclude: vec![],
         regex: vec![],
-        output: dir.path().to_string_lossy().to_string(),
+        output: dir.path().to_path_buf(),
         incremental: true,
         quality: 11,
         local: false,
@@ -177,7 +179,7 @@ fn local_test() -> Result<(), Box<dyn std::error::Error>> {
         include: vec![".".to_string()],
         exclude: vec!["target".to_string(), ".git".to_string(), "src".to_string()],
         regex: vec![".*.md".to_string()],
-        output: dir.path().to_string_lossy().to_string(),
+        output: dir.path().to_path_buf(),
         incremental: false,
         quality: 11,
         local: true,
@@ -225,7 +227,7 @@ fn time_test() -> std::io::Result<()> {
         include: vec![dir.path().to_string_lossy().to_string()],
         exclude: vec![],
         regex: vec![],
-        output: dir.path().to_string_lossy().to_string(),
+        output: dir.path().to_path_buf(),
         incremental: true,
         quality: 11,
         threads: 1,
@@ -249,7 +251,7 @@ fn time_test() -> std::io::Result<()> {
         include: vec![dir.path().to_string_lossy().to_string()],
         exclude: vec![],
         regex: vec![],
-        output: dir.path().to_string_lossy().to_string(),
+        output: dir.path().to_path_buf(),
         incremental: true,
         quality: 11,
         threads: 1,

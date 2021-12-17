@@ -3,6 +3,8 @@ use std::cmp::{Ordering, PartialOrd};
 use std::fs::ReadDir;
 use std::path::{Path, PathBuf};
 
+use number_prefix::NumberPrefix;
+
 use crate::backup::{BackupError, BackupReader};
 use crate::config::Config;
 use crate::parse_date::parse_backup_file_name;
@@ -38,6 +40,17 @@ where
         }
     } else {
         min
+    }
+}
+
+pub fn format_size(size: u64) -> String {
+    match NumberPrefix::binary(size as f64) {
+        NumberPrefix::Standalone(number) => {
+            format!("{:.2} KiB", number / 1024.0)
+        }
+        NumberPrefix::Prefixed(prefix, number) => {
+            format!("{:.2} {}B", number, prefix)
+        }
     }
 }
 
@@ -256,7 +269,7 @@ mod tests {
         File::create(&f1)?;
         File::create(&f2)?;
         let mut conf = Config::new();
-        conf.output = "test".to_string();
+        conf.output = PathBuf::from("test");
         conf.write_yaml(&f3)?;
         assert_eq!(
             get_config_from_path(f3.to_string_lossy()).unwrap().output,

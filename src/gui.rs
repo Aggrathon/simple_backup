@@ -4,17 +4,16 @@ use crate::{
     backup::{BackupError, BackupWriter},
     config::Config,
     files::{FileCrawler, FileInfo},
-    utils::get_config_from_pathbuf,
+    utils::{format_size, get_config_from_pathbuf},
 };
 use iced::{
     button, executor, pane_grid, pick_list, scrollable, text_input, Align, Application, Checkbox,
     Column, Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings, Space,
     Subscription, Text,
 };
-use number_prefix::NumberPrefix;
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
-use std::{path::PathBuf, sync::mpsc::Receiver, thread::JoinHandle};
+use std::{sync::mpsc::Receiver, thread::JoinHandle};
 
 pub fn gui() {
     ApplicationState::run(Settings::default()).unwrap();
@@ -124,10 +123,15 @@ impl Application for ApplicationState {
             }
             Message::Backup => {
                 if let ApplicationState::Config(state) = self {
-                    //TODO Check for origin or open_folder
-                    *self = ApplicationState::Backup(BackupState::new(std::mem::take(
-                        &mut state.config,
-                    )))
+                    let mut config = std::mem::take(&mut state.config);
+                    if let Some(path) = FileDialog::new()
+                        .set_directory(&config.get_origin())
+                        .set_title("Where should the backups be stored")
+                        .pick_folder()
+                    {
+                        config.set_output(path);
+                        *self = ApplicationState::Backup(BackupState::new(config))
+                    }
                 } else if let ApplicationState::Backup(state) = self {
                     *self = ApplicationState::Backup(BackupState::new(std::mem::take(
                         &mut state.config,
@@ -463,13 +467,7 @@ impl ConfigState {
             }
             Message::SaveConfig => {
                 if let Some(file) = FileDialog::new()
-                    .set_directory(
-                        self.config
-                            .origin
-                            .as_ref()
-                            .and_then(|s| Some(PathBuf::from(s)))
-                            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default()),
-                    )
+                    .set_directory(self.config.get_origin())
                     .set_title("Save config file")
                     .set_file_name("config.yml")
                     .add_filter("Config file", &["yml"])
@@ -824,8 +822,8 @@ struct ThreadWrapper<T1, T2> {
     handle: JoinHandle<T2>,
 }
 
-impl From<Config> for ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
-    fn from(config: Config) -> Self {
+impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
+    fn crawl_for_files(config: Config) -> Self {
         let (send, queue) = std::sync::mpsc::channel();
         let handle = std::thread::spawn(move || {
             let (mut writer, error) = BackupWriter::new(config);
@@ -849,6 +847,32 @@ impl From<Config> for ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>
         });
         Self { queue, handle }
     }
+
+    fn backup_files(writer: BackupWriter) -> Self {
+        let (send, queue) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let mut writer = writer;
+            let error = writer.write(
+                |_| {},
+                #[allow(unused_must_use)]
+                |fi, res| {
+                    // TODO Implement cancelling
+                    send.send(Ok(fi.clone()));
+                    if let Err(e) = res {
+                        send.send(Err(e));
+                    }
+                },
+                || {},
+            );
+            #[allow(unused_must_use)]
+            if let Err(e) = error {
+                send.send(Err(e));
+            }
+            std::mem::drop(send);
+            writer
+        });
+        Self { queue, handle }
+    }
 }
 
 #[derive(PartialEq, Eq)]
@@ -861,8 +885,8 @@ enum ListSort {
 enum BackupStage {
     Scanning(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
     Viewing(BackupWriter),
-    Performing(BackupWriter),
-    None,
+    Performing(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
+    Failure,
 }
 
 struct BackupState {
@@ -876,14 +900,16 @@ struct BackupState {
     export_button: button::State,
     list_sort: ListSort,
     error: String,
-    count: u64,
-    size: u64,
+    total_count: u64,
+    total_size: u64,
+    current_count: u64,
+    current_size: u64,
     stage: BackupStage,
 }
 
 impl BackupState {
     fn new(config: Config) -> Self {
-        let crawler = ThreadWrapper::from(config.clone());
+        let crawler = ThreadWrapper::crawl_for_files(config.clone());
         Self {
             config,
             scroll_state: scrollable::State::new(),
@@ -895,22 +921,24 @@ impl BackupState {
             export_button: button::State::new(),
             list_sort: ListSort::Name,
             error: String::new(),
-            count: 0,
-            size: 0,
+            total_count: 0,
+            total_size: 0,
+            current_count: 0,
+            current_size: 0,
             stage: BackupStage::Scanning(crawler),
         }
     }
 
     fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
         match message {
-            Message::Tick => {
-                if let BackupStage::Scanning(crawler) = &mut self.stage {
+            Message::Tick => match &mut self.stage {
+                BackupStage::Scanning(crawler) => {
                     for _ in 0..1000 {
                         match crawler.queue.try_recv() {
                             Ok(res) => match res {
                                 Ok(fi) => {
-                                    self.count += 1;
-                                    self.size += fi.size
+                                    self.total_count += 1;
+                                    self.total_size += fi.size
                                 }
                                 Err(e) => {
                                     self.error.push('\n');
@@ -923,7 +951,7 @@ impl BackupState {
                                 }
                                 std::sync::mpsc::TryRecvError::Disconnected => {
                                     if let BackupStage::Scanning(crawler) =
-                                        std::mem::replace(&mut self.stage, BackupStage::None)
+                                        std::mem::replace(&mut self.stage, BackupStage::Failure)
                                     {
                                         match crawler.handle.join() {
                                             Ok(bw) => self.stage = BackupStage::Viewing(bw),
@@ -938,7 +966,42 @@ impl BackupState {
                         }
                     }
                 }
-            }
+                BackupStage::Performing(wrapper) => {
+                    for _ in 0..1000 {
+                        match wrapper.queue.try_recv() {
+                            Ok(res) => match res {
+                                Ok(fi) => {
+                                    self.current_count += 1;
+                                    self.current_size += fi.size;
+                                }
+                                Err(e) => {
+                                    self.error.push('\n');
+                                    self.error.push_str(&e.to_string());
+                                }
+                            },
+                            Err(e) => match e {
+                                std::sync::mpsc::TryRecvError::Empty => {
+                                    break;
+                                }
+                                std::sync::mpsc::TryRecvError::Disconnected => {
+                                    if let BackupStage::Performing(wrapper) =
+                                        std::mem::replace(&mut self.stage, BackupStage::Failure)
+                                    {
+                                        match wrapper.handle.join() {
+                                            Ok(bw) => self.stage = BackupStage::Viewing(bw),
+                                            Err(_) => self
+                                                .error
+                                                .push_str("\nFailure when finalising the backup"),
+                                        }
+                                    }
+                                    break;
+                                }
+                            },
+                        }
+                    }
+                }
+                _ => {}
+            },
             Message::SortName => {
                 self.list_sort = ListSort::Name;
                 if let BackupStage::Viewing(writer) = &mut self.stage {
@@ -969,35 +1032,36 @@ impl BackupState {
                 if let BackupStage::Viewing(_) = &self.stage {
                     self.list_sort = ListSort::Name;
                     if let BackupStage::Viewing(mut writer) =
-                        std::mem::replace(&mut self.stage, BackupStage::None)
+                        std::mem::replace(&mut self.stage, BackupStage::Failure)
                     {
                         writer.list.as_mut().unwrap().sort_unstable();
-                        self.stage = BackupStage::Performing(writer);
-                        // TODO backup
+                        self.stage = BackupStage::Performing(ThreadWrapper::backup_files(writer));
+                        self.current_count = 0;
+                        self.current_size = 0;
                     }
                 }
             }
             Message::CancelBackup => {
                 if let BackupStage::Performing(_) = &self.stage {
-                    if let BackupStage::Performing(mut writer) =
-                        std::mem::replace(&mut self.stage, BackupStage::None)
+                    if let BackupStage::Performing(wrapper) =
+                        std::mem::replace(&mut self.stage, BackupStage::Failure)
                     {
-                        writer.list.as_mut().unwrap().sort_unstable();
-                        self.stage = BackupStage::Viewing(writer);
-                        //TODO cancel backup
+                        std::mem::drop(wrapper.queue);
+                        match wrapper.handle.join() {
+                            #[allow(unused_must_use)]
+                            Ok(writer) => {
+                                std::fs::remove_file(&writer.path);
+                                self.stage = BackupStage::Viewing(writer)
+                            }
+                            Err(_) => self.error.push_str("\nFailure when cancelling the backup"),
+                        };
                     }
                 }
             }
             Message::Export => {
                 if let BackupStage::Viewing(writer) = &mut self.stage {
                     if let Some(file) = FileDialog::new()
-                        .set_directory(
-                            self.config
-                                .origin
-                                .as_ref()
-                                .and_then(|s| Some(PathBuf::from(s)))
-                                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default()),
-                        )
+                        .set_directory(self.config.get_origin())
                         .set_title("Save list of files to backup")
                         .set_file_name("files.txt")
                         .add_filter("Text file", &["txt"])
@@ -1030,21 +1094,6 @@ impl BackupState {
             .height(Length::Fill)
             .width(Length::Fill)
             .spacing(presets::INNER_SPACING);
-        let status = match NumberPrefix::binary(self.size as f64) {
-            NumberPrefix::Standalone(number) => {
-                format!(
-                    "{} files of total size {:.2} KiB",
-                    self.count,
-                    number / 1024.0
-                )
-            }
-            NumberPrefix::Prefixed(prefix, number) => {
-                format!(
-                    "{} files of total size {:.2} {}B",
-                    self.count, number, prefix
-                )
-            }
-        };
         match &mut self.stage {
             BackupStage::Scanning(_) => {
                 if !self.error.is_empty() {
@@ -1057,9 +1106,13 @@ impl BackupState {
                     presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false)
                         .into(),
                     Space::with_width(Length::Fill).into(),
-                    Text::new(format!("Scanning for files to backup: {}\n", status))
-                        .vertical_alignment(iced::VerticalAlignment::Center)
-                        .into(),
+                    Text::new(format!(
+                        "Scanning for files to backup: {} of total size {}\n",
+                        self.total_count,
+                        format_size(self.total_size)
+                    ))
+                    .vertical_alignment(iced::VerticalAlignment::Center)
+                    .into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav(&mut self.backup_button, "Backup", Message::None, true)
                         .into(),
@@ -1109,17 +1162,10 @@ impl BackupState {
                         s.push(
                             Row::with_children(vec![
                                 Text::new(f.get_string()).width(Length::Fill).into(),
-                                Text::new(match NumberPrefix::binary(f.size as f64) {
-                                    NumberPrefix::Standalone(num) => {
-                                        format!("{:>6.0}  B", num / 1024.0)
-                                    }
-                                    NumberPrefix::Prefixed(pre, num) => {
-                                        format!("{:>6.2} {}B", num, pre)
-                                    }
-                                })
-                                .width(Length::Units(102))
-                                .horizontal_alignment(iced::HorizontalAlignment::Right)
-                                .into(),
+                                Text::new(format_size(f.size))
+                                    .width(Length::Units(102))
+                                    .horizontal_alignment(iced::HorizontalAlignment::Right)
+                                    .into(),
                                 Text::new(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
                                     .width(Length::Units(182))
                                     .horizontal_alignment(iced::HorizontalAlignment::Right)
@@ -1154,9 +1200,13 @@ impl BackupState {
                     presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false)
                         .into(),
                     Space::with_width(Length::Fill).into(),
-                    Text::new(&status)
-                        .vertical_alignment(iced::VerticalAlignment::Center)
-                        .into(),
+                    Text::new(format!(
+                        "{} files of total size {}",
+                        self.total_count,
+                        format_size(self.total_size)
+                    ))
+                    .vertical_alignment(iced::VerticalAlignment::Center)
+                    .into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav(
                         &mut self.backup_button,
@@ -1179,13 +1229,24 @@ impl BackupState {
                             .horizontal_alignment(iced::HorizontalAlignment::Left),
                     );
                 }
-                let max = (self.size / 1024 + self.count) as f32;
-                let current = (self.size / 1024) as f32; // TODO Use correct current
-                let bar = presets::progress_bar(current, max);
+                let status = if self.current_count == self.total_count {
+                    Text::new("Waiting for the compression to complete...")
+                } else {
+                    Text::new(&format!(
+                        "Backing up file {} of {}, {} of {}",
+                        self.current_count,
+                        self.total_count,
+                        format_size(self.current_size),
+                        format_size(self.total_size)
+                    ))
+                };
+                let max = (self.total_size / 1024 + self.total_count) as f32;
+                let current = (self.current_size / 1024 + self.current_count) as f32;
+                let bar = presets::progress_bar(current + max * 0.005, max * 1.01);
                 let brow = Row::with_children(vec![
                     presets::button_nav(&mut self.edit_button, "Edit", Message::None, false).into(),
                     Space::with_width(Length::Fill).into(),
-                    Text::new(&format!("Backing up {}", status))
+                    status
                         .vertical_alignment(iced::VerticalAlignment::Center)
                         .into(),
                     Space::with_width(Length::Fill).into(),
@@ -1204,8 +1265,25 @@ impl BackupState {
                     .padding(presets::INNER_SPACING)
                     .into()
             }
-            BackupStage::None => {
-                presets::text_error("This should not be possible: `stage == None`").into()
+            BackupStage::Failure => {
+                if !self.error.is_empty() {
+                    scroll = scroll.push(
+                        presets::text_error(&self.error)
+                            .horizontal_alignment(iced::HorizontalAlignment::Left),
+                    );
+                }
+                let brow = Row::with_children(vec![
+                    presets::button_nav(&mut self.edit_button, "Edit", Message::None, false).into(),
+                    Space::with_width(Length::Fill).into(),
+                    presets::button_nav(&mut self.backup_button, "Refresh", Message::Backup, true)
+                        .into(),
+                ])
+                .spacing(presets::INNER_SPACING);
+                Column::with_children(vec![scroll.into(), brow.into()])
+                    .width(Length::Fill)
+                    .spacing(presets::INNER_SPACING)
+                    .padding(presets::INNER_SPACING)
+                    .into()
             }
         }
     }
