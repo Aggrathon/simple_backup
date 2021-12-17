@@ -124,6 +124,7 @@ impl Application for ApplicationState {
             }
             Message::Backup => {
                 if let ApplicationState::Config(state) = self {
+                    //TODO Check for origin or open_folder
                     *self = ApplicationState::Backup(BackupState::new(std::mem::take(
                         &mut state.config,
                     )))
@@ -199,7 +200,7 @@ impl MainState {
             presets::button_main(&mut self.create, "Create", Message::CreateConfig).into(),
             presets::button_main(&mut self.edit, "Edit", Message::EditConfig).into(),
             presets::button_main(&mut self.backup, "Backup", Message::Backup).into(),
-            presets::button_main(&mut self.config, "Restore", Message::None).into(),
+            presets::button_main(&mut self.config, "Restore", Message::Restore).into(),
             Space::with_height(Length::Fill).into(),
         ])
         .align_items(Align::Center)
@@ -860,7 +861,7 @@ enum ListSort {
 enum BackupStage {
     Scanning(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
     Viewing(BackupWriter),
-    Performing,
+    Performing(BackupWriter),
     None,
 }
 
@@ -875,12 +876,9 @@ struct BackupState {
     export_button: button::State,
     list_sort: ListSort,
     error: String,
-    count: u32,
+    count: u64,
     size: u64,
     stage: BackupStage,
-    // backing_up: bool,
-    // writer: Option<BackupWriter>,
-    // crawler: Option<ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>>,
 }
 
 impl BackupState {
@@ -899,10 +897,7 @@ impl BackupState {
             error: String::new(),
             count: 0,
             size: 0,
-            stage: BackupStage::Scanning(crawler)
-            // writer: None,
-            // backing_up: false,
-            // crawler,
+            stage: BackupStage::Scanning(crawler),
         }
     }
 
@@ -943,7 +938,6 @@ impl BackupState {
                         }
                     }
                 }
-                // TODO backup
             }
             Message::SortName => {
                 self.list_sort = ListSort::Name;
@@ -972,19 +966,30 @@ impl BackupState {
                 }
             }
             Message::StartBackup => {
-                self.list_sort = ListSort::Name;
-                if let BackupStage::Viewing(writer) = &mut self.stage {
-                    writer.list.as_mut().unwrap().sort_unstable();
-                    //TODO
+                if let BackupStage::Viewing(_) = &self.stage {
+                    self.list_sort = ListSort::Name;
+                    if let BackupStage::Viewing(mut writer) =
+                        std::mem::replace(&mut self.stage, BackupStage::None)
+                    {
+                        writer.list.as_mut().unwrap().sort_unstable();
+                        self.stage = BackupStage::Performing(writer);
+                        // TODO backup
+                    }
                 }
             }
             Message::CancelBackup => {
-                if let BackupStage::Viewing(writer) = &mut self.stage {
-                    writer.list.as_mut().unwrap().sort_unstable();
-                    todo!()
+                if let BackupStage::Performing(_) = &self.stage {
+                    if let BackupStage::Performing(mut writer) =
+                        std::mem::replace(&mut self.stage, BackupStage::None)
+                    {
+                        writer.list.as_mut().unwrap().sort_unstable();
+                        self.stage = BackupStage::Viewing(writer);
+                        //TODO cancel backup
+                    }
                 }
             }
             Message::Export => {
+                // TODO save the file list to a text file
                 todo!()
             }
             _ => eprintln!("Unexpected GUI message"),
@@ -994,7 +999,7 @@ impl BackupState {
 
     fn subscription(&self) -> Subscription<Message> {
         match self.stage {
-            BackupStage::Scanning(_) => {
+            BackupStage::Scanning(_) | BackupStage::Performing(_) => {
                 iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::Tick)
             }
             _ => Subscription::none(),
@@ -1009,14 +1014,14 @@ impl BackupState {
         let status = match NumberPrefix::binary(self.size as f64) {
             NumberPrefix::Standalone(number) => {
                 format!(
-                    "{:>6} files of total size {:>6.2} KiB",
+                    "{} files of total size {:.2} KiB",
                     self.count,
                     number / 1024.0
                 )
             }
             NumberPrefix::Prefixed(prefix, number) => {
                 format!(
-                    "{:>6} files of total size {:>6.2} {}B",
+                    "{} files of total size {:.2} {}B",
                     self.count, number, prefix
                 )
             }
@@ -1033,7 +1038,9 @@ impl BackupState {
                     presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false)
                         .into(),
                     Space::with_width(Length::Fill).into(),
-                    Text::new(format!("Scanning for files to backup: {}\n", status)).into(),
+                    Text::new(format!("Scanning for files to backup: {}\n", status))
+                        .vertical_alignment(iced::VerticalAlignment::Center)
+                        .into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav(&mut self.backup_button, "Backup", Message::None, true)
                         .into(),
@@ -1085,10 +1092,10 @@ impl BackupState {
                                 Text::new(f.get_string()).width(Length::Fill).into(),
                                 Text::new(match NumberPrefix::binary(f.size as f64) {
                                     NumberPrefix::Standalone(num) => {
-                                        format!("{:.2} KiB", num / 1024.0)
+                                        format!("{:>6.0}  B", num / 1024.0)
                                     }
                                     NumberPrefix::Prefixed(pre, num) => {
-                                        format!("{:.2} {}B", num, pre)
+                                        format!("{:>6.2} {}B", num, pre)
                                     }
                                 })
                                 .width(Length::Units(102))
@@ -1128,7 +1135,9 @@ impl BackupState {
                     presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false)
                         .into(),
                     Space::with_width(Length::Fill).into(),
-                    Text::new(&status).into(),
+                    Text::new(&status)
+                        .vertical_alignment(iced::VerticalAlignment::Center)
+                        .into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav(
                         &mut self.backup_button,
@@ -1144,7 +1153,38 @@ impl BackupState {
                     .padding(presets::INNER_SPACING)
                     .into()
             }
-            BackupStage::Performing => todo!(),
+            BackupStage::Performing(_) => {
+                if !self.error.is_empty() {
+                    scroll = scroll.push(
+                        presets::text_error(&self.error)
+                            .horizontal_alignment(iced::HorizontalAlignment::Left),
+                    );
+                }
+                let max = (self.size / 1024 + self.count) as f32;
+                let current = (self.size / 1024) as f32; // TODO Use correct current
+                let bar = presets::progress_bar(current, max);
+                let brow = Row::with_children(vec![
+                    presets::button_nav(&mut self.edit_button, "Edit", Message::None, false).into(),
+                    Space::with_width(Length::Fill).into(),
+                    Text::new(&format!("Backing up {}", status))
+                        .vertical_alignment(iced::VerticalAlignment::Center)
+                        .into(),
+                    Space::with_width(Length::Fill).into(),
+                    presets::button_nav(
+                        &mut self.backup_button,
+                        "Cancel",
+                        Message::CancelBackup,
+                        false,
+                    )
+                    .into(),
+                ])
+                .spacing(presets::INNER_SPACING);
+                Column::with_children(vec![scroll.into(), bar.into(), brow.into()])
+                    .width(Length::Fill)
+                    .spacing(presets::INNER_SPACING)
+                    .padding(presets::INNER_SPACING)
+                    .into()
+            }
             BackupStage::None => {
                 presets::text_error("This should not be possible: `stage == None`").into()
             }
@@ -1152,12 +1192,14 @@ impl BackupState {
     }
 }
 
-struct RestoreState {}
+struct RestoreState {
+    //TODO Restore GUI
+}
 
 mod presets {
     use iced::{
-        button, container, pane_grid, text_input, tooltip, Button, Color, Element, Length, Row,
-        Space, Text, TextInput, Tooltip,
+        button, container, pane_grid, progress_bar, text_input, tooltip, Button, Color, Element,
+        Length, ProgressBar, Row, Space, Text, TextInput, Tooltip,
     };
 
     use super::Message;
@@ -1354,6 +1396,12 @@ mod presets {
         }
     }
 
+    pub(crate) fn progress_bar(current: f32, max: f32) -> ProgressBar {
+        ProgressBar::new(0.0..=max, current)
+            .width(Length::Fill)
+            .style(ProgressStyle::Normal)
+    }
+
     pub enum ButtonStyle {
         GreyButton,
         LightButton,
@@ -1372,6 +1420,10 @@ mod presets {
         Normal,
         Working,
         Problem,
+    }
+
+    pub enum ProgressStyle {
+        Normal,
     }
 
     impl container::StyleSheet for ContainerStyle {
@@ -1465,6 +1517,16 @@ mod presets {
 
         fn selection_color(&self) -> Color {
             APP2_COLOR
+        }
+    }
+
+    impl progress_bar::StyleSheet for ProgressStyle {
+        fn style(&self) -> progress_bar::Style {
+            progress_bar::Style {
+                background: GREY_COLOR.into(),
+                bar: APP_COLOR.into(),
+                border_radius: LARGE_RADIUS,
+            }
         }
     }
 }

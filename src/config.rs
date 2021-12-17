@@ -132,19 +132,22 @@ impl Config {
 
     /// Get the path for a new backup
     pub fn get_output(&self) -> PathBuf {
-        if self.output.ends_with(".tar.zst") {
-            PathBuf::from(&self.output)
-        } else if self.output.len() == 0 {
+        if self.output.len() == 0 {
             match self.origin.as_ref() {
                 Some(p) => {
                     let p = PathBuf::from(p);
-                    match p.parent() {
-                        Some(p) => p.join(create_backup_file_name(naive_now())),
-                        None => p.join(create_backup_file_name(naive_now())),
+                    if p.exists() && !p.is_file() {
+                        p.parent()
+                            .unwrap()
+                            .join(create_backup_file_name(naive_now()))
+                    } else {
+                        p.join(create_backup_file_name(naive_now()))
                     }
                 }
                 None => Path::new(".").join(create_backup_file_name(naive_now())),
             }
+        } else if self.output.ends_with(".tar.zst") {
+            PathBuf::from(&self.output)
         } else {
             Path::new(&self.output).join(create_backup_file_name(naive_now()))
         }
