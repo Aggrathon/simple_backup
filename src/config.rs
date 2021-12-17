@@ -25,7 +25,7 @@ pub struct Config {
     #[serde(with = "parse_date")]
     pub time: Option<NaiveDateTime>,
     #[serde(skip)]
-    pub origin: Option<PathBuf>,
+    pub origin: PathBuf,
 }
 
 impl Config {
@@ -41,7 +41,7 @@ impl Config {
             local: false,
             threads: 4,
             time: None,
-            origin: None,
+            origin: PathBuf::new(),
         }
     }
 
@@ -84,7 +84,7 @@ impl Config {
                 .value_of("time")
                 .and_then(|v| Some(parse_date::try_parse(v).expect("Could not parse time")))
                 .unwrap_or(None),
-            origin: None,
+            origin: PathBuf::new(),
         }
     }
 
@@ -96,18 +96,24 @@ impl Config {
         self.threads = clamp(threads, 1, num_cpus::get() as u32);
     }
 
-    pub fn set_output(&mut self, path: PathBuf) {
-        if self.origin.is_none() {
-            self.origin = Some(path.clone());
+    pub fn get_output(&self) -> PathBuf {
+        if !self.output.as_os_str().is_empty() {
+            self.output.clone()
+        } else if !self.origin.as_os_str().is_empty() {
+            self.origin.clone()
+        } else {
+            PathBuf::from(".")
         }
-        self.output = path;
     }
 
-    pub fn get_origin(&self) -> PathBuf {
-        self.origin
-            .as_ref()
-            .map(|p| p.clone())
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
+    pub fn get_output_home(&self) -> PathBuf {
+        if !self.output.as_os_str().is_empty() {
+            self.output.clone()
+        } else if !self.origin.as_os_str().is_empty() {
+            self.origin.clone()
+        } else {
+            dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+        }
     }
 
     /// Read a config from a yaml file
@@ -115,7 +121,7 @@ impl Config {
         let reader = File::open(&path)?;
         let mut conf: Config =
             serde_yaml::from_reader(reader).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
-        conf.origin = Some(path.as_ref().to_path_buf());
+        conf.origin = path.as_ref().to_path_buf();
         Ok(conf)
     }
 
@@ -145,44 +151,22 @@ impl Config {
     }
 
     /// Get the path for a new backup
-    pub fn get_output(&self) -> PathBuf {
-        if self.output.as_os_str().len() == 0 {
-            match self.origin.as_ref() {
-                Some(p) => {
-                    if p.exists() && !p.is_file() {
-                        p.parent()
-                            .unwrap()
-                            .join(create_backup_file_name(naive_now()))
-                    } else {
-                        p.join(create_backup_file_name(naive_now()))
-                    }
-                }
-                None => Path::new(".").join(create_backup_file_name(naive_now())),
-            }
-        } else if self.output.ends_with(".tar.zst") {
-            PathBuf::from(&self.output)
+    pub fn get_new_output(&self) -> PathBuf {
+        if self.output.ends_with(".tar.zst") {
+            self.output.clone()
         } else {
-            Path::new(&self.output).join(create_backup_file_name(naive_now()))
+            self.get_dir().join(create_backup_file_name(naive_now()))
         }
     }
 
     pub fn get_dir(&self) -> PathBuf {
-        let path = if self.output.ends_with(".tar.zst") {
-            match PathBuf::from(&self.output).parent() {
+        let mut path = self.get_output();
+        if path.is_file() {
+            path = match path.parent() {
                 Some(p) => p.to_path_buf(),
                 None => PathBuf::from("."),
-            }
-        } else if self.output.as_os_str().len() == 0 {
-            match self.origin.as_ref() {
-                Some(p) => match p.parent() {
-                    Some(p) => p.to_path_buf(),
-                    None => PathBuf::from("."),
-                },
-                None => PathBuf::from("."),
-            }
-        } else {
-            PathBuf::from(&self.output)
-        };
+            };
+        }
         if self.local {
             path
         } else if path.is_absolute() {
@@ -190,7 +174,7 @@ impl Config {
         } else {
             match path.absolutize() {
                 Ok(p) => p.to_path_buf(),
-                Err(_) => PathBuf::new(),
+                Err(_) => PathBuf::from("."),
             }
         }
     }
@@ -198,9 +182,9 @@ impl Config {
     /// Iterate over old backups
     pub fn get_backups(&self) -> BackupIterator {
         if self.output.ends_with(".tar.zst") {
-            BackupIterator::exact(PathBuf::from(&self.output))
+            BackupIterator::exact(self.output.clone())
         } else {
-            BackupIterator::timestamp(Path::new(&self.output))
+            BackupIterator::timestamp(self.get_dir())
         }
     }
 }

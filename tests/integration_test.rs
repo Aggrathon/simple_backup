@@ -1,6 +1,7 @@
 // This file contains integration tests for backups and restoring
 
 use std::fs::{remove_file, File};
+use std::path::PathBuf;
 
 use simple_backup;
 use simple_backup::backup::{BackupReader, BackupWriter};
@@ -33,12 +34,12 @@ fn cli_test() {
         threads: 1,
         local: false,
         time: None,
-        origin: None,
+        origin: PathBuf::new(),
     };
     let mut bw1 = BackupWriter::new(config).0;
     bw1.export_list(&f4, false).unwrap();
     bw1.export_list(&f3, true).unwrap();
-    bw1.write(|_| (), |_, _| (), || ()).unwrap();
+    bw1.write(|_, _| Ok(()), || ()).unwrap();
 
     remove_file(&f1).unwrap();
     remove_file(&f2).unwrap();
@@ -125,10 +126,10 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
         local: false,
         threads: 1,
         time: None,
-        origin: None,
+        origin: PathBuf::new(),
     };
     let mut bw1 = BackupWriter::new(config).0;
-    bw1.write(|_| (), |_, _| (), || ())?;
+    bw1.write(|_, _| Ok(()), || ())?;
 
     let f5 = dir.path().join("e.txt");
     let f6 = dir.path().join("f.txt");
@@ -137,7 +138,7 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     std::thread::sleep(std::time::Duration::from_secs(1));
     let mut bw2 = BackupWriter::new(bw1.config).0;
-    bw2.write(|_| (), |_, _| (), || ())?;
+    bw2.write(|_, _| Ok(()), || ())?;
 
     remove_file(&f2)?;
     remove_file(&f5)?;
@@ -185,7 +186,7 @@ fn local_test() -> Result<(), Box<dyn std::error::Error>> {
         local: true,
         threads: 1,
         time: None,
-        origin: None,
+        origin: PathBuf::new(),
     };
 
     let conf = Config::from_yaml(config.to_yaml()?)?;
@@ -233,7 +234,7 @@ fn time_test() -> std::io::Result<()> {
         threads: 1,
         local: false,
         time: Some(naive_now()),
-        origin: None,
+        origin: PathBuf::new(),
     };
 
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -257,7 +258,7 @@ fn time_test() -> std::io::Result<()> {
         threads: 1,
         local: false,
         time: Some(naive_now()),
-        origin: None,
+        origin: PathBuf::new(),
     };
 
     restore(

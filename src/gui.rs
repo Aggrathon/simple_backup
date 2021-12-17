@@ -125,11 +125,11 @@ impl Application for ApplicationState {
                 if let ApplicationState::Config(state) = self {
                     let mut config = std::mem::take(&mut state.config);
                     if let Some(path) = FileDialog::new()
-                        .set_directory(&config.get_origin())
+                        .set_directory(config.get_output_home())
                         .set_title("Where should the backups be stored")
                         .pick_folder()
                     {
-                        config.set_output(path);
+                        config.output = path;
                         *self = ApplicationState::Backup(BackupState::new(config))
                     }
                 } else if let ApplicationState::Backup(state) = self {
@@ -467,7 +467,7 @@ impl ConfigState {
             }
             Message::SaveConfig => {
                 if let Some(file) = FileDialog::new()
-                    .set_directory(self.config.get_origin())
+                    .set_directory(self.config.get_output())
                     .set_title("Save config file")
                     .set_file_name("config.yml")
                     .add_filter("Config file", &["yml"])
@@ -853,14 +853,12 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
         let handle = std::thread::spawn(move || {
             let mut writer = writer;
             let error = writer.write(
-                |_| {},
                 #[allow(unused_must_use)]
                 |fi, res| {
-                    // TODO Implement cancelling
-                    send.send(Ok(fi.clone()));
                     if let Err(e) = res {
                         send.send(Err(e));
                     }
+                    send.send(Ok(fi.clone())).map_err(|_| BackupError::Cancel)
                 },
                 || {},
             );
@@ -886,6 +884,7 @@ enum BackupStage {
     Scanning(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
     Viewing(BackupWriter),
     Performing(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
+    Cancelling(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
     Failure,
 }
 
@@ -1000,6 +999,17 @@ impl BackupState {
                         }
                     }
                 }
+                BackupStage::Cancelling(_) => {
+                    if let BackupStage::Cancelling(wrapper) =
+                        std::mem::replace(&mut self.stage, BackupStage::Failure)
+                    {
+                        std::mem::drop(wrapper.queue);
+                        match wrapper.handle.join() {
+                            Ok(writer) => self.stage = BackupStage::Viewing(writer),
+                            Err(_) => self.error.push_str("\nFailure when cancelling the backup"),
+                        };
+                    }
+                }
                 _ => {}
             },
             Message::SortName => {
@@ -1046,22 +1056,14 @@ impl BackupState {
                     if let BackupStage::Performing(wrapper) =
                         std::mem::replace(&mut self.stage, BackupStage::Failure)
                     {
-                        std::mem::drop(wrapper.queue);
-                        match wrapper.handle.join() {
-                            #[allow(unused_must_use)]
-                            Ok(writer) => {
-                                std::fs::remove_file(&writer.path);
-                                self.stage = BackupStage::Viewing(writer)
-                            }
-                            Err(_) => self.error.push_str("\nFailure when cancelling the backup"),
-                        };
+                        self.stage = BackupStage::Cancelling(wrapper);
                     }
                 }
             }
             Message::Export => {
                 if let BackupStage::Viewing(writer) = &mut self.stage {
                     if let Some(file) = FileDialog::new()
-                        .set_directory(self.config.get_origin())
+                        .set_directory(self.config.get_output())
                         .set_title("Save list of files to backup")
                         .set_file_name("files.txt")
                         .add_filter("Text file", &["txt"])
@@ -1082,8 +1084,14 @@ impl BackupState {
 
     fn subscription(&self) -> Subscription<Message> {
         match self.stage {
-            BackupStage::Scanning(_) | BackupStage::Performing(_) => {
+            BackupStage::Scanning(_) => {
                 iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::Tick)
+            }
+            BackupStage::Performing(_) => {
+                iced::time::every(std::time::Duration::from_millis(200)).map(|_| Message::Tick)
+            }
+            BackupStage::Cancelling(_) => {
+                iced::time::every(std::time::Duration::from_millis(500)).map(|_| Message::Tick)
             }
             _ => Subscription::none(),
         }
@@ -1117,6 +1125,7 @@ impl BackupState {
                     presets::button_nav(&mut self.backup_button, "Backup", Message::None, true)
                         .into(),
                 ])
+                .align_items(Align::Center)
                 .spacing(presets::INNER_SPACING);
                 Column::with_children(vec![scroll.into(), brow.into()])
                     .width(Length::Fill)
@@ -1172,6 +1181,7 @@ impl BackupState {
                                     .into(),
                                 presets::space_scroll().into(),
                             ])
+                            .align_items(Align::Center)
                             .spacing(presets::INNER_SPACING),
                         )
                     });
@@ -1215,21 +1225,25 @@ impl BackupState {
                         true,
                     )
                     .into(),
-                ]);
+                ])
+                .align_items(Align::Center)
+                .spacing(presets::INNER_SPACING);
                 Column::with_children(vec![trow.into(), scroll.into(), brow.into()])
                     .width(Length::Fill)
                     .spacing(presets::INNER_SPACING)
                     .padding(presets::INNER_SPACING)
                     .into()
             }
-            BackupStage::Performing(_) => {
+            BackupStage::Performing(_) | BackupStage::Cancelling(_) => {
                 if !self.error.is_empty() {
                     scroll = scroll.push(
                         presets::text_error(&self.error)
                             .horizontal_alignment(iced::HorizontalAlignment::Left),
                     );
                 }
-                let status = if self.current_count == self.total_count {
+                let status = if let BackupStage::Cancelling(_) = self.stage {
+                    Text::new("Cancelling the backup...")
+                } else if self.current_count >= self.total_count {
                     Text::new("Waiting for the compression to complete...")
                 } else {
                     Text::new(&format!(
@@ -1253,11 +1267,16 @@ impl BackupState {
                     presets::button_nav(
                         &mut self.backup_button,
                         "Cancel",
-                        Message::CancelBackup,
+                        if let BackupStage::Cancelling(_) = self.stage {
+                            Message::None
+                        } else {
+                            Message::CancelBackup
+                        },
                         false,
                     )
                     .into(),
                 ])
+                .align_items(Align::Center)
                 .spacing(presets::INNER_SPACING);
                 Column::with_children(vec![scroll.into(), bar.into(), brow.into()])
                     .width(Length::Fill)
@@ -1278,6 +1297,7 @@ impl BackupState {
                     presets::button_nav(&mut self.backup_button, "Refresh", Message::Backup, true)
                         .into(),
                 ])
+                .align_items(Align::Center)
                 .spacing(presets::INNER_SPACING);
                 Column::with_children(vec![scroll.into(), brow.into()])
                     .width(Length::Fill)
@@ -1620,7 +1640,7 @@ mod presets {
     impl progress_bar::StyleSheet for ProgressStyle {
         fn style(&self) -> progress_bar::Style {
             progress_bar::Style {
-                background: GREY_COLOR.into(),
+                background: LIGHT_COLOR.into(),
                 bar: APP_COLOR.into(),
                 border_radius: LARGE_RADIUS,
             }

@@ -97,17 +97,17 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
         bar.tick();
         bar.enable_steady_tick(1000);
         bw.write(
-            |fi| bar.set_message(fi.move_string()),
-            |fi: &mut FileInfo, err| match err {
-                Ok(_) => bar.inc(fi.size + 1),
-                Err(e) => {
-                    bar.inc(fi.size + 1);
+            |fi: &mut FileInfo, err| {
+                bar.set_message(fi.move_string());
+                bar.inc(fi.size + 1);
+                if let Err(e) = err {
                     bar.println(format!(
                         "Could not add '{}' to the backup: {}",
                         fi.get_string(),
                         e
                     ));
                 }
+                Ok(())
             },
             || bar.set_message("Waiting for the compression to complete..."),
         )
