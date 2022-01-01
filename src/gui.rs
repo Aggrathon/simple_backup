@@ -1,30 +1,13 @@
 #![cfg(feature = "gui")]
+use std::cmp::{max, min};
 /// This module contains the logic for running the program through a GUI
 use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 
 use iced::{
-    button,
-    executor,
-    pane_grid,
-    pick_list,
-    scrollable,
-    text_input,
-    Align,
-    Application,
-    Checkbox,
-    Column,
-    Command,
-    Element,
-    Length,
-    PaneGrid,
-    PickList,
-    Row,
-    Scrollable,
-    Settings,
-    Space,
-    Subscription,
-    Text,
+    button, executor, pane_grid, pick_list, scrollable, text_input, Align, Application, Checkbox,
+    Column, Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings, Space,
+    Subscription, Text,
 };
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
@@ -56,6 +39,7 @@ pub(crate) enum Message {
     EditConfig,
     Backup,
     Restore,
+    Extract,
     ToggleIncremental(bool),
     ThreadCount(u32),
     CompressionQuality(i32),
@@ -70,6 +54,7 @@ pub(crate) enum Message {
     EditFilter(usize, String),
     OpenFolder(usize),
     GoUp,
+    GoDown,
     DialogFolder,
     SaveConfig,
     SortName,
@@ -87,6 +72,7 @@ enum ApplicationState {
     Config(ConfigState),
     Backup(BackupState),
     Restore(RestoreState),
+    Extract(ExtractState),
 }
 
 fn open_config() -> Option<Config> {
@@ -126,6 +112,7 @@ impl Application for ApplicationState {
             ApplicationState::Config(_) => String::from("simple_backup - Config"),
             ApplicationState::Backup(_) => String::from("simple_backup - Backup"),
             ApplicationState::Restore(_) => String::from("simple_backup - Restore"),
+            ApplicationState::Extract(_) => String::from("simple_backup - Extract"),
         }
     }
 
@@ -173,6 +160,10 @@ impl Application for ApplicationState {
                 *self = ApplicationState::Restore(RestoreState::new());
                 Command::none()
             }
+            Message::Extract => {
+                *self = ApplicationState::Extract(ExtractState::new());
+                Command::none()
+            }
             Message::None => {
                 eprintln!("Unspecified GUI message");
                 Command::none()
@@ -186,6 +177,7 @@ impl Application for ApplicationState {
                 ApplicationState::Config(state) => state.update(message, clipboard),
                 ApplicationState::Backup(state) => state.update(message, clipboard),
                 ApplicationState::Restore(state) => state.update(message, clipboard),
+                ApplicationState::Extract(state) => state.update(message, clipboard),
             },
         }
     }
@@ -196,6 +188,7 @@ impl Application for ApplicationState {
             ApplicationState::Config(state) => state.view(),
             ApplicationState::Backup(state) => state.view(),
             ApplicationState::Restore(state) => state.view(),
+            ApplicationState::Extract(state) => state.view(),
         }
     }
 
@@ -211,7 +204,8 @@ struct MainState {
     create: button::State,
     edit: button::State,
     backup: button::State,
-    config: button::State,
+    restore: button::State,
+    extract: button::State,
 }
 
 impl MainState {
@@ -220,7 +214,8 @@ impl MainState {
             create: button::State::new(),
             edit: button::State::new(),
             backup: button::State::new(),
-            config: button::State::new(),
+            restore: button::State::new(),
+            extract: button::State::new(),
         }
     }
 
@@ -229,10 +224,11 @@ impl MainState {
             Space::with_height(Length::Fill).into(),
             presets::text_title("simple_backup").into(),
             Space::with_height(Length::Shrink).into(),
-            presets::button_main(&mut self.create, "Create", Message::CreateConfig).into(),
-            presets::button_main(&mut self.edit, "Edit", Message::EditConfig).into(),
-            presets::button_main(&mut self.backup, "Backup", Message::Backup).into(),
-            presets::button_main(&mut self.config, "Restore", Message::Restore).into(),
+            presets::button_main(&mut self.create, "Create", false, Message::CreateConfig).into(),
+            presets::button_main(&mut self.edit, "Edit", false, Message::EditConfig).into(),
+            presets::button_main(&mut self.backup, "Backup", false, Message::Backup).into(),
+            presets::button_main(&mut self.restore, "Restore", true, Message::Restore).into(),
+            presets::button_main(&mut self.extract, "Extract", true, Message::Extract).into(),
             Space::with_height(Length::Fill).into(),
         ])
         .align_items(Align::Center)
@@ -924,6 +920,8 @@ struct BackupState {
     name_button: button::State,
     size_button: button::State,
     time_button: button::State,
+    prev_button: button::State,
+    next_button: button::State,
     export_button: button::State,
     list_sort: ListSort,
     error: String,
@@ -945,6 +943,8 @@ impl BackupState {
             name_button: button::State::new(),
             size_button: button::State::new(),
             time_button: button::State::new(),
+            prev_button: button::State::new(),
+            next_button: button::State::new(),
             export_button: button::State::new(),
             list_sort: ListSort::Name,
             error: String::new(),
@@ -998,6 +998,7 @@ impl BackupState {
                                                         self.error.push_str(&e.to_string());
                                                     };
                                                 }
+                                                self.current_count = 0;
                                                 self.stage = BackupStage::Viewing(bw);
                                             }
                                             Err(_) => self.error.push_str(
@@ -1033,7 +1034,10 @@ impl BackupState {
                                         std::mem::replace(&mut self.stage, BackupStage::Failure)
                                     {
                                         match wrapper.handle.join() {
-                                            Ok(bw) => self.stage = BackupStage::Viewing(bw),
+                                            Ok(bw) => {
+                                                self.current_count = 0;
+                                                self.stage = BackupStage::Viewing(bw)
+                                            }
                                             Err(_) => self
                                                 .error
                                                 .push_str("\nFailure when finalising the backup"),
@@ -1051,7 +1055,10 @@ impl BackupState {
                     {
                         std::mem::drop(wrapper.queue);
                         match wrapper.handle.join() {
-                            Ok(writer) => self.stage = BackupStage::Viewing(writer),
+                            Ok(writer) => {
+                                self.current_count = 0;
+                                self.stage = BackupStage::Viewing(writer)
+                            }
                             Err(_) => self.error.push_str("\nFailure when cancelling the backup"),
                         };
                     }
@@ -1123,6 +1130,22 @@ impl BackupState {
                     }
                 }
             }
+            Message::GoUp => {
+                if let BackupStage::Viewing(_) = self.stage {
+                    self.current_count = max(100, self.current_count) - 100;
+                    self.scroll_state
+                        .scroll_to(0f32, Default::default(), Default::default());
+                }
+            }
+            Message::GoDown => {
+                if let BackupStage::Viewing(_) = self.stage {
+                    if self.current_count + 100 < self.total_count {
+                        self.current_count = self.current_count + 100;
+                        self.scroll_state
+                            .scroll_to(0f32, Default::default(), Default::default());
+                    }
+                }
+            }
             _ => eprintln!("Unexpected GUI message"),
         }
         Command::none()
@@ -1152,7 +1175,7 @@ impl BackupState {
             BackupStage::Scanning(_) => {
                 if !self.error.is_empty() {
                     scroll = scroll.push(
-                        presets::text_error(&self.error)
+                        presets::text_error(&self.error[1..])
                             .horizontal_alignment(iced::HorizontalAlignment::Left),
                     );
                 }
@@ -1207,42 +1230,70 @@ impl BackupState {
                     .into(),
                 ])
                 .spacing(presets::INNER_SPACING);
-                scroll = writer.iter_files().unwrap().take(100).fold(scroll, |s, f| {
-                    s.push(
-                        Row::with_children(vec![
-                            Text::new(f.get_string()).width(Length::Fill).into(),
-                            Text::new(format_size(f.size))
-                                .width(Length::Units(102))
-                                .horizontal_alignment(iced::HorizontalAlignment::Right)
-                                .into(),
-                            Text::new(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
-                                .width(Length::Units(182))
-                                .horizontal_alignment(iced::HorizontalAlignment::Right)
-                                .into(),
-                            presets::space_scroll().into(),
-                        ])
-                        .align_items(Align::Center)
-                        .spacing(presets::INNER_SPACING),
-                    )
-                });
+                scroll = writer
+                    .iter_files()
+                    .unwrap()
+                    .skip(self.current_count as usize)
+                    .take(100)
+                    .fold(scroll, |s, f| {
+                        s.push(
+                            Row::with_children(vec![
+                                Text::new(f.get_string()).width(Length::Fill).into(),
+                                Text::new(format_size(f.size))
+                                    .width(Length::Units(102))
+                                    .horizontal_alignment(iced::HorizontalAlignment::Right)
+                                    .into(),
+                                Text::new(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
+                                    .width(Length::Units(182))
+                                    .horizontal_alignment(iced::HorizontalAlignment::Right)
+                                    .into(),
+                                presets::space_scroll().into(),
+                            ])
+                            .align_items(Align::Center)
+                            .spacing(presets::INNER_SPACING),
+                        )
+                    });
                 if self.total_count > 100 {
                     scroll = scroll.push(
                         Row::with_children(vec![
                             Space::with_width(Length::Fill).into(),
-                            presets::button_color(
-                                &mut self.export_button,
-                                "Export full list",
-                                Message::Export,
+                            presets::button_grey(
+                                &mut self.prev_button,
+                                "<",
+                                if self.current_count > 0 {
+                                    Message::GoUp
+                                } else {
+                                    Message::None
+                                },
+                                false,
+                            )
+                            .into(),
+                            presets::text_center(&format!(
+                                "{:3} - {:3}",
+                                self.current_count,
+                                min(self.current_count + 100, self.total_count)
+                            ))
+                            .into(),
+                            presets::button_grey(
+                                &mut self.next_button,
+                                ">",
+                                if self.current_count + 100 < self.total_count {
+                                    Message::GoDown
+                                } else {
+                                    Message::None
+                                },
+                                false,
                             )
                             .into(),
                             Space::with_width(Length::Fill).into(),
                         ])
+                        .align_items(Align::Center)
                         .spacing(presets::INNER_SPACING),
-                    );
+                    )
                 }
                 if !self.error.is_empty() {
                     scroll = scroll.push(
-                        presets::text_error(&self.error)
+                        presets::text_error(&self.error[1..])
                             .horizontal_alignment(iced::HorizontalAlignment::Left),
                     );
                 }
@@ -1269,6 +1320,8 @@ impl BackupState {
                         .vertical_alignment(iced::VerticalAlignment::Center)
                         .into(),
                     Space::with_width(Length::Fill).into(),
+                    presets::button_color(&mut self.export_button, "Export list", Message::Export)
+                        .into(),
                     presets::button_nav(
                         &mut self.backup_button,
                         "Backup",
@@ -1288,7 +1341,7 @@ impl BackupState {
             BackupStage::Performing(_) | BackupStage::Cancelling(_) => {
                 if !self.error.is_empty() {
                     scroll = scroll.push(
-                        presets::text_error(&self.error)
+                        presets::text_error(&self.error[1..])
                             .horizontal_alignment(iced::HorizontalAlignment::Left),
                     );
                 }
@@ -1338,7 +1391,7 @@ impl BackupState {
             BackupStage::Failure => {
                 if !self.error.is_empty() {
                     scroll = scroll.push(
-                        presets::text_error(&self.error)
+                        presets::text_error(&self.error[1..])
                             .horizontal_alignment(iced::HorizontalAlignment::Left),
                     );
                 }
@@ -1399,24 +1452,49 @@ impl RestoreState {
     }
 }
 
+struct ExtractState {
+    back: button::State,
+}
+
+impl ExtractState {
+    //TODO Extract GUI
+    fn new() -> Self {
+        Self {
+            back: button::State::new(),
+        }
+    }
+
+    fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
+        match message {
+            _ => {}
+        }
+        Command::none()
+    }
+
+    fn view(&mut self) -> Element<Message> {
+        let note = presets::text_error("Not implemented yet!")
+            .vertical_alignment(iced::VerticalAlignment::Center)
+            .horizontal_alignment(iced::HorizontalAlignment::Center)
+            .width(Length::Fill)
+            .height(Length::Fill);
+        let brow = Row::with_children(vec![
+            presets::button_nav(&mut self.back, "Back", Message::Main, false).into(),
+            Space::with_width(Length::Fill).into(),
+        ])
+        .align_items(Align::Center)
+        .spacing(presets::INNER_SPACING);
+        Column::with_children(vec![note.into(), brow.into()])
+            .width(Length::Fill)
+            .spacing(presets::INNER_SPACING)
+            .padding(presets::INNER_SPACING)
+            .into()
+    }
+}
+
 mod presets {
     use iced::{
-        button,
-        container,
-        pane_grid,
-        progress_bar,
-        text_input,
-        tooltip,
-        Button,
-        Color,
-        Element,
-        Length,
-        ProgressBar,
-        Row,
-        Space,
-        Text,
-        TextInput,
-        Tooltip,
+        button, container, pane_grid, progress_bar, text_input, tooltip, Button, Color, Element,
+        Length, ProgressBar, Row, Space, Text, TextInput, Tooltip,
     };
 
     use super::Message;
@@ -1526,6 +1604,7 @@ mod presets {
     pub(crate) fn button_main<'a>(
         state: &'a mut button::State,
         text: &str,
+        alt: bool,
         action: Message,
     ) -> Button<'a, Message> {
         let label = Text::new(text)
@@ -1534,7 +1613,11 @@ mod presets {
         let but = Button::new(state, label)
             .min_width(200)
             .min_height(40)
-            .style(ButtonStyle::MainButton);
+            .style(if alt {
+                ButtonStyle::MainButtonAlt
+            } else {
+                ButtonStyle::MainButton
+            });
         if let Message::None = action {
             but
         } else {
@@ -1552,6 +1635,12 @@ mod presets {
         Text::new(text)
             .color(COMP_COLOR)
             .horizontal_alignment(iced::HorizontalAlignment::Center)
+    }
+
+    pub(crate) fn text_center(text: &str) -> Text {
+        Text::new(text)
+            .horizontal_alignment(iced::HorizontalAlignment::Center)
+            .vertical_alignment(iced::VerticalAlignment::Center)
     }
 
     pub(crate) fn pane_border<'a>(
@@ -1623,6 +1712,7 @@ mod presets {
         GreyButton,
         LightButton,
         MainButton,
+        MainButtonAlt,
         ColorButton,
         NegativeButton,
     }
@@ -1685,6 +1775,12 @@ mod presets {
                 },
                 ButtonStyle::MainButton => button::Style {
                     background: Some(APP_COLOR.into()),
+                    text_color: Color::WHITE,
+                    border_radius: LARGE_RADIUS,
+                    ..Default::default()
+                },
+                ButtonStyle::MainButtonAlt => button::Style {
+                    background: Some(COMP_COLOR.into()),
                     text_color: Color::WHITE,
                     border_radius: LARGE_RADIUS,
                     ..Default::default()
