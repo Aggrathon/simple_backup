@@ -111,6 +111,7 @@ impl Config {
         }
     }
 
+    #[cfg(feature = "dirs")]
     pub fn get_output_home(&self) -> PathBuf {
         if !self.output.as_os_str().is_empty() {
             self.output.clone()

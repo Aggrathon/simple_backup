@@ -1,21 +1,49 @@
 #![cfg(feature = "gui")]
 /// This module contains the logic for running the program through a GUI
-use crate::{
-    backup::{BackupError, BackupWriter},
-    config::Config,
-    files::{FileCrawler, FileInfo},
-    utils::{format_size, get_config_from_pathbuf},
-};
+use std::sync::mpsc::Receiver;
+use std::thread::JoinHandle;
+
 use iced::{
-    button, executor, pane_grid, pick_list, scrollable, text_input, Align, Application, Checkbox,
-    Column, Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings, Space,
-    Subscription, Text,
+    button,
+    executor,
+    pane_grid,
+    pick_list,
+    scrollable,
+    text_input,
+    Align,
+    Application,
+    Checkbox,
+    Column,
+    Command,
+    Element,
+    Length,
+    PaneGrid,
+    PickList,
+    Row,
+    Scrollable,
+    Settings,
+    Space,
+    Subscription,
+    Text,
 };
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
-use std::{sync::mpsc::Receiver, thread::JoinHandle};
+
+use crate::backup::{BackupError, BackupWriter};
+use crate::config::Config;
+use crate::files::{FileCrawler, FileInfo};
+use crate::utils::{format_size, get_config_from_pathbuf};
+
+#[cfg_attr(target_os = "windows", link(name = "Kernel32"))]
+extern "system" {
+    fn FreeConsole() -> i32;
+}
 
 pub fn gui() {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        FreeConsole()
+    }; // Safety: Windows syscall to hide console
     ApplicationState::run(Settings::default()).unwrap();
 }
 
@@ -1373,8 +1401,22 @@ impl RestoreState {
 
 mod presets {
     use iced::{
-        button, container, pane_grid, progress_bar, text_input, tooltip, Button, Color, Element,
-        Length, ProgressBar, Row, Space, Text, TextInput, Tooltip,
+        button,
+        container,
+        pane_grid,
+        progress_bar,
+        text_input,
+        tooltip,
+        Button,
+        Color,
+        Element,
+        Length,
+        ProgressBar,
+        Row,
+        Space,
+        Text,
+        TextInput,
+        Tooltip,
     };
 
     use super::Message;

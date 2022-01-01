@@ -1,4 +1,5 @@
 /// This is the main module that handles parsing the commandline arguments
+
 #[macro_use]
 extern crate clap;
 
@@ -253,7 +254,13 @@ fn main() {
                 .arg(arg_force())
                 .arg(arg_dry()),
         )
-        .subcommand(SubCommand::with_name("gui").about("Start a graphical user interface"))
+        .subcommand(SubCommand::with_name("gui").about(
+            if cfg!(feature = "gui") {
+                "Start a graphical user interface"
+            } else {
+                "Start a graphical user interface (disabled)"
+            }
+        ))
         .subcommand(
             SubCommand::with_name("config")
                 .version(crate_version!())
@@ -314,7 +321,7 @@ fn main() {
     } else if let Some(_) = matches.subcommand_matches("gui") {
         // Start a graphical user interface
         #[cfg(not(feature = "gui"))]
-        println!("GUI is not supported (this executable has been compiled without GUI support)!");
+        println!("The GUI is disabled (in this executable)!");
         #[cfg(feature = "gui")]
         gui::gui();
     } else if let Some(matches) = matches.subcommand_matches("backup") {
