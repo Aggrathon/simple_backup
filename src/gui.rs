@@ -1,6 +1,6 @@
 #![cfg(feature = "gui")]
-use std::cmp::{max, min};
 /// This module contains the logic for running the program through a GUI
+use std::cmp::{max, min};
 use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 
@@ -12,7 +12,7 @@ use iced::{
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
 
-use crate::backup::{BackupError, BackupWriter};
+use crate::backup::{BackupError, BackupReader, BackupWriter};
 use crate::config::Config;
 use crate::files::{FileCrawler, FileInfo};
 use crate::utils::{format_size, get_config_from_pathbuf};
@@ -39,7 +39,6 @@ pub(crate) enum Message {
     EditConfig,
     Backup,
     Restore,
-    Extract,
     ToggleIncremental(bool),
     ThreadCount(u32),
     CompressionQuality(i32),
@@ -64,15 +63,17 @@ pub(crate) enum Message {
     CancelBackup,
     Export,
     Tick,
+    ToggleSelected(usize),
+    RestoreAll,
+    ExtractSelected,
     None,
 }
 
-enum ApplicationState {
+enum ApplicationState<'a> {
     Main(MainState),
     Config(ConfigState),
     Backup(BackupState),
-    Restore(RestoreState),
-    Extract(ExtractState),
+    Restore(RestoreState<'a>),
 }
 
 fn open_config() -> Option<Config> {
@@ -96,8 +97,27 @@ fn open_config() -> Option<Config> {
             }
         })
 }
+fn open_backup<'a>() -> Option<BackupReader<'a>> {
+    FileDialog::new()
+        .set_directory(dirs::home_dir().unwrap_or_default())
+        .set_title("Open backup file")
+        .add_filter("Backup files", &["tar.zst"])
+        .pick_file()
+        .and_then(|file| match BackupReader::read(file) {
+            Ok(reader) => Some(reader),
+            Err(e) => {
+                MessageDialog::new()
+                    .set_description(&e.to_string())
+                    .set_level(rfd::MessageLevel::Error)
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .set_title("Problem with reading backup")
+                    .show();
+                None
+            }
+        })
+}
 
-impl Application for ApplicationState {
+impl<'a> Application for ApplicationState<'a> {
     type Message = Message;
     type Executor = executor::Default;
     type Flags = ();
@@ -112,7 +132,6 @@ impl Application for ApplicationState {
             ApplicationState::Config(_) => String::from("simple_backup - Config"),
             ApplicationState::Backup(_) => String::from("simple_backup - Backup"),
             ApplicationState::Restore(_) => String::from("simple_backup - Restore"),
-            ApplicationState::Extract(_) => String::from("simple_backup - Extract"),
         }
     }
 
@@ -157,11 +176,9 @@ impl Application for ApplicationState {
                 Command::none()
             }
             Message::Restore => {
-                *self = ApplicationState::Restore(RestoreState::new());
-                Command::none()
-            }
-            Message::Extract => {
-                *self = ApplicationState::Extract(ExtractState::new());
+                if let Some(reader) = open_backup() {
+                    *self = ApplicationState::Restore(RestoreState::new(reader));
+                }
                 Command::none()
             }
             Message::None => {
@@ -177,7 +194,6 @@ impl Application for ApplicationState {
                 ApplicationState::Config(state) => state.update(message, clipboard),
                 ApplicationState::Backup(state) => state.update(message, clipboard),
                 ApplicationState::Restore(state) => state.update(message, clipboard),
-                ApplicationState::Extract(state) => state.update(message, clipboard),
             },
         }
     }
@@ -188,7 +204,6 @@ impl Application for ApplicationState {
             ApplicationState::Config(state) => state.view(),
             ApplicationState::Backup(state) => state.view(),
             ApplicationState::Restore(state) => state.view(),
-            ApplicationState::Extract(state) => state.view(),
         }
     }
 
@@ -205,7 +220,6 @@ struct MainState {
     edit: button::State,
     backup: button::State,
     restore: button::State,
-    extract: button::State,
 }
 
 impl MainState {
@@ -215,7 +229,6 @@ impl MainState {
             edit: button::State::new(),
             backup: button::State::new(),
             restore: button::State::new(),
-            extract: button::State::new(),
         }
     }
 
@@ -228,7 +241,6 @@ impl MainState {
             presets::button_main(&mut self.edit, "Edit", false, Message::EditConfig).into(),
             presets::button_main(&mut self.backup, "Backup", false, Message::Backup).into(),
             presets::button_main(&mut self.restore, "Restore", true, Message::Restore).into(),
-            presets::button_main(&mut self.extract, "Extract", true, Message::Extract).into(),
             Space::with_height(Length::Fill).into(),
         ])
         .align_items(Align::Center)
@@ -1413,77 +1425,117 @@ impl BackupState {
     }
 }
 
-struct RestoreState {
-    back: button::State,
+enum RestoreStage<'a> {
+    Error,
+    View(BackupReader<'a>, Vec<(bool, String)>),
+    // Extract,
 }
 
-impl RestoreState {
-    //TODO Restore GUI
-    fn new() -> Self {
-        Self {
-            back: button::State::new(),
+struct RestoreState<'a> {
+    back_button: button::State,
+    export_button: button::State,
+    extract_button: button::State,
+    restore_button: button::State,
+    scroll: scrollable::State,
+    error: String,
+    stage: RestoreStage<'a>,
+}
+
+impl<'a> RestoreState<'a> {
+    fn new(mut reader: BackupReader<'a>) -> Self {
+        let mut state = Self {
+            error: String::new(),
+            back_button: button::State::new(),
+            export_button: button::State::new(),
+            extract_button: button::State::new(),
+            restore_button: button::State::new(),
+            stage: RestoreStage::Error,
+            scroll: scrollable::State::new(),
+        };
+        if let Err(e) = reader.read_all() {
+            state.error.push('\n');
+            state.error.push_str(&e.to_string());
+            return state;
         }
+        let list = reader
+            .get_list()
+            .expect("The list should already be extracted")
+            .split('\n')
+            .map(|s| (false, String::from(s)))
+            .collect();
+        state.stage = RestoreStage::View(reader, list);
+        state
     }
 
     fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
+        //TODO Restore func
         match message {
+            Message::ToggleSelected(i) => {
+                if let RestoreStage::View(_, list) = &mut self.stage {
+                    if let Some((b, _)) = list.get_mut(i) {
+                        *b = !*b;
+                    }
+                }
+            }
+            Message::RestoreAll => todo!(),
+            Message::ExtractSelected => todo!(),
+            Message::Export => todo!(),
             _ => {}
         }
         Command::none()
     }
 
     fn view(&mut self) -> Element<Message> {
-        let note = presets::text_error("Not implemented yet!")
-            .vertical_alignment(iced::VerticalAlignment::Center)
-            .horizontal_alignment(iced::HorizontalAlignment::Center)
+        let mut scroll = Scrollable::new(&mut self.scroll)
+            .height(Length::Fill)
             .width(Length::Fill)
-            .height(Length::Fill);
+            .spacing(presets::INNER_SPACING);
+        if !self.error.is_empty() {
+            scroll = scroll.push(presets::text_error(&self.error[1..]))
+        }
+        let status = match &mut self.stage {
+            RestoreStage::Error => String::new(),
+            RestoreStage::View(reader, list) => {
+                //TODO search filter
+                //TODO select all
+                scroll = list.iter().enumerate().fold(scroll, |s, (i, (sel, file))| {
+                    s.push(
+                        Checkbox::new(*sel, file, move |_| Message::ToggleSelected(i))
+                            .width(Length::Fill),
+                    )
+                });
+                match reader
+                    .get_config()
+                    .expect("The config should already be read")
+                    .time
+                {
+                    Some(t) => format!(
+                        "{} files from {}",
+                        list.len(),
+                        t.format("%Y-%m-%d %H:%M:%S")
+                    ),
+                    None => format!("{} files", list.len(),),
+                }
+            }
+        };
         let brow = Row::with_children(vec![
-            presets::button_nav(&mut self.back, "Back", Message::Main, false).into(),
+            presets::button_nav(&mut self.back_button, "Back", Message::Main, false).into(),
             Space::with_width(Length::Fill).into(),
+            Text::new(&status).into(),
+            Space::with_width(Length::Fill).into(),
+            presets::button_color(&mut self.export_button, "Export list", Message::Export).into(),
+            presets::button_color(
+                &mut self.extract_button,
+                "Extract selected",
+                Message::ExtractSelected,
+            )
+            .into(),
+            presets::button_color(&mut self.restore_button, "Restore all", Message::RestoreAll)
+                .into(),
         ])
         .align_items(Align::Center)
         .spacing(presets::INNER_SPACING);
-        Column::with_children(vec![note.into(), brow.into()])
-            .width(Length::Fill)
-            .spacing(presets::INNER_SPACING)
-            .padding(presets::INNER_SPACING)
-            .into()
-    }
-}
-
-struct ExtractState {
-    back: button::State,
-}
-
-impl ExtractState {
-    //TODO Extract GUI
-    fn new() -> Self {
-        Self {
-            back: button::State::new(),
-        }
-    }
-
-    fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
-        match message {
-            _ => {}
-        }
-        Command::none()
-    }
-
-    fn view(&mut self) -> Element<Message> {
-        let note = presets::text_error("Not implemented yet!")
-            .vertical_alignment(iced::VerticalAlignment::Center)
-            .horizontal_alignment(iced::HorizontalAlignment::Center)
-            .width(Length::Fill)
-            .height(Length::Fill);
-        let brow = Row::with_children(vec![
-            presets::button_nav(&mut self.back, "Back", Message::Main, false).into(),
-            Space::with_width(Length::Fill).into(),
-        ])
-        .align_items(Align::Center)
-        .spacing(presets::INNER_SPACING);
-        Column::with_children(vec![note.into(), brow.into()])
+        Column::with_children(vec![scroll.into(), brow.into()])
             .width(Length::Fill)
             .spacing(presets::INNER_SPACING)
             .padding(presets::INNER_SPACING)

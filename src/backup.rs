@@ -379,7 +379,7 @@ impl<'a> BackupReader<'a> {
     }
 
     /// Read the embedded config from the backup
-    pub fn read_config(&mut self) -> Result<&mut Config, BackupError> {
+    fn read_config(&mut self) -> Result<&mut Config, BackupError> {
         self.use_decoder()?;
         let entry = self
             .decoder
@@ -405,6 +405,7 @@ impl<'a> BackupReader<'a> {
         Ok(self.config.as_mut().unwrap())
     }
 
+    /// Get the config
     pub fn get_config(&mut self) -> Result<&mut Config, BackupError> {
         if self.config.is_none() {
             self.read_config()
@@ -414,21 +415,37 @@ impl<'a> BackupReader<'a> {
     }
 
     /// Read the embedded list of files from the backup
-    pub fn read_list(&mut self) -> Result<&String, Box<dyn Error>> {
+    fn read_list(&mut self) -> Result<&String, BackupError> {
         self.use_decoder()?;
-        let mut entries = self.decoder.entries()?.skip(1);
+        let mut entries = self
+            .decoder
+            .entries()
+            .map_err(|e| BackupError::ArchiveError(e))?
+            .skip(1);
         let entry = entries.next();
         if entry.is_none() {
-            return Err(Box::new(BackupError::NoList(self.path.clone())));
+            return Err(BackupError::NoList(self.path.clone()));
         }
-        let mut entry = entry.unwrap()?;
+        let mut entry = entry.unwrap().map_err(|e| BackupError::ArchiveError(e))?;
         if entry.0.get_string() != "files.csv" {
-            return Err(Box::new(BackupError::NoList(self.path.clone())));
+            return Err(BackupError::NoList(self.path.clone()));
         }
         let mut s = String::new();
-        entry.1.read_to_string(&mut s)?;
+        entry
+            .1
+            .read_to_string(&mut s)
+            .map_err(|e| BackupError::ArchiveError(e))?;
         self.list = Some(s);
         Ok(self.list.as_ref().unwrap())
+    }
+
+    /// Get the embedded list of files
+    pub fn get_list(&mut self) -> Result<&String, BackupError> {
+        if self.list.is_none() {
+            self.read_list()
+        } else {
+            Ok(self.list.as_ref().unwrap())
+        }
     }
 
     /// move the list of files out of the backup
@@ -453,7 +470,6 @@ impl<'a> BackupReader<'a> {
     }
 
     /// Read the embedded config and file list, and return the iterator over the files
-    #[allow(dead_code)]
     pub fn read_all(
         &mut self,
     ) -> Result<
