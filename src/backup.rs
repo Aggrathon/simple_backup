@@ -20,6 +20,7 @@ pub enum BackupError {
     NoBackup(PathBuf),
     ArchiveError(std::io::Error),
     FileError(std::io::Error),
+    WriteError(std::io::Error),
     YamlError(serde_yaml::Error),
     InvalidPath(String),
     Cancel,
@@ -52,6 +53,9 @@ impl Display for BackupError {
             }
             BackupError::FileError(e) => {
                 write!(f, "Could not access the file: {}", e)
+            }
+            BackupError::WriteError(e) => {
+                write!(f, "Could not write the file: {}", e)
             }
             BackupError::YamlError(e) => {
                 write!(f, "Could not parse the config: {}", e)
@@ -290,9 +294,9 @@ impl BackupWriter {
     }
 
     pub fn export_list<P: AsRef<Path>>(&mut self, path: P, all: bool) -> Result<(), BackupError> {
-        let f = File::create(path).map_err(BackupError::GenericError)?;
+        let f = File::create(path).map_err(BackupError::FileError)?;
         let mut f = BufWriter::new(f);
-        write!(f, "{:19}, {:10}, {}", "Time", "Size", "Path").map_err(BackupError::GenericError)?;
+        write!(f, "{:19}, {:10}, {}", "Time", "Size", "Path").map_err(BackupError::WriteError)?;
         self.foreach_file(all, |res| {
             if let Ok(fi) = res {
                 match NumberPrefix::binary(fi.size as f64) {
@@ -316,7 +320,7 @@ impl BackupWriter {
                         )
                     }
                 }
-                .map_err(BackupError::GenericError)?
+                .map_err(BackupError::WriteError)?
             }
             Ok(())
         })?;
@@ -536,6 +540,13 @@ impl<'a> BackupReader<'a> {
             None => Ok(None),
             Some(path) => Ok(Some(BackupReader::read(path)?)),
         }
+    }
+
+    pub fn export_list<P: AsRef<Path>>(&mut self, path: P) -> Result<(), BackupError> {
+        let mut f = File::create(path).map_err(BackupError::FileError)?;
+        f.write_all(&self.get_list()?.as_bytes())
+            .map_err(BackupError::WriteError)?;
+        Ok(())
     }
 
     /// Restore all files from (only) this backup

@@ -23,7 +23,7 @@ extern "system" {
 }
 
 pub fn gui() {
-    #[cfg(target_os = "windows")]
+    #[cfg(all(target_os = "windows", not(debug_assertions)))]
     unsafe {
         FreeConsole()
     }; // Safety: Windows syscall to hide console
@@ -64,6 +64,7 @@ pub(crate) enum Message {
     Export,
     Tick,
     ToggleSelected(usize),
+    ToggleAll,
     RestoreAll,
     ExtractSelected,
     None,
@@ -1436,9 +1437,13 @@ struct RestoreState<'a> {
     export_button: button::State,
     extract_button: button::State,
     restore_button: button::State,
+    filter_button: button::State,
     scroll: scrollable::State,
+    search: text_input::State,
+    filter: String,
     error: String,
     stage: RestoreStage<'a>,
+    all: bool,
 }
 
 impl<'a> RestoreState<'a> {
@@ -1449,8 +1454,13 @@ impl<'a> RestoreState<'a> {
             export_button: button::State::new(),
             extract_button: button::State::new(),
             restore_button: button::State::new(),
+            filter_button: button::State::new(),
             stage: RestoreStage::Error,
             scroll: scrollable::State::new(),
+            all: false,
+
+            search: text_input::State::new(),
+            filter: String::new(),
         };
         if let Err(e) = reader.read_all() {
             state.error.push('\n');
@@ -1475,11 +1485,47 @@ impl<'a> RestoreState<'a> {
                     if let Some((b, _)) = list.get_mut(i) {
                         *b = !*b;
                     }
+                    self.all = false;
                 }
             }
             Message::RestoreAll => todo!(),
             Message::ExtractSelected => todo!(),
-            Message::Export => todo!(),
+            Message::Export => {
+                if let RestoreStage::View(reader, _) = &mut self.stage {
+                    if let Some(file) = FileDialog::new()
+                        .set_directory(&reader.path)
+                        .set_title("Save the list of files in the backup")
+                        .set_file_name("files.txt")
+                        .add_filter("Text file", &["txt"])
+                        .add_filter("Csv file", &["csv"])
+                        .save_file()
+                    {
+                        if let Err(e) = reader.export_list(file) {
+                            self.error.push('\n');
+                            self.error.push_str(&e.to_string());
+                            self.stage = RestoreStage::Error;
+                        }
+                    }
+                }
+            }
+            Message::ToggleAll => {
+                if let RestoreStage::View(_, list) = &mut self.stage {
+                    if self.all {
+                        list.iter_mut().for_each(|(b, _)| *b = false);
+                        self.all = false;
+                    } else {
+                        list.iter_mut().for_each(|(b, _)| *b = true);
+                        self.all = true;
+                    }
+                }
+            }
+            Message::EditFilter(_, s) => {
+                self.filter = s;
+            }
+            Message::AddFilter => {
+                //TODO search filter
+                todo!();
+            }
             _ => {}
         }
         Command::none()
@@ -1493,18 +1539,56 @@ impl<'a> RestoreState<'a> {
         if !self.error.is_empty() {
             scroll = scroll.push(presets::text_error(&self.error[1..]))
         }
-        let status = match &mut self.stage {
-            RestoreStage::Error => String::new(),
-            RestoreStage::View(reader, list) => {
-                //TODO search filter
-                //TODO select all
+        let trow = match &mut self.stage {
+            RestoreStage::Error => Space::with_height(Length::Shrink).into(),
+            RestoreStage::View(_, list) => {
                 scroll = list.iter().enumerate().fold(scroll, |s, (i, (sel, file))| {
                     s.push(
                         Checkbox::new(*sel, file, move |_| Message::ToggleSelected(i))
                             .width(Length::Fill),
                     )
                 });
-                match reader
+                let regex = Regex::new(&self.filter).is_ok();
+                Row::with_children(vec![
+                    Checkbox::new(self.all, "", |_| Message::ToggleAll).into(),
+                    Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
+                    presets::regex_field(
+                        &mut self.search,
+                        &self.filter,
+                        "Regex filter",
+                        regex,
+                        |s| Message::EditFilter(0, s),
+                    )
+                    .width(Length::Fill)
+                    .on_submit(Message::AddFilter)
+                    .into(),
+                    presets::button_nav(
+                        &mut self.filter_button,
+                        "Search",
+                        if regex {
+                            Message::AddFilter
+                        } else {
+                            Message::None
+                        },
+                        true,
+                    )
+                    .into(),
+                    Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
+                ])
+                .align_items(Align::Center)
+                .spacing(presets::INNER_SPACING)
+                .into()
+            }
+        };
+        let mut brow = Row::with_children(vec![
+            presets::button_nav(&mut self.back_button, "Back", Message::Main, false).into(),
+            Space::with_width(Length::Fill).into(),
+        ])
+        .align_items(Align::Center)
+        .spacing(presets::INNER_SPACING);
+        if let RestoreStage::View(reader, list) = &mut self.stage {
+            brow = brow
+                .push(Text::new(&match reader
                     .get_config()
                     .expect("The config should already be read")
                     .time
@@ -1515,27 +1599,25 @@ impl<'a> RestoreState<'a> {
                         t.format("%Y-%m-%d %H:%M:%S")
                     ),
                     None => format!("{} files", list.len(),),
-                }
-            }
-        };
-        let brow = Row::with_children(vec![
-            presets::button_nav(&mut self.back_button, "Back", Message::Main, false).into(),
-            Space::with_width(Length::Fill).into(),
-            Text::new(&status).into(),
-            Space::with_width(Length::Fill).into(),
-            presets::button_color(&mut self.export_button, "Export list", Message::Export).into(),
-            presets::button_color(
-                &mut self.extract_button,
-                "Extract selected",
-                Message::ExtractSelected,
-            )
-            .into(),
-            presets::button_color(&mut self.restore_button, "Restore all", Message::RestoreAll)
-                .into(),
-        ])
-        .align_items(Align::Center)
-        .spacing(presets::INNER_SPACING);
-        Column::with_children(vec![scroll.into(), brow.into()])
+                }))
+                .push(Space::with_width(Length::Fill))
+                .push(presets::button_color(
+                    &mut self.export_button,
+                    "Export list",
+                    Message::Export,
+                ))
+                .push(presets::button_color(
+                    &mut self.extract_button,
+                    "Extract selected",
+                    Message::ExtractSelected,
+                ))
+                .push(presets::button_color(
+                    &mut self.restore_button,
+                    "Restore all",
+                    Message::RestoreAll,
+                ));
+        }
+        Column::with_children(vec![trow, scroll.into(), brow.into()])
             .width(Length::Fill)
             .spacing(presets::INNER_SPACING)
             .padding(presets::INNER_SPACING)

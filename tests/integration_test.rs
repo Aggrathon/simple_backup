@@ -48,8 +48,13 @@ fn cli_test() {
     remove_file(&f4).unwrap();
 
     let conf = Config::from_yaml(&mut bw1.config.to_yaml().unwrap()).unwrap();
+    let mut reader = BackupReader::from_config(conf).unwrap();
+    reader.get_config().unwrap();
+    reader.get_list().unwrap();
+    let _ = reader.read_all().unwrap();
+    reader.export_list(dir.path().join("files.txt")).unwrap();
     restore(
-        BackupReader::from_config(conf).unwrap(),
+        reader,
         &dir.path().to_string_lossy(),
         vec![&f1.to_string_lossy()],
         vec![],
