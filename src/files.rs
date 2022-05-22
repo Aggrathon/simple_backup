@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 /// This module contains the FileInfo struct and a file crawler
 use std::fmt::Display;
 use std::fs::DirEntry;
@@ -121,6 +122,14 @@ impl FileInfo {
             self.string = Some(self.path.as_ref().unwrap().to_string_lossy().to_string())
         }
         self.string.as_ref().unwrap()
+    }
+
+    /// Returns the String version (with lazy conversion) without mutation
+    pub fn copy_string(&self) -> Cow<str> {
+        match self.string.as_ref() {
+            Some(s) => Cow::Borrowed(s),
+            None => self.path.as_ref().unwrap().to_string_lossy(),
+        }
     }
 
     /// Returns the PathBuf version (with lazy conversion)

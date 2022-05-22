@@ -4,10 +4,11 @@ use std::cmp::{max, min};
 use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 
+use iced::pure::widget::{pane_grid, Column, PaneGrid, PickList, Row, Scrollable, Space};
+use iced::pure::{Application, Element};
 use iced::{
-    alignment::Horizontal, alignment::Vertical, button, clipboard, executor, pane_grid, pick_list,
-    scrollable, text_input, Alignment, Application, Checkbox, Column, Command, Element, Length,
-    PaneGrid, PickList, Row, Scrollable, Settings, Space, Subscription, Text,
+    alignment::Horizontal, alignment::Vertical, clipboard, executor, Alignment, Checkbox, Command,
+    Length, Settings, Subscription, Text,
 };
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
@@ -196,7 +197,7 @@ impl<'a> Application for ApplicationState<'a> {
         }
     }
 
-    fn view(&mut self) -> Element<'_, Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
         match self {
             ApplicationState::Main(state) => state.view(),
             ApplicationState::Config(state) => state.view(),
@@ -213,32 +214,22 @@ impl<'a> Application for ApplicationState<'a> {
     }
 }
 
-struct MainState {
-    create: button::State,
-    edit: button::State,
-    backup: button::State,
-    restore: button::State,
-}
+struct MainState {}
 
 impl MainState {
     fn new() -> Self {
-        Self {
-            create: button::State::new(),
-            edit: button::State::new(),
-            backup: button::State::new(),
-            restore: button::State::new(),
-        }
+        Self {}
     }
 
-    fn view(&mut self) -> Element<Message> {
+    fn view(&self) -> Element<Message> {
         let col = Column::with_children(vec![
             Space::with_height(Length::Fill).into(),
             presets::text_title("simple_backup").into(),
             Space::with_height(Length::Shrink).into(),
-            presets::button_main(&mut self.create, "Create", false, Message::CreateConfig).into(),
-            presets::button_main(&mut self.edit, "Edit", false, Message::EditConfig).into(),
-            presets::button_main(&mut self.backup, "Backup", false, Message::Backup).into(),
-            presets::button_main(&mut self.restore, "Restore", true, Message::Restore).into(),
+            presets::button_main("Create", false, Message::CreateConfig).into(),
+            presets::button_main("Edit", false, Message::EditConfig).into(),
+            presets::button_main("Backup", false, Message::Backup).into(),
+            presets::button_main("Restore", true, Message::Restore).into(),
             Space::with_height(Length::Fill).into(),
         ])
         .align_items(Alignment::Center)
@@ -255,12 +246,7 @@ impl MainState {
 struct ConfigState {
     config: Config,
     panes: pane_grid::State<Pane>,
-    back: button::State,
-    save: button::State,
-    backup: button::State,
-    threads: pick_list::State<u32>,
     thread_alt: Vec<u32>,
-    compression: pick_list::State<i32>,
     compression_alt: Vec<i32>,
     files: pane_grid::Pane,
     includes: pane_grid::Pane,
@@ -296,12 +282,7 @@ impl ConfigState {
         let mut state = Self {
             config: Config::new(),
             panes,
-            back: button::State::new(),
-            save: button::State::new(),
-            backup: button::State::new(),
-            threads: pick_list::State::default(),
             thread_alt: (1u32..num_cpus::get() as u32 + 1).collect(),
-            compression: pick_list::State::default(),
             compression_alt: (1..23).collect(),
             files,
             includes,
@@ -327,16 +308,15 @@ impl ConfigState {
         state
     }
 
-    fn view(&mut self) -> Element<Message> {
-        let pane_grid = PaneGrid::new(&mut self.panes, |_, pane| pane.content())
+    fn view(&self) -> Element<Message> {
+        let pane_grid = PaneGrid::new(&self.panes, |_, pane| pane.content())
             .on_resize(10, Message::PaneResized)
             .on_drag(Message::PaneDragged)
             .spacing(presets::OUTER_SPACING);
         let bar = Row::with_children(vec![
-            presets::button_nav(&mut self.back, "Back", Message::Main, false).into(),
+            presets::button_nav("Back", Message::Main, false).into(),
             Space::with_width(Length::Fill).into(),
             PickList::new(
-                &mut self.threads,
                 &self.thread_alt,
                 Some(self.config.threads),
                 Message::ThreadCount,
@@ -350,7 +330,6 @@ impl ConfigState {
             .into(),
             Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
             PickList::new(
-                &mut self.compression,
                 &self.compression_alt,
                 Some(self.config.quality),
                 Message::CompressionQuality,
@@ -365,8 +344,8 @@ impl ConfigState {
             )
             .into(),
             Space::with_width(Length::Fill).into(),
-            presets::button_nav(&mut self.save, "Save", Message::SaveConfig, true).into(),
-            presets::button_nav(&mut self.backup, "Backup", Message::Backup, true).into(),
+            presets::button_nav("Save", Message::SaveConfig, true).into(),
+            presets::button_nav("Backup", Message::Backup, true).into(),
         ])
         .spacing(presets::INNER_SPACING)
         .align_items(Alignment::Center);
@@ -613,8 +592,6 @@ enum ConfigPane {
 
 struct Pane {
     content: ConfigPane,
-    scroll: scrollable::State,
-    top_button: button::State,
     items: Vec<ListItem>,
 }
 
@@ -622,34 +599,31 @@ impl Pane {
     fn new(content: ConfigPane) -> Self {
         Self {
             content,
-            scroll: scrollable::State::new(),
-            top_button: button::State::new(),
             items: vec![],
         }
     }
 
-    fn content(&mut self) -> pane_grid::Content<Message> {
-        let content = Scrollable::new(&mut self.scroll)
-            .width(Length::Fill)
-            .spacing(presets::INNER_SPACING)
-            .padding(presets::OUTER_SPACING);
-        let content = self
-            .items
-            .iter_mut()
-            .fold(content, |content, item| content.push(item.view()));
+    fn content(&self) -> pane_grid::Content<Message> {
+        let content = Scrollable::new(
+            self.items.iter().fold(
+                Column::new()
+                    .width(Length::Fill)
+                    .spacing(presets::INNER_SPACING)
+                    .padding(presets::OUTER_SPACING),
+                |content, item| content.push(item.view()),
+            ),
+        );
         match self.content {
             ConfigPane::Files => presets::pane_border(
                 "Files",
-                Some(("Open", &mut self.top_button, Message::DialogFolder)),
+                Some(("Open", Message::DialogFolder)),
                 content.into(),
             ),
             ConfigPane::Includes => presets::pane_border("Includes", None, content.into()),
             ConfigPane::Excludes => presets::pane_border("Excludes", None, content.into()),
-            ConfigPane::Filters => presets::pane_border(
-                "Filters",
-                Some(("Add", &mut self.top_button, Message::AddFilter)),
-                content.into(),
-            ),
+            ConfigPane::Filters => {
+                presets::pane_border("Filters", Some(("Add", Message::AddFilter)), content.into())
+            }
         }
     }
 }
@@ -660,7 +634,7 @@ enum ListState {
     ParentFolder(bool),
     Include,
     Exclude,
-    Filter(text_input::State),
+    Filter,
     Error,
 }
 
@@ -669,9 +643,6 @@ struct ListItem {
     index: usize,
     status: bool,
     text: String,
-    open_state: button::State,
-    add_state: button::State,
-    remove_state: button::State,
 }
 
 impl ListItem {
@@ -681,9 +652,6 @@ impl ListItem {
             index,
             status,
             text,
-            open_state: button::State::new(),
-            add_state: button::State::new(),
-            remove_state: button::State::new(),
         }
     }
 
@@ -701,15 +669,10 @@ impl ListItem {
 
     fn edit(text: String, index: usize) -> Self {
         let valid = text.is_empty() || Regex::new(&text).is_ok();
-        Self::new(
-            ListState::Filter(text_input::State::new()),
-            text,
-            index,
-            valid,
-        )
+        Self::new(ListState::Filter, text, index, valid)
     }
 
-    fn view(&mut self) -> Element<Message> {
+    fn view(&self) -> Element<Message> {
         let row = Row::new()
             .width(Length::Fill)
             // .padding(presets::OUTER_SPACING)
@@ -718,57 +681,33 @@ impl ListItem {
         let row = match self.state {
             ListState::File => row.push(presets::space_icon()),
             ListState::Folder => row.push(presets::tooltip_right(
-                presets::button_icon(
-                    &mut self.open_state,
-                    ">",
-                    Message::OpenFolder(self.index),
-                    false,
-                )
-                .into(),
+                presets::button_icon(">", Message::OpenFolder(self.index), false).into(),
                 "Open",
             )),
             ListState::ParentFolder(up) => row.push(presets::tooltip_right(
-                presets::button_icon(
-                    &mut self.open_state,
-                    "<",
-                    if up { Message::GoUp } else { Message::None },
-                    true,
-                )
-                .into(),
+                presets::button_icon("<", if up { Message::GoUp } else { Message::None }, true)
+                    .into(),
                 "Go Up",
             )),
             ListState::Include => row.push(presets::tooltip_right(
-                presets::button_icon(
-                    &mut self.open_state,
-                    "C",
-                    Message::CopyInclude(self.index),
-                    false,
-                )
-                .into(),
+                presets::button_icon("C", Message::CopyInclude(self.index), false).into(),
                 "Copy",
             )),
             ListState::Exclude => row.push(presets::tooltip_right(
-                presets::button_icon(
-                    &mut self.open_state,
-                    "C",
-                    Message::CopyExclude(self.index),
-                    false,
-                )
-                .into(),
+                presets::button_icon("C", Message::CopyExclude(self.index), false).into(),
                 "Copy",
             )),
-            ListState::Error | ListState::Filter(..) => row,
+            ListState::Error | ListState::Filter => row,
         };
-        let row = match &mut self.state {
+        let row = match &self.state {
             ListState::Error => row.push(presets::text_error(&self.text).width(Length::Fill)),
-            ListState::Filter(..) => row,
+            ListState::Filter => row,
             _ => row.push(Text::new(&self.text).width(Length::Fill)),
         };
-        let row = match &mut self.state {
+        let row = match &self.state {
             ListState::File | ListState::Folder | ListState::ParentFolder(_) => row
                 .push(presets::tooltip_left(
                     presets::button_icon(
-                        &mut self.add_state,
                         "+",
                         if self.status {
                             Message::None
@@ -782,7 +721,6 @@ impl ListItem {
                 ))
                 .push(presets::tooltip_left(
                     presets::button_icon(
-                        &mut self.remove_state,
                         "-",
                         if self.status {
                             Message::AddExclude(self.index)
@@ -795,30 +733,17 @@ impl ListItem {
                     "Exclude",
                 )),
             ListState::Include => row.push(presets::tooltip_left(
-                presets::button_icon(
-                    &mut self.remove_state,
-                    "-",
-                    Message::RemoveInclude(self.index),
-                    true,
-                )
-                .into(),
+                presets::button_icon("-", Message::RemoveInclude(self.index), true).into(),
                 "Remove",
             )),
             ListState::Exclude => row.push(presets::tooltip_left(
-                presets::button_icon(
-                    &mut self.remove_state,
-                    "-",
-                    Message::RemoveExclude(self.index),
-                    true,
-                )
-                .into(),
+                presets::button_icon("-", Message::RemoveExclude(self.index), true).into(),
                 "Remove",
             )),
-            ListState::Filter(state) => {
+            ListState::Filter => {
                 let i = self.index;
                 let mess = move |t| Message::EditFilter(i, t);
                 let row = row.push(presets::regex_field(
-                    state,
                     &self.text,
                     "Regex filter",
                     self.status,
@@ -830,13 +755,7 @@ impl ListItem {
                     row
                 }
                 .push(presets::tooltip_left(
-                    presets::button_icon(
-                        &mut self.remove_state,
-                        "-",
-                        Message::RemoveFilter(self.index),
-                        true,
-                    )
-                    .into(),
+                    presets::button_icon("-", Message::RemoveFilter(self.index), true).into(),
                     "Remove",
                 ))
             }
@@ -920,15 +839,6 @@ enum BackupStage {
 
 struct BackupState {
     config: Config,
-    scroll_state: scrollable::State,
-    edit_button: button::State,
-    backup_button: button::State,
-    name_button: button::State,
-    size_button: button::State,
-    time_button: button::State,
-    prev_button: button::State,
-    next_button: button::State,
-    export_button: button::State,
     list_sort: ListSort,
     error: String,
     total_count: u64,
@@ -943,15 +853,6 @@ impl BackupState {
         let crawler = ThreadWrapper::crawl_for_files(config.clone());
         Self {
             config,
-            scroll_state: scrollable::State::new(),
-            edit_button: button::State::new(),
-            backup_button: button::State::new(),
-            name_button: button::State::new(),
-            size_button: button::State::new(),
-            time_button: button::State::new(),
-            prev_button: button::State::new(),
-            next_button: button::State::new(),
-            export_button: button::State::new(),
             list_sort: ListSort::Name,
             error: String::new(),
             total_count: 0,
@@ -1139,16 +1040,12 @@ impl BackupState {
             Message::GoUp => {
                 if let BackupStage::Viewing(_) = self.stage {
                     self.current_count = max(100, self.current_count) - 100;
-                    self.scroll_state
-                        .scroll_to(0f32, Default::default(), Default::default());
                 }
             }
             Message::GoDown => {
                 if let BackupStage::Viewing(_) = self.stage {
                     if self.current_count + 100 < self.total_count {
                         self.current_count = self.current_count + 100;
-                        self.scroll_state
-                            .scroll_to(0f32, Default::default(), Default::default());
                     }
                 }
             }
@@ -1172,12 +1069,11 @@ impl BackupState {
         }
     }
 
-    fn view(&mut self) -> Element<Message> {
-        let mut scroll = Scrollable::new(&mut self.scroll_state)
-            .height(Length::Fill)
+    fn view(&self) -> Element<Message> {
+        let mut scroll = Column::new()
             .width(Length::Fill)
             .spacing(presets::INNER_SPACING);
-        match &mut self.stage {
+        match &self.stage {
             BackupStage::Scanning(_) => {
                 if !self.error.is_empty() {
                     scroll = scroll.push(
@@ -1186,8 +1082,7 @@ impl BackupState {
                     );
                 }
                 let brow = Row::with_children(vec![
-                    presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false)
-                        .into(),
+                    presets::button_nav("Edit", Message::EditConfig, false).into(),
                     Space::with_width(Length::Fill).into(),
                     Text::new(format!(
                         "Scanning for files to backup: {} with total size {}\n",
@@ -1197,11 +1092,11 @@ impl BackupState {
                     .vertical_alignment(Vertical::Center)
                     .into(),
                     Space::with_width(Length::Fill).into(),
-                    presets::button_nav(&mut self.backup_button, "Backup", Message::None, true)
-                        .into(),
+                    presets::button_nav("Backup", Message::None, true).into(),
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
+                let scroll = Scrollable::new(scroll).height(Length::Fill);
                 Column::with_children(vec![scroll.into(), brow.into()])
                     .width(Length::Fill)
                     .spacing(presets::INNER_SPACING)
@@ -1211,7 +1106,6 @@ impl BackupState {
             BackupStage::Viewing(writer) => {
                 let trow = Row::with_children(vec![
                     presets::button_grey(
-                        &mut self.name_button,
                         "Name",
                         Message::SortName,
                         self.list_sort != ListSort::Name,
@@ -1219,7 +1113,6 @@ impl BackupState {
                     .width(Length::Fill)
                     .into(),
                     presets::button_grey(
-                        &mut self.size_button,
                         "Size",
                         Message::SortSize,
                         self.list_sort != ListSort::Size,
@@ -1227,7 +1120,6 @@ impl BackupState {
                     .width(Length::Units(102))
                     .into(),
                     presets::button_grey(
-                        &mut self.time_button,
                         "Time",
                         Message::SortTime,
                         self.list_sort != ListSort::Time,
@@ -1237,14 +1129,14 @@ impl BackupState {
                 ])
                 .spacing(presets::INNER_SPACING);
                 scroll = writer
-                    .iter_files()
+                    .try_iter_files()
                     .unwrap()
                     .skip(self.current_count as usize)
                     .take(100)
                     .fold(scroll, |s, f| {
                         s.push(
                             Row::with_children(vec![
-                                Text::new(f.get_string()).width(Length::Fill).into(),
+                                Text::new(f.copy_string()).width(Length::Fill).into(),
                                 Text::new(format_size(f.size))
                                     .width(Length::Units(102))
                                     .horizontal_alignment(Horizontal::Right)
@@ -1264,7 +1156,6 @@ impl BackupState {
                         Row::with_children(vec![
                             Space::with_width(Length::Fill).into(),
                             presets::button_grey(
-                                &mut self.prev_button,
                                 "<",
                                 if self.current_count > 0 {
                                     Message::GoUp
@@ -1281,7 +1172,6 @@ impl BackupState {
                             ))
                             .into(),
                             presets::button_grey(
-                                &mut self.next_button,
                                 ">",
                                 if self.current_count + 100 < self.total_count {
                                     Message::GoDown
@@ -1319,25 +1209,18 @@ impl BackupState {
                     )
                 };
                 let brow = Row::with_children(vec![
-                    presets::button_nav(&mut self.edit_button, "Edit", Message::EditConfig, false)
-                        .into(),
+                    presets::button_nav("Edit", Message::EditConfig, false).into(),
                     Space::with_width(Length::Fill).into(),
                     Text::new(status)
                         .vertical_alignment(Vertical::Center)
                         .into(),
                     Space::with_width(Length::Fill).into(),
-                    presets::button_color(&mut self.export_button, "Export list", Message::Export)
-                        .into(),
-                    presets::button_nav(
-                        &mut self.backup_button,
-                        "Backup",
-                        Message::StartBackup,
-                        true,
-                    )
-                    .into(),
+                    presets::button_color("Export list", Message::Export).into(),
+                    presets::button_nav("Backup", Message::StartBackup, true).into(),
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
+                let scroll = Scrollable::new(scroll).height(Length::Fill);
                 Column::with_children(vec![trow.into(), scroll.into(), brow.into()])
                     .width(Length::Fill)
                     .spacing(presets::INNER_SPACING)
@@ -1368,12 +1251,11 @@ impl BackupState {
                 let current = (self.current_size / 1024 + self.current_count) as f32;
                 let bar = presets::progress_bar(current + max * 0.005, max * 1.01);
                 let brow = Row::with_children(vec![
-                    presets::button_nav(&mut self.edit_button, "Edit", Message::None, false).into(),
+                    presets::button_nav("Edit", Message::None, false).into(),
                     Space::with_width(Length::Fill).into(),
                     status.vertical_alignment(Vertical::Center).into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav(
-                        &mut self.backup_button,
                         "Cancel",
                         if let BackupStage::Cancelling(_) = self.stage {
                             Message::None
@@ -1386,6 +1268,7 @@ impl BackupState {
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
+                let scroll = Scrollable::new(scroll).height(Length::Fill);
                 Column::with_children(vec![scroll.into(), bar.into(), brow.into()])
                     .width(Length::Fill)
                     .spacing(presets::INNER_SPACING)
@@ -1400,13 +1283,13 @@ impl BackupState {
                     );
                 }
                 let brow = Row::with_children(vec![
-                    presets::button_nav(&mut self.edit_button, "Edit", Message::None, false).into(),
+                    presets::button_nav("Edit", Message::None, false).into(),
                     Space::with_width(Length::Fill).into(),
-                    presets::button_nav(&mut self.backup_button, "Refresh", Message::Backup, true)
-                        .into(),
+                    presets::button_nav("Refresh", Message::Backup, true).into(),
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
+                let scroll = Scrollable::new(scroll).height(Length::Fill);
                 Column::with_children(vec![scroll.into(), brow.into()])
                     .width(Length::Fill)
                     .spacing(presets::INNER_SPACING)
@@ -1424,13 +1307,6 @@ enum RestoreStage<'a> {
 }
 
 struct RestoreState<'a> {
-    back_button: button::State,
-    export_button: button::State,
-    extract_button: button::State,
-    restore_button: button::State,
-    filter_button: button::State,
-    scroll: scrollable::State,
-    search: text_input::State,
     filter: String,
     error: String,
     stage: RestoreStage<'a>,
@@ -1441,16 +1317,8 @@ impl<'a> RestoreState<'a> {
     fn new(mut reader: BackupReader<'a>) -> Self {
         let mut state = Self {
             error: String::new(),
-            back_button: button::State::new(),
-            export_button: button::State::new(),
-            extract_button: button::State::new(),
-            restore_button: button::State::new(),
-            filter_button: button::State::new(),
             stage: RestoreStage::Error,
-            scroll: scrollable::State::new(),
             all: false,
-
-            search: text_input::State::new(),
             filter: String::new(),
         };
         if let Err(e) = reader.read_all() {
@@ -1517,20 +1385,21 @@ impl<'a> RestoreState<'a> {
                 //TODO search filter
                 todo!();
             }
+            // TODO pagination
             _ => {}
         }
         Command::none()
     }
 
-    fn view(&mut self) -> Element<Message> {
-        let mut scroll = Scrollable::new(&mut self.scroll)
+    fn view(&self) -> Element<Message> {
+        let mut scroll = Column::new()
             .height(Length::Fill)
             .width(Length::Fill)
             .spacing(presets::INNER_SPACING);
         if !self.error.is_empty() {
             scroll = scroll.push(presets::text_error(&self.error[1..]))
         }
-        let trow = match &mut self.stage {
+        let trow = match &self.stage {
             RestoreStage::Error => Space::with_height(Length::Shrink).into(),
             RestoreStage::View(_, list) => {
                 scroll = list.iter().enumerate().fold(scroll, |s, (i, (sel, file))| {
@@ -1543,18 +1412,13 @@ impl<'a> RestoreState<'a> {
                 Row::with_children(vec![
                     Checkbox::new(self.all, "", |_| Message::ToggleAll).into(),
                     Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
-                    presets::regex_field(
-                        &mut self.search,
-                        &self.filter,
-                        "Regex filter",
-                        regex,
-                        |s| Message::EditFilter(0, s),
-                    )
+                    presets::regex_field(&self.filter, "Regex filter", regex, |s| {
+                        Message::EditFilter(0, s)
+                    })
                     .width(Length::Fill)
                     .on_submit(Message::AddFilter)
                     .into(),
                     presets::button_nav(
-                        &mut self.filter_button,
                         "Search",
                         if regex {
                             Message::AddFilter
@@ -1572,15 +1436,16 @@ impl<'a> RestoreState<'a> {
             }
         };
         let mut brow = Row::with_children(vec![
-            presets::button_nav(&mut self.back_button, "Back", Message::Main, false).into(),
+            presets::button_nav("Back", Message::Main, false).into(),
             Space::with_width(Length::Fill).into(),
         ])
         .align_items(Alignment::Center)
         .spacing(presets::INNER_SPACING);
-        if let RestoreStage::View(reader, list) = &mut self.stage {
+        if let RestoreStage::View(reader, list) = &self.stage {
             brow = brow
                 .push(Text::new(&match reader
-                    .get_config()
+                    .config
+                    .as_ref()
                     .expect("The config should already be read")
                     .time
                 {
@@ -1592,22 +1457,14 @@ impl<'a> RestoreState<'a> {
                     None => format!("{} files", list.len(),),
                 }))
                 .push(Space::with_width(Length::Fill))
+                .push(presets::button_color("Export list", Message::Export))
                 .push(presets::button_color(
-                    &mut self.export_button,
-                    "Export list",
-                    Message::Export,
-                ))
-                .push(presets::button_color(
-                    &mut self.extract_button,
                     "Extract selected",
                     Message::ExtractSelected,
                 ))
-                .push(presets::button_color(
-                    &mut self.restore_button,
-                    "Restore all",
-                    Message::RestoreAll,
-                ));
+                .push(presets::button_color("Restore all", Message::RestoreAll));
         }
+        let scroll = Scrollable::new(scroll).height(Length::Fill);
         Column::with_children(vec![trow, scroll.into(), brow.into()])
             .width(Length::Fill)
             .spacing(presets::INNER_SPACING)
@@ -1617,10 +1474,13 @@ impl<'a> RestoreState<'a> {
 }
 
 mod presets {
+    use iced::pure::widget::{
+        button, pane_grid, text_input, Button, Row, Text, TextInput, Tooltip,
+    };
+    use iced::pure::Element;
     use iced::{
-        alignment::Horizontal, alignment::Vertical, button, container, pane_grid, progress_bar,
-        text_input, tooltip, Button, Color, Element, Length, ProgressBar, Row, Space, Text,
-        TextInput, Tooltip,
+        alignment::Horizontal, alignment::Vertical, container, progress_bar, tooltip, Color,
+        Length, ProgressBar, Space,
     };
 
     use super::Message;
@@ -1638,34 +1498,25 @@ mod presets {
     pub const OUTER_SPACING: u16 = 6;
     pub const LARGE_SPACING: u16 = 6;
 
-    pub(crate) fn button_color<'a>(
-        state: &'a mut button::State,
-        text: &str,
-        action: Message,
-    ) -> Button<'a, Message> {
+    pub(crate) fn button_color(text: &str, action: Message) -> Button<Message> {
         let label = Text::new(text)
             .horizontal_alignment(Horizontal::Center)
             .vertical_alignment(Vertical::Center);
-        let but = Button::new(state, label).style(ButtonStyle::ColorButton);
+        let but = Button::new(label).style(ButtonStyle::ColorButton);
         if let Message::None = action {
             but
         } else {
             but.on_press(action)
         }
     }
-    pub(crate) fn button_grey<'a>(
-        state: &'a mut button::State,
-        text: &str,
-        action: Message,
-        light: bool,
-    ) -> Button<'a, Message> {
+    pub(crate) fn button_grey(text: &str, action: Message, light: bool) -> Button<Message> {
         let label = Text::new(text)
             .horizontal_alignment(Horizontal::Center)
             .vertical_alignment(Vertical::Center);
         let but = if light {
-            Button::new(state, label).style(ButtonStyle::LightButton)
+            Button::new(label).style(ButtonStyle::LightButton)
         } else {
-            Button::new(state, label).style(ButtonStyle::GreyButton)
+            Button::new(label).style(ButtonStyle::GreyButton)
         };
         if let Message::None = action {
             but
@@ -1674,17 +1525,12 @@ mod presets {
         }
     }
 
-    pub(crate) fn button_nav<'a>(
-        state: &'a mut button::State,
-        text: &str,
-        action: Message,
-        forward: bool,
-    ) -> Button<'a, Message> {
+    pub(crate) fn button_nav(text: &str, action: Message, forward: bool) -> Button<Message> {
         let label = Text::new(text)
             .width(Length::Units(64))
             .horizontal_alignment(Horizontal::Center)
             .vertical_alignment(Vertical::Center);
-        let but = Button::new(state, label).style(if forward {
+        let but = Button::new(label).style(if forward {
             ButtonStyle::ColorButton
         } else {
             ButtonStyle::NegativeButton
@@ -1696,16 +1542,11 @@ mod presets {
         }
     }
 
-    pub(crate) fn button_icon<'a>(
-        state: &'a mut button::State,
-        text: &str,
-        action: Message,
-        negative: bool,
-    ) -> Button<'a, Message> {
+    pub(crate) fn button_icon(text: &str, action: Message, negative: bool) -> Button<Message> {
         let label = Text::new(text)
             .horizontal_alignment(Horizontal::Center)
             .vertical_alignment(Vertical::Center);
-        let but = Button::new(state, label)
+        let but = Button::new(label)
             .style(if negative {
                 ButtonStyle::NegativeButton
             } else {
@@ -1727,16 +1568,11 @@ mod presets {
         Space::with_width(Length::Units(0))
     }
 
-    pub(crate) fn button_main<'a>(
-        state: &'a mut button::State,
-        text: &str,
-        alt: bool,
-        action: Message,
-    ) -> Button<'a, Message> {
+    pub(crate) fn button_main(text: &str, alt: bool, action: Message) -> Button<Message> {
         let label = Text::new(text)
             .horizontal_alignment(Horizontal::Center)
             .vertical_alignment(Vertical::Center);
-        let but = Button::new(state, label)
+        let but = Button::new(label)
             .width(Length::Units(200))
             .height(Length::Units(40))
             .style(if alt {
@@ -1771,7 +1607,7 @@ mod presets {
 
     pub(crate) fn pane_border<'a>(
         title: &str,
-        button: Option<(&str, &'a mut button::State, Message)>,
+        button: Option<(&'a str, Message)>,
         content: Element<'a, Message>,
     ) -> pane_grid::Content<'a, Message> {
         let title = Row::with_children(vec![
@@ -1782,9 +1618,9 @@ mod presets {
         .spacing(INNER_SPACING)
         .padding(OUTER_SPACING);
         let mut title_bar = pane_grid::TitleBar::new(title).style(ContainerStyle::PaneTitleBar);
-        if let Some((text, state, action)) = button {
+        if let Some((text, action)) = button {
             title_bar = title_bar
-                .controls(button_color(state, text, action))
+                .controls(button_color(text, action))
                 .always_show_controls();
         }
         pane_grid::Content::new(content)
@@ -1807,7 +1643,6 @@ mod presets {
     }
 
     pub(crate) fn regex_field<'a, F>(
-        state: &'a mut text_input::State,
         value: &'a String,
         placeholder: &str,
         valid_regex: bool,
@@ -1816,7 +1651,7 @@ mod presets {
     where
         F: 'static + Fn(String) -> Message,
     {
-        let inp = TextInput::new(state, placeholder, value, mess).padding(LARGE_SPACING);
+        let inp = TextInput::new(placeholder, value, mess).padding(LARGE_SPACING);
         if value.is_empty() {
             inp.style(InputStyle::Normal)
         } else if valid_regex {

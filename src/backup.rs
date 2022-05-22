@@ -141,6 +141,8 @@ impl BackupWriter {
         Ok(self.list.as_mut().unwrap())
     }
 
+    // Return a file iterator crawling if necessary
+    #[allow(dead_code)]
     pub fn iter_files<'a>(
         &'a mut self,
     ) -> Result<impl std::iter::Iterator<Item = &mut FileInfo> + 'a, BackupError> {
@@ -149,6 +151,12 @@ impl BackupWriter {
             .get_files()?
             .iter_mut()
             .filter(move |fi| fi.time >= time))
+    }
+
+    // Return a file iterator only if the files are already crawled
+    pub fn try_iter_files(&self) -> Option<impl std::iter::Iterator<Item = &FileInfo>> {
+        let time = self.prev_time.clone();
+        Some(self.list.as_ref()?.iter().filter(move |fi| fi.time >= time))
     }
 
     /// Iterate through all files that are added to the backup
