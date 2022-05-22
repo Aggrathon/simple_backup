@@ -5,9 +5,9 @@ use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 
 use iced::{
-    button, executor, pane_grid, pick_list, scrollable, text_input, Align, Application, Checkbox,
-    Column, Command, Element, Length, PaneGrid, PickList, Row, Scrollable, Settings, Space,
-    Subscription, Text,
+    alignment::Horizontal, alignment::Vertical, button, clipboard, executor, pane_grid, pick_list,
+    scrollable, text_input, Alignment, Application, Checkbox, Column, Command, Element, Length,
+    PaneGrid, PickList, Row, Scrollable, Settings, Space, Subscription, Text,
 };
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
@@ -17,6 +17,7 @@ use crate::config::Config;
 use crate::files::{FileCrawler, FileInfo};
 use crate::utils::{format_size, get_config_from_pathbuf};
 
+#[allow(dead_code)]
 #[cfg_attr(target_os = "windows", link(name = "Kernel32"))]
 extern "system" {
     fn FreeConsole() -> i32;
@@ -136,11 +137,7 @@ impl<'a> Application for ApplicationState<'a> {
         }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Message,
-        clipboard: &mut iced::Clipboard,
-    ) -> iced::Command<Self::Message> {
+    fn update(&mut self, message: Self::Message) -> iced::Command<Self::Message> {
         match message {
             Message::CreateConfig => {
                 *self = ApplicationState::Config(ConfigState::new(true));
@@ -192,9 +189,9 @@ impl<'a> Application for ApplicationState<'a> {
             }
             _ => match self {
                 ApplicationState::Main(_) => Command::none(),
-                ApplicationState::Config(state) => state.update(message, clipboard),
-                ApplicationState::Backup(state) => state.update(message, clipboard),
-                ApplicationState::Restore(state) => state.update(message, clipboard),
+                ApplicationState::Config(state) => state.update(message),
+                ApplicationState::Backup(state) => state.update(message),
+                ApplicationState::Restore(state) => state.update(message),
             },
         }
     }
@@ -244,7 +241,7 @@ impl MainState {
             presets::button_main(&mut self.restore, "Restore", true, Message::Restore).into(),
             Space::with_height(Length::Fill).into(),
         ])
-        .align_items(Align::Center)
+        .align_items(Alignment::Center)
         .spacing(presets::LARGE_SPACING);
         Row::with_children(vec![
             Space::with_width(Length::Fill).into(),
@@ -372,7 +369,7 @@ impl ConfigState {
             presets::button_nav(&mut self.backup, "Backup", Message::Backup, true).into(),
         ])
         .spacing(presets::INNER_SPACING)
-        .align_items(Align::Center);
+        .align_items(Alignment::Center);
         Column::with_children(vec![pane_grid.into(), bar.into()])
             .width(Length::Fill)
             .spacing(presets::INNER_SPACING)
@@ -380,11 +377,7 @@ impl ConfigState {
             .into()
     }
 
-    fn update(
-        &mut self,
-        message: Message,
-        clipboard: &mut iced::Clipboard,
-    ) -> iced::Command<Message> {
+    fn update(&mut self, message: Message) -> iced::Command<Message> {
         match message {
             Message::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
                 self.panes.resize(&split, ratio)
@@ -419,7 +412,7 @@ impl ConfigState {
             }
             Message::CopyInclude(i) => {
                 if let Some(s) = self.config.include.get(i) {
-                    clipboard.write(s.to_string());
+                    clipboard::write::<Message>(s.to_string());
                 }
             }
             Message::AddExclude(i) => {
@@ -445,7 +438,7 @@ impl ConfigState {
             }
             Message::CopyExclude(i) => {
                 if let Some(s) = self.config.exclude.get(i) {
-                    clipboard.write(s.to_string());
+                    clipboard::write::<Message>(s.to_string());
                 }
             }
             Message::AddFilter => {
@@ -721,7 +714,7 @@ impl ListItem {
             .width(Length::Fill)
             // .padding(presets::OUTER_SPACING)
             .spacing(presets::INNER_SPACING)
-            .align_items(Align::Center);
+            .align_items(Alignment::Center);
         let row = match self.state {
             ListState::File => row.push(presets::space_icon()),
             ListState::Folder => row.push(presets::tooltip_right(
@@ -969,7 +962,7 @@ impl BackupState {
         }
     }
 
-    fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
+    fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Tick => match &mut self.stage {
                 BackupStage::Scanning(crawler) => {
@@ -1189,7 +1182,7 @@ impl BackupState {
                 if !self.error.is_empty() {
                     scroll = scroll.push(
                         presets::text_error(&self.error[1..])
-                            .horizontal_alignment(iced::HorizontalAlignment::Left),
+                            .horizontal_alignment(Horizontal::Left),
                     );
                 }
                 let brow = Row::with_children(vec![
@@ -1201,13 +1194,13 @@ impl BackupState {
                         self.total_count,
                         format_size(self.total_size)
                     ))
-                    .vertical_alignment(iced::VerticalAlignment::Center)
+                    .vertical_alignment(Vertical::Center)
                     .into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav(&mut self.backup_button, "Backup", Message::None, true)
                         .into(),
                 ])
-                .align_items(Align::Center)
+                .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
                 Column::with_children(vec![scroll.into(), brow.into()])
                     .width(Length::Fill)
@@ -1254,15 +1247,15 @@ impl BackupState {
                                 Text::new(f.get_string()).width(Length::Fill).into(),
                                 Text::new(format_size(f.size))
                                     .width(Length::Units(102))
-                                    .horizontal_alignment(iced::HorizontalAlignment::Right)
+                                    .horizontal_alignment(Horizontal::Right)
                                     .into(),
                                 Text::new(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
                                     .width(Length::Units(182))
-                                    .horizontal_alignment(iced::HorizontalAlignment::Right)
+                                    .horizontal_alignment(Horizontal::Right)
                                     .into(),
                                 presets::space_scroll().into(),
                             ])
-                            .align_items(Align::Center)
+                            .align_items(Alignment::Center)
                             .spacing(presets::INNER_SPACING),
                         )
                     });
@@ -1300,14 +1293,14 @@ impl BackupState {
                             .into(),
                             Space::with_width(Length::Fill).into(),
                         ])
-                        .align_items(Align::Center)
+                        .align_items(Alignment::Center)
                         .spacing(presets::INNER_SPACING),
                     )
                 }
                 if !self.error.is_empty() {
                     scroll = scroll.push(
                         presets::text_error(&self.error[1..])
-                            .horizontal_alignment(iced::HorizontalAlignment::Left),
+                            .horizontal_alignment(Horizontal::Left),
                     );
                 }
                 let diff = writer.list.as_ref().unwrap().len() - self.total_count as usize;
@@ -1330,7 +1323,7 @@ impl BackupState {
                         .into(),
                     Space::with_width(Length::Fill).into(),
                     Text::new(status)
-                        .vertical_alignment(iced::VerticalAlignment::Center)
+                        .vertical_alignment(Vertical::Center)
                         .into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_color(&mut self.export_button, "Export list", Message::Export)
@@ -1343,7 +1336,7 @@ impl BackupState {
                     )
                     .into(),
                 ])
-                .align_items(Align::Center)
+                .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
                 Column::with_children(vec![trow.into(), scroll.into(), brow.into()])
                     .width(Length::Fill)
@@ -1355,7 +1348,7 @@ impl BackupState {
                 if !self.error.is_empty() {
                     scroll = scroll.push(
                         presets::text_error(&self.error[1..])
-                            .horizontal_alignment(iced::HorizontalAlignment::Left),
+                            .horizontal_alignment(Horizontal::Left),
                     );
                 }
                 let status = if let BackupStage::Cancelling(_) = self.stage {
@@ -1377,9 +1370,7 @@ impl BackupState {
                 let brow = Row::with_children(vec![
                     presets::button_nav(&mut self.edit_button, "Edit", Message::None, false).into(),
                     Space::with_width(Length::Fill).into(),
-                    status
-                        .vertical_alignment(iced::VerticalAlignment::Center)
-                        .into(),
+                    status.vertical_alignment(Vertical::Center).into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav(
                         &mut self.backup_button,
@@ -1393,7 +1384,7 @@ impl BackupState {
                     )
                     .into(),
                 ])
-                .align_items(Align::Center)
+                .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
                 Column::with_children(vec![scroll.into(), bar.into(), brow.into()])
                     .width(Length::Fill)
@@ -1405,7 +1396,7 @@ impl BackupState {
                 if !self.error.is_empty() {
                     scroll = scroll.push(
                         presets::text_error(&self.error[1..])
-                            .horizontal_alignment(iced::HorizontalAlignment::Left),
+                            .horizontal_alignment(Horizontal::Left),
                     );
                 }
                 let brow = Row::with_children(vec![
@@ -1414,7 +1405,7 @@ impl BackupState {
                     presets::button_nav(&mut self.backup_button, "Refresh", Message::Backup, true)
                         .into(),
                 ])
-                .align_items(Align::Center)
+                .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
                 Column::with_children(vec![scroll.into(), brow.into()])
                     .width(Length::Fill)
@@ -1477,7 +1468,7 @@ impl<'a> RestoreState<'a> {
         state
     }
 
-    fn update(&mut self, message: Message, _clipboard: &mut iced::Clipboard) -> Command<Message> {
+    fn update(&mut self, message: Message) -> Command<Message> {
         //TODO Restore func
         match message {
             Message::ToggleSelected(i) => {
@@ -1575,7 +1566,7 @@ impl<'a> RestoreState<'a> {
                     .into(),
                     Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
                 ])
-                .align_items(Align::Center)
+                .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING)
                 .into()
             }
@@ -1584,7 +1575,7 @@ impl<'a> RestoreState<'a> {
             presets::button_nav(&mut self.back_button, "Back", Message::Main, false).into(),
             Space::with_width(Length::Fill).into(),
         ])
-        .align_items(Align::Center)
+        .align_items(Alignment::Center)
         .spacing(presets::INNER_SPACING);
         if let RestoreStage::View(reader, list) = &mut self.stage {
             brow = brow
@@ -1627,8 +1618,9 @@ impl<'a> RestoreState<'a> {
 
 mod presets {
     use iced::{
-        button, container, pane_grid, progress_bar, text_input, tooltip, Button, Color, Element,
-        Length, ProgressBar, Row, Space, Text, TextInput, Tooltip,
+        alignment::Horizontal, alignment::Vertical, button, container, pane_grid, progress_bar,
+        text_input, tooltip, Button, Color, Element, Length, ProgressBar, Row, Space, Text,
+        TextInput, Tooltip,
     };
 
     use super::Message;
@@ -1652,8 +1644,8 @@ mod presets {
         action: Message,
     ) -> Button<'a, Message> {
         let label = Text::new(text)
-            .horizontal_alignment(iced::HorizontalAlignment::Center)
-            .vertical_alignment(iced::VerticalAlignment::Center);
+            .horizontal_alignment(Horizontal::Center)
+            .vertical_alignment(Vertical::Center);
         let but = Button::new(state, label).style(ButtonStyle::ColorButton);
         if let Message::None = action {
             but
@@ -1668,8 +1660,8 @@ mod presets {
         light: bool,
     ) -> Button<'a, Message> {
         let label = Text::new(text)
-            .horizontal_alignment(iced::HorizontalAlignment::Center)
-            .vertical_alignment(iced::VerticalAlignment::Center);
+            .horizontal_alignment(Horizontal::Center)
+            .vertical_alignment(Vertical::Center);
         let but = if light {
             Button::new(state, label).style(ButtonStyle::LightButton)
         } else {
@@ -1690,8 +1682,8 @@ mod presets {
     ) -> Button<'a, Message> {
         let label = Text::new(text)
             .width(Length::Units(64))
-            .horizontal_alignment(iced::HorizontalAlignment::Center)
-            .vertical_alignment(iced::VerticalAlignment::Center);
+            .horizontal_alignment(Horizontal::Center)
+            .vertical_alignment(Vertical::Center);
         let but = Button::new(state, label).style(if forward {
             ButtonStyle::ColorButton
         } else {
@@ -1711,8 +1703,8 @@ mod presets {
         negative: bool,
     ) -> Button<'a, Message> {
         let label = Text::new(text)
-            .horizontal_alignment(iced::HorizontalAlignment::Center)
-            .vertical_alignment(iced::VerticalAlignment::Center);
+            .horizontal_alignment(Horizontal::Center)
+            .vertical_alignment(Vertical::Center);
         let but = Button::new(state, label)
             .style(if negative {
                 ButtonStyle::NegativeButton
@@ -1742,11 +1734,11 @@ mod presets {
         action: Message,
     ) -> Button<'a, Message> {
         let label = Text::new(text)
-            .horizontal_alignment(iced::HorizontalAlignment::Center)
-            .vertical_alignment(iced::VerticalAlignment::Center);
+            .horizontal_alignment(Horizontal::Center)
+            .vertical_alignment(Vertical::Center);
         let but = Button::new(state, label)
-            .min_width(200)
-            .min_height(40)
+            .width(Length::Units(200))
+            .height(Length::Units(40))
             .style(if alt {
                 ButtonStyle::MainButtonAlt
             } else {
@@ -1762,19 +1754,19 @@ mod presets {
     pub(crate) fn text_title(text: &str) -> Text {
         Text::new(text)
             .size(32)
-            .horizontal_alignment(iced::HorizontalAlignment::Center)
+            .horizontal_alignment(Horizontal::Center)
     }
 
     pub(crate) fn text_error(text: &str) -> Text {
         Text::new(text)
             .color(COMP_COLOR)
-            .horizontal_alignment(iced::HorizontalAlignment::Center)
+            .horizontal_alignment(Horizontal::Center)
     }
 
     pub(crate) fn text_center(text: &str) -> Text {
         Text::new(text)
-            .horizontal_alignment(iced::HorizontalAlignment::Center)
-            .vertical_alignment(iced::VerticalAlignment::Center)
+            .horizontal_alignment(Horizontal::Center)
+            .vertical_alignment(Vertical::Center)
     }
 
     pub(crate) fn pane_border<'a>(
@@ -1784,11 +1776,9 @@ mod presets {
     ) -> pane_grid::Content<'a, Message> {
         let title = Row::with_children(vec![
             Space::with_width(Length::Shrink).into(),
-            Text::new(title)
-                .vertical_alignment(iced::VerticalAlignment::Center)
-                .into(),
+            Text::new(title).vertical_alignment(Vertical::Center).into(),
         ])
-        .align_items(iced::Align::Center)
+        .align_items(iced::Alignment::Center)
         .spacing(INNER_SPACING)
         .padding(OUTER_SPACING);
         let mut title_bar = pane_grid::TitleBar::new(title).style(ContainerStyle::PaneTitleBar);
@@ -1836,7 +1826,7 @@ mod presets {
         }
     }
 
-    pub(crate) fn progress_bar(current: f32, max: f32) -> ProgressBar {
+    pub(crate) fn progress_bar<'a>(current: f32, max: f32) -> ProgressBar<'a> {
         ProgressBar::new(0.0..=max, current)
             .width(Length::Fill)
             .style(ProgressStyle::Normal)
