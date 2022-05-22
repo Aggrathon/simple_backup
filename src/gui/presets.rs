@@ -1,5 +1,7 @@
 #![cfg(feature = "gui")]
-use iced::pure::widget::{button, pane_grid, text_input, Button, Row, Text, TextInput, Tooltip};
+use iced::pure::widget::{
+    button, pane_grid, text_input, Button, Container, Row, Scrollable, Text, TextInput, Tooltip,
+};
 use iced::pure::Element;
 use iced::{
     alignment::Horizontal, alignment::Vertical, container, progress_bar, tooltip, Color, Length,
@@ -91,6 +93,10 @@ pub(crate) fn space_scroll() -> Space {
     Space::with_width(Length::Units(0))
 }
 
+pub(crate) fn space_inner_height() -> Space {
+    Space::with_height(Length::Units(INNER_SPACING))
+}
+
 pub(crate) fn button_main(text: &str, alt: bool, action: Message) -> Button<Message> {
     let label = Text::new(text)
         .horizontal_alignment(Horizontal::Center)
@@ -149,6 +155,12 @@ pub(crate) fn pane_border<'a>(
     pane_grid::Content::new(content)
         .title_bar(title_bar)
         .style(ContainerStyle::Pane)
+}
+
+pub(crate) fn scroll_border<'a>(content: Element<'a, Message>) -> Container<'a, Message> {
+    Container::new(Scrollable::new(content).height(Length::Fill))
+        .style(ContainerStyle::Pane)
+        .padding(INNER_SPACING)
 }
 
 pub(crate) fn tooltip_right<'a>(content: Element<'a, Message>, tip: &str) -> Tooltip<'a, Message> {

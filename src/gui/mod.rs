@@ -1,6 +1,5 @@
 #![cfg(feature = "gui")]
 /// This module contains the logic for running the program through a GUI
-use std::cmp::{max, min};
 use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 
@@ -58,12 +57,12 @@ pub(crate) enum Message {
     EditFilter(usize, String),
     OpenFolder(usize),
     GoUp,
-    GoDown,
     DialogFolder,
     SaveConfig,
     SortName,
     SortSize,
     SortTime,
+    GoTo(usize),
     StartBackup,
     CancelBackup,
     Export,
@@ -839,11 +838,12 @@ struct BackupState {
     config: Config,
     list_sort: ListSort,
     error: String,
-    total_count: u64,
+    total_count: usize,
     total_size: u64,
-    current_count: u64,
+    current_count: usize,
     current_size: u64,
     stage: BackupStage,
+    pagination: paginated::State,
 }
 
 impl BackupState {
@@ -858,6 +858,7 @@ impl BackupState {
             current_count: 0,
             current_size: 0,
             stage: BackupStage::Scanning(crawler),
+            pagination: paginated::State::new(100, 0),
         }
     }
 
@@ -903,7 +904,7 @@ impl BackupState {
                                                         self.error.push_str(&e.to_string());
                                                     };
                                                 }
-                                                self.current_count = 0;
+                                                self.pagination.change_total(self.total_count);
                                                 self.stage = BackupStage::Viewing(bw);
                                             }
                                             Err(_) => self.error.push_str(
@@ -1035,16 +1036,9 @@ impl BackupState {
                     }
                 }
             }
-            Message::GoUp => {
+            Message::GoTo(index) => {
                 if let BackupStage::Viewing(_) = self.stage {
-                    self.current_count = max(100, self.current_count) - 100;
-                }
-            }
-            Message::GoDown => {
-                if let BackupStage::Viewing(_) = self.stage {
-                    if self.current_count + 100 < self.total_count {
-                        self.current_count = self.current_count + 100;
-                    }
+                    self.pagination.goto(index)
                 }
             }
             _ => eprintln!("Unexpected GUI message"),
@@ -1094,7 +1088,7 @@ impl BackupState {
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
-                let scroll = Scrollable::new(scroll).height(Length::Fill);
+                let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
                 Column::with_children(vec![scroll.into(), brow.into()])
                     .width(Length::Fill)
                     .spacing(presets::INNER_SPACING)
@@ -1126,71 +1120,35 @@ impl BackupState {
                     .into(),
                 ])
                 .spacing(presets::INNER_SPACING);
-                scroll = writer
-                    .try_iter_files()
-                    .unwrap()
-                    .skip(self.current_count as usize)
-                    .take(100)
-                    .fold(scroll, |s, f| {
-                        s.push(
-                            Row::with_children(vec![
-                                Text::new(f.copy_string()).width(Length::Fill).into(),
-                                Text::new(format_size(f.size))
-                                    .width(Length::Units(102))
-                                    .horizontal_alignment(Horizontal::Right)
-                                    .into(),
-                                Text::new(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
-                                    .width(Length::Units(182))
-                                    .horizontal_alignment(Horizontal::Right)
-                                    .into(),
-                                presets::space_scroll().into(),
-                            ])
-                            .align_items(Alignment::Center)
-                            .spacing(presets::INNER_SPACING),
-                        )
-                    });
-                if self.total_count > 100 {
-                    scroll = scroll.push(
-                        Row::with_children(vec![
-                            Space::with_width(Length::Fill).into(),
-                            presets::button_grey(
-                                "<",
-                                if self.current_count > 0 {
-                                    Message::GoUp
-                                } else {
-                                    Message::None
-                                },
-                                false,
-                            )
-                            .into(),
-                            presets::text_center(&format!(
-                                "{:3} - {:3}",
-                                self.current_count,
-                                min(self.current_count + 100, self.total_count)
-                            ))
-                            .into(),
-                            presets::button_grey(
-                                ">",
-                                if self.current_count + 100 < self.total_count {
-                                    Message::GoDown
-                                } else {
-                                    Message::None
-                                },
-                                false,
-                            )
-                            .into(),
-                            Space::with_width(Length::Fill).into(),
-                        ])
-                        .align_items(Alignment::Center)
-                        .spacing(presets::INNER_SPACING),
-                    )
-                }
                 if !self.error.is_empty() {
                     scroll = scroll.push(
                         presets::text_error(&self.error[1..])
                             .horizontal_alignment(Horizontal::Left),
                     );
                 }
+                scroll = self.pagination.push_to(
+                    scroll,
+                    writer
+                        .try_iter_files()
+                        .expect("The files should already be crawled at this point"),
+                    |f| {
+                        Row::with_children(vec![
+                            Text::new(f.copy_string()).width(Length::Fill).into(),
+                            Text::new(format_size(f.size))
+                                .width(Length::Units(102))
+                                .horizontal_alignment(Horizontal::Right)
+                                .into(),
+                            Text::new(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
+                                .width(Length::Units(182))
+                                .horizontal_alignment(Horizontal::Right)
+                                .into(),
+                            presets::space_scroll().into(),
+                        ])
+                        .align_items(Alignment::Center)
+                        .spacing(presets::INNER_SPACING)
+                        .into()
+                    },
+                );
                 let diff = writer.list.as_ref().unwrap().len() - self.total_count as usize;
                 let status = if diff > 0 {
                     format!(
@@ -1218,12 +1176,16 @@ impl BackupState {
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
-                let scroll = Scrollable::new(scroll).height(Length::Fill);
-                Column::with_children(vec![trow.into(), scroll.into(), brow.into()])
-                    .width(Length::Fill)
-                    .spacing(presets::INNER_SPACING)
-                    .padding(presets::INNER_SPACING)
-                    .into()
+                let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
+                Column::with_children(vec![
+                    trow.into(),
+                    scroll.into(),
+                    presets::space_inner_height().into(),
+                    brow.into(),
+                ])
+                .width(Length::Fill)
+                .padding(presets::INNER_SPACING)
+                .into()
             }
             BackupStage::Performing(_) | BackupStage::Cancelling(_) => {
                 if !self.error.is_empty() {
@@ -1245,8 +1207,8 @@ impl BackupState {
                         format_size(self.total_size)
                     ))
                 };
-                let max = (self.total_size / 1024 + self.total_count) as f32;
-                let current = (self.current_size / 1024 + self.current_count) as f32;
+                let max = (self.total_size / 1024 + self.total_count as u64) as f32;
+                let current = (self.current_size / 1024 + self.current_count as u64) as f32;
                 let bar = presets::progress_bar(current + max * 0.005, max * 1.01);
                 let brow = Row::with_children(vec![
                     presets::button_nav("Edit", Message::None, false).into(),
@@ -1266,7 +1228,7 @@ impl BackupState {
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
-                let scroll = Scrollable::new(scroll).height(Length::Fill);
+                let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
                 Column::with_children(vec![scroll.into(), bar.into(), brow.into()])
                     .width(Length::Fill)
                     .spacing(presets::INNER_SPACING)
@@ -1287,7 +1249,7 @@ impl BackupState {
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
-                let scroll = Scrollable::new(scroll).height(Length::Fill);
+                let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
                 Column::with_children(vec![scroll.into(), brow.into()])
                     .width(Length::Fill)
                     .spacing(presets::INNER_SPACING)
@@ -1300,7 +1262,7 @@ impl BackupState {
 
 enum RestoreStage<'a> {
     Error,
-    View(BackupReader<'a>, Vec<(bool, String)>),
+    View(BackupReader<'a>, Vec<(bool, String)>, paginated::State),
     // Extract,
 }
 
@@ -1324,13 +1286,14 @@ impl<'a> RestoreState<'a> {
             state.error.push_str(&e.to_string());
             return state;
         }
-        let list = reader
+        let list: Vec<(bool, String)> = reader
             .get_list()
             .expect("The list should already be extracted")
             .split('\n')
             .map(|s| (false, String::from(s)))
             .collect();
-        state.stage = RestoreStage::View(reader, list);
+        let size = list.len();
+        state.stage = RestoreStage::View(reader, list, paginated::State::new(100, size));
         state
     }
 
@@ -1338,7 +1301,7 @@ impl<'a> RestoreState<'a> {
         //TODO Restore func
         match message {
             Message::ToggleSelected(i) => {
-                if let RestoreStage::View(_, list) = &mut self.stage {
+                if let RestoreStage::View(_, list, _) = &mut self.stage {
                     if let Some((b, _)) = list.get_mut(i) {
                         *b = !*b;
                     }
@@ -1348,7 +1311,7 @@ impl<'a> RestoreState<'a> {
             Message::RestoreAll => todo!(),
             Message::ExtractSelected => todo!(),
             Message::Export => {
-                if let RestoreStage::View(reader, _) = &mut self.stage {
+                if let RestoreStage::View(reader, _, _) = &mut self.stage {
                     if let Some(file) = FileDialog::new()
                         .set_directory(&reader.path)
                         .set_title("Save the list of files in the backup")
@@ -1366,7 +1329,8 @@ impl<'a> RestoreState<'a> {
                 }
             }
             Message::ToggleAll => {
-                if let RestoreStage::View(_, list) = &mut self.stage {
+                if let RestoreStage::View(_, list, _) = &mut self.stage {
+                    //TODO search filter
                     if self.all {
                         list.iter_mut().for_each(|(b, _)| *b = false);
                         self.all = false;
@@ -1383,7 +1347,11 @@ impl<'a> RestoreState<'a> {
                 //TODO search filter
                 todo!();
             }
-            // TODO pagination
+            Message::GoTo(index) => {
+                if let RestoreStage::View(_, _, pagination) = &mut self.stage {
+                    pagination.goto(index)
+                }
+            }
             _ => {}
         }
         Command::none()
@@ -1391,7 +1359,6 @@ impl<'a> RestoreState<'a> {
 
     fn view(&self) -> Element<Message> {
         let mut scroll = Column::new()
-            .height(Length::Fill)
             .width(Length::Fill)
             .spacing(presets::INNER_SPACING);
         if !self.error.is_empty() {
@@ -1399,15 +1366,16 @@ impl<'a> RestoreState<'a> {
         }
         let trow = match &self.stage {
             RestoreStage::Error => Space::with_height(Length::Shrink).into(),
-            RestoreStage::View(_, list) => {
-                scroll = list.iter().enumerate().fold(scroll, |s, (i, (sel, file))| {
-                    s.push(
-                        Checkbox::new(*sel, file, move |_| Message::ToggleSelected(i))
-                            .width(Length::Fill),
-                    )
+            RestoreStage::View(_, list, view) => {
+                //TODO search filter
+                scroll = view.push_to(scroll, list.iter().enumerate(), |(i, (sel, file))| {
+                    Checkbox::new(*sel, file, move |_| Message::ToggleSelected(i))
+                        .width(Length::Fill)
+                        .into()
                 });
                 let regex = Regex::new(&self.filter).is_ok();
                 Row::with_children(vec![
+                    Space::with_width(Length::Units(0)).into(),
                     Checkbox::new(self.all, "", |_| Message::ToggleAll).into(),
                     Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
                     presets::regex_field(&self.filter, "Regex filter", regex, |s| {
@@ -1426,7 +1394,6 @@ impl<'a> RestoreState<'a> {
                         true,
                     )
                     .into(),
-                    Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING)
@@ -1439,7 +1406,7 @@ impl<'a> RestoreState<'a> {
         ])
         .align_items(Alignment::Center)
         .spacing(presets::INNER_SPACING);
-        if let RestoreStage::View(reader, list) = &self.stage {
+        if let RestoreStage::View(reader, list, _) = &self.stage {
             brow = brow
                 .push(Text::new(&match reader
                     .config
@@ -1462,7 +1429,7 @@ impl<'a> RestoreState<'a> {
                 ))
                 .push(presets::button_color("Restore all", Message::RestoreAll));
         }
-        let scroll = Scrollable::new(scroll).height(Length::Fill);
+        let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
         Column::with_children(vec![trow, scroll.into(), brow.into()])
             .width(Length::Fill)
             .spacing(presets::INNER_SPACING)
