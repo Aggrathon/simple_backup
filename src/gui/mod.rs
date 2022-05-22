@@ -3,11 +3,11 @@
 use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 
+use iced::alignment::{Horizontal, Vertical};
 use iced::pure::widget::{pane_grid, Column, PaneGrid, PickList, Row, Scrollable, Space};
 use iced::pure::{Application, Element};
 use iced::{
-    alignment::Horizontal, alignment::Vertical, clipboard, executor, Alignment, Checkbox, Command,
-    Length, Settings, Subscription, Text,
+    clipboard, executor, Alignment, Checkbox, Command, Length, Settings, Subscription, Text,
 };
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};

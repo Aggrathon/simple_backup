@@ -1,12 +1,10 @@
 #![cfg(feature = "gui")]
+use iced::alignment::{Horizontal, Vertical};
 use iced::pure::widget::{
     button, pane_grid, text_input, Button, Container, Row, Scrollable, Text, TextInput, Tooltip,
 };
 use iced::pure::Element;
-use iced::{
-    alignment::Horizontal, alignment::Vertical, container, progress_bar, tooltip, Color, Length,
-    ProgressBar, Space,
-};
+use iced::{container, progress_bar, tooltip, Color, Length, ProgressBar, Space};
 
 use super::Message;
 
