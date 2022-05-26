@@ -1,11 +1,13 @@
 #![cfg(feature = "gui")]
 
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::thread::JoinHandle;
 
-use crate::backup::{BackupError, BackupWriter};
+use crate::backup::{BackupError, BackupReader, BackupWriter};
 use crate::config::Config;
 use crate::files::FileInfo;
+use crate::utils::strip_absolute_from_path;
 
 pub(crate) struct ThreadWrapper<T1, T2> {
     queue: Receiver<T1>,
@@ -73,6 +75,63 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
             }
             std::mem::drop(send);
             writer
+        });
+        Self { queue, handle }
+    }
+}
+
+impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader<'static>> {
+    pub fn restore_files(
+        reader: BackupReader<'static>,
+        selection: Vec<String>,
+        flatten: bool,
+        output: Option<PathBuf>,
+    ) -> Self {
+        let (send, queue) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let mut reader = reader;
+            let output = output;
+            let selection = selection;
+            let flatten = flatten;
+            #[allow(unused_must_use)]
+            if flatten && output.is_none() {
+                send.send(Err(BackupError::GenericError(
+                    "The output must be given if flatten=true",
+                )));
+                std::mem::drop(send);
+                return reader;
+            }
+
+            let callback = |res: std::io::Result<FileInfo>| {
+                match res {
+                    Ok(fi) => send.send(Ok(fi)),
+                    Err(e) => send.send(Err(BackupError::IOError(e))),
+                }
+                .map_err(|_| BackupError::Cancel)
+            };
+
+            let error = if flatten {
+                let output = output.unwrap();
+                let path_transform = |fi: FileInfo| {
+                    FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
+                };
+                reader.restore_selected(selection, path_transform, callback, true)
+            } else {
+                let path_transform = |mut fi: FileInfo| match &output {
+                    Some(output) => {
+                        FileInfo::from(output.join(strip_absolute_from_path(&fi.move_string())))
+                    }
+                    None => fi,
+                };
+                reader.restore_selected(selection, path_transform, callback, true)
+            };
+
+            #[allow(unused_must_use)]
+            if let Err(e) = error {
+                send.send(Err(e));
+            }
+            std::mem::drop(send);
+            reader
         });
         Self { queue, handle }
     }

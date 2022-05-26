@@ -156,25 +156,25 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut br1 = BackupReader::from_config(bw2.config)?;
     let mut br2 = br1.get_previous()?.unwrap();
 
-    br1.restore_this(|fi| fi, |_| (), false)?;
+    br1.restore_this(|fi| fi, |_| Ok(()), false)?;
     assert!(!f2.exists());
     assert!(f5.exists());
 
     remove_file(&f5)?;
     assert!(!f5.exists());
 
-    br2.restore_this(|fi| fi, |_| (), false)?;
+    br2.restore_this(|fi| fi, |_| Ok(()), false)?;
     assert!(f2.exists());
     assert!(!f5.exists());
 
     remove_file(&f2)?;
     assert!(!f2.exists());
 
-    br1.restore_this(|fi| fi, |_| (), true)?;
+    br1.restore_this(|fi| fi, |_| Ok(()), true)?;
     assert!(!f2.exists());
     assert!(f5.exists());
 
-    br1.restore_all(|fi| fi, |_| (), false)?;
+    br1.restore_all(|fi| fi, |_| Ok(()), false)?;
     assert!(f2.exists());
 
     Ok(())

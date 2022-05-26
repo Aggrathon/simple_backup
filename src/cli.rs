@@ -201,12 +201,15 @@ pub fn restore(
         bar.tick();
         bar.enable_steady_tick(1000);
 
-        let callback = |res| match res {
-            Ok(_) => bar.inc(1),
-            Err(e) => {
-                bar.inc(1);
-                bar.println(format!("Could not restore from backup: {}", e));
+        let callback = |res| {
+            match res {
+                Ok(_) => bar.inc(1),
+                Err(e) => {
+                    bar.inc(1);
+                    bar.println(format!("Could not restore from backup: {}", e));
+                }
             }
+            Ok(())
         };
 
         if flatten {

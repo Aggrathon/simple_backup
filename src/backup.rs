@@ -14,6 +14,7 @@ use crate::files::{FileAccessError, FileCrawler, FileInfo};
 use crate::parse_date::{self, naive_now};
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum BackupError {
     NoConfig(PathBuf),
     NoList(PathBuf),
@@ -25,7 +26,8 @@ pub enum BackupError {
     InvalidPath(String),
     Cancel,
     FileAccessError(FileAccessError),
-    GenericError(std::io::Error),
+    IOError(std::io::Error),
+    GenericError(&'static str),
 }
 
 impl Display for BackupError {
@@ -67,6 +69,7 @@ impl Display for BackupError {
                 write!(f, "The operation has been cancelled")
             }
             BackupError::FileAccessError(e) => e.fmt(f),
+            BackupError::IOError(e) => e.fmt(f),
             BackupError::GenericError(e) => e.fmt(f),
         }
     }
@@ -127,7 +130,7 @@ impl BackupWriter {
                 &self.config.regex,
                 self.config.local,
             )
-            .map_err(BackupError::GenericError)?;
+            .map_err(BackupError::IOError)?;
             let mut list: Vec<FileInfo> = fc
                 .into_iter()
                 .filter_map(|fi| match fi {
@@ -186,7 +189,7 @@ impl BackupWriter {
                 &self.config.regex,
                 self.config.local,
             )
-            .map_err(BackupError::GenericError)?;
+            .map_err(BackupError::IOError)?;
             let mut list = Vec::<FileInfo>::with_capacity(500);
             if all || self.prev_time.is_none() {
                 for res in fc.into_iter() {
@@ -256,14 +259,14 @@ impl BackupWriter {
         {
             let mut encoder =
                 CompressionEncoder::create(&self.path, self.config.quality, self.config.threads)
-                    .map_err(BackupError::GenericError)?;
+                    .map_err(BackupError::IOError)?;
             self.config.time = Some(self.time);
             encoder
                 .append_data("config.yml", self.config.to_yaml()?)
-                .map_err(BackupError::GenericError)?;
+                .map_err(BackupError::IOError)?;
             encoder
                 .append_data("files.csv", list_string)
-                .map_err(BackupError::GenericError)?;
+                .map_err(BackupError::IOError)?;
 
             let prev_time = self.prev_time.clone();
             let list = self.list.as_mut().unwrap();
@@ -276,13 +279,13 @@ impl BackupWriter {
                                     if parse_date::system_to_naive(time) >= prev_time {
                                         let res = encoder
                                             .append_file(fi.get_path())
-                                            .map_err(BackupError::GenericError);
+                                            .map_err(BackupError::IOError);
                                         on_added(fi, res)?;
                                     }
                                 }
-                                Err(e) => on_added(fi, Err(BackupError::GenericError(e)))?,
+                                Err(e) => on_added(fi, Err(BackupError::IOError(e)))?,
                             },
-                            Err(e) => on_added(fi, Err(BackupError::GenericError(e)))?,
+                            Err(e) => on_added(fi, Err(BackupError::IOError(e)))?,
                         }
                     }
                 }
@@ -290,13 +293,13 @@ impl BackupWriter {
                     for fi in list.iter_mut() {
                         let res = encoder
                             .append_file(fi.get_path())
-                            .map_err(BackupError::GenericError);
+                            .map_err(BackupError::IOError);
                         on_added(fi, res)?;
                     }
                 }
             }
             on_final();
-            encoder.close().map_err(BackupError::GenericError)?;
+            encoder.close().map_err(BackupError::IOError)?;
         }
         Ok(())
     }
@@ -461,7 +464,7 @@ impl<'a> BackupReader<'a> {
     }
 
     /// move the list of files out of the backup
-    pub fn extract_list(&mut self) -> Result<String, Box<dyn Error>> {
+    pub fn extract_list(&mut self) -> Result<String, BackupError> {
         if self.list.is_none() {
             self.read_list()?;
         }
@@ -529,12 +532,12 @@ impl<'a> BackupReader<'a> {
     }
 
     /// Is this an incemental backup
-    pub fn is_incremental(&mut self) -> Result<bool, Box<dyn Error>> {
+    pub fn is_incremental(&mut self) -> Result<bool, BackupError> {
         Ok(self.get_config()?.incremental)
     }
 
     /// Try to find the previous backup
-    pub fn get_previous(&mut self) -> Result<Option<Self>, Box<dyn Error>> {
+    pub fn get_previous(&mut self) -> Result<Option<Self>, BackupError> {
         if !self.is_incremental()? {
             return Ok(None);
         }
@@ -562,9 +565,9 @@ impl<'a> BackupReader<'a> {
     pub fn restore_this(
         &mut self,
         mut path_transform: impl FnMut(FileInfo) -> FileInfo,
-        mut callback: impl FnMut(std::io::Result<FileInfo>),
+        mut callback: impl FnMut(std::io::Result<FileInfo>) -> Result<(), BackupError>,
         overwrite: bool,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), BackupError> {
         for res in self.files()? {
             match res {
                 Ok((fi, mut entry)) => {
@@ -573,19 +576,19 @@ impl<'a> BackupReader<'a> {
                         callback(Err(std::io::Error::new(
                             std::io::ErrorKind::AlreadyExists,
                             format!("File '{}' already exists", path.get_string()),
-                        )));
+                        )))?;
                     } else {
                         if let Some(dir) = path.get_path().parent() {
                             callback(
                                 create_dir_all(dir)
                                     .and_then(|_| entry.unpack(path.get_path()).and(Ok(path))),
-                            );
+                            )?;
                         } else {
-                            callback(entry.unpack(path.get_path()).and(Ok(path)));
+                            callback(entry.unpack(path.get_path()).and(Ok(path)))?;
                         }
                     }
                 }
-                Err(e) => callback(Err(e)),
+                Err(e) => callback(Err(e))?,
             }
         }
         Ok(())
@@ -596,9 +599,9 @@ impl<'a> BackupReader<'a> {
     pub fn restore_all(
         &mut self,
         path_transform: impl FnMut(FileInfo) -> FileInfo,
-        callback: impl FnMut(std::io::Result<FileInfo>),
+        callback: impl FnMut(std::io::Result<FileInfo>) -> Result<(), BackupError>,
         overwrite: bool,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), BackupError> {
         let list = self.extract_list()?;
         let files = list.split('\n').collect();
         let res = self.restore_selected(files, path_transform, callback, overwrite);
@@ -607,15 +610,15 @@ impl<'a> BackupReader<'a> {
     }
 
     /// Restore specific files
-    pub fn restore_selected(
+    pub fn restore_selected<S: AsRef<str>>(
         &mut self,
-        selection: Vec<&str>,
+        selection: Vec<S>,
         mut path_transform: impl FnMut(FileInfo) -> FileInfo,
-        mut callback: impl FnMut(std::io::Result<FileInfo>),
+        mut callback: impl FnMut(std::io::Result<FileInfo>) -> Result<(), BackupError>,
         overwrite: bool,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), BackupError> {
         let mut not_found: Vec<&str> = vec![];
-        let mut list = selection.into_iter();
+        let mut list = selection.iter().map(|v| v.as_ref());
         let mut current = match list.next() {
             Some(f) => f,
             None => return Ok(()),
@@ -639,15 +642,15 @@ impl<'a> BackupReader<'a> {
                             callback(Err(std::io::Error::new(
                                 std::io::ErrorKind::AlreadyExists,
                                 format!("File '{}' already exists", path.get_string()),
-                            )));
+                            )))?;
                         } else {
                             if let Some(dir) = path.get_path().parent() {
                                 callback(
                                     create_dir_all(dir)
                                         .and_then(|_| entry.unpack(path.get_path()).and(Ok(path))),
-                                );
+                                )?;
                             } else {
-                                callback(entry.unpack(path.get_path()).and(Ok(path)));
+                                callback(entry.unpack(path.get_path()).and(Ok(path)))?;
                             }
                         }
                         current = match list.next() {
@@ -656,7 +659,7 @@ impl<'a> BackupReader<'a> {
                         };
                     }
                 }
-                Err(e) => callback(Err(e)),
+                Err(e) => callback(Err(e))?,
             }
         }
         if not_found.len() > 0 {
@@ -673,7 +676,7 @@ impl<'a> BackupReader<'a> {
                                 f,
                                 self.path.to_string_lossy()
                             ),
-                        )));
+                        )))?;
                     }
                 }
             }
