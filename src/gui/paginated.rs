@@ -1,9 +1,9 @@
 #![cfg(feature = "gui")]
 use std::cmp::min;
 
-use iced::pure::widget::{Column, Row, Space};
+use iced::pure::widget::{Column, Space};
 use iced::pure::Element;
-use iced::{Alignment, Length};
+use iced::Length;
 
 use super::{presets, Message};
 
@@ -64,61 +64,57 @@ impl State {
             scroll = scroll.push(item);
         }
         if self.total > self.length {
-            scroll = scroll.push(
-                Row::with_children(vec![
-                    Space::with_width(Length::Fill).into(),
-                    presets::button_grey(
-                        "<<",
-                        if self.index > 0 {
-                            Message::GoTo(0)
-                        } else {
-                            Message::None
-                        },
-                        false,
-                    )
-                    .into(),
-                    presets::button_grey(
-                        "<",
-                        if self.index > 0 {
-                            Message::GoTo(self.index.saturating_sub(self.length))
-                        } else {
-                            Message::None
-                        },
-                        false,
-                    )
-                    .into(),
-                    presets::text_center(&format!(
-                        "{} - {} ({})",
-                        self.index,
-                        min(self.index + self.length, self.total),
-                        self.total
-                    ))
-                    .into(),
-                    presets::button_grey(
-                        ">",
-                        if self.index + self.length < self.total {
-                            Message::GoTo(self.index + self.length)
-                        } else {
-                            Message::None
-                        },
-                        false,
-                    )
-                    .into(),
-                    presets::button_grey(
-                        ">>",
-                        if self.index + self.length < self.total {
-                            Message::GoTo(usize::MAX)
-                        } else {
-                            Message::None
-                        },
-                        false,
-                    )
-                    .into(),
-                    Space::with_width(Length::Fill).into(),
-                ])
-                .align_items(Alignment::Center)
-                .spacing(presets::INNER_SPACING),
-            );
+            scroll = scroll.push(presets::row_list2(vec![
+                Space::with_width(Length::Fill).into(),
+                presets::button_grey(
+                    "<<",
+                    if self.index > 0 {
+                        Message::GoTo(0)
+                    } else {
+                        Message::None
+                    },
+                    false,
+                )
+                .into(),
+                presets::button_grey(
+                    "<",
+                    if self.index > 0 {
+                        Message::GoTo(self.index.saturating_sub(self.length))
+                    } else {
+                        Message::None
+                    },
+                    false,
+                )
+                .into(),
+                presets::text_center(&format!(
+                    "{} - {} ({})",
+                    self.index,
+                    min(self.index + self.length, self.total),
+                    self.total
+                ))
+                .into(),
+                presets::button_grey(
+                    ">",
+                    if self.index + self.length < self.total {
+                        Message::GoTo(self.index + self.length)
+                    } else {
+                        Message::None
+                    },
+                    false,
+                )
+                .into(),
+                presets::button_grey(
+                    ">>",
+                    if self.index + self.length < self.total {
+                        Message::GoTo(usize::MAX)
+                    } else {
+                        Message::None
+                    },
+                    false,
+                )
+                .into(),
+                Space::with_width(Length::Fill).into(),
+            ]));
         }
         scroll
     }

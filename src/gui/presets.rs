@@ -1,26 +1,31 @@
 #![cfg(feature = "gui")]
+use std::borrow::Cow;
+
 use iced::alignment::{Horizontal, Vertical};
+use iced::pane_grid::Pane;
 use iced::pure::widget::{
-    button, pane_grid, text_input, Button, Checkbox, Column, Container, ProgressBar, Row,
-    Scrollable, Space, Text, TextInput, Toggler, Tooltip,
+    button, pane_grid, text_input, Button, Checkbox, Column, Container, PaneGrid, PickList,
+    ProgressBar, Row, Scrollable, Space, Text, TextInput, Toggler, Tooltip,
 };
 use iced::pure::Element;
-use iced::{container, progress_bar, tooltip, Alignment, Color, Length};
+use iced::{container, progress_bar, tooltip, Alignment, Background, Color, Length, Vector};
 
 use super::Message;
 
 const APP_COLOR: Color = Color::from_rgb(78.0 / 255.0, 155.0 / 255.0, 71.0 / 255.0); //#4E9B47
 const APP2_COLOR: Color = Color::from_rgb(172.0 / 255.0, 215.0 / 255.0, 168.0 / 255.0); //#acd7a8
 const COMP_COLOR: Color = Color::from_rgb(148.0 / 255.0, 71.0 / 255.0, 155.0 / 255.0); //#94479b
-const GREY_COLOR: Color = Color::from_rgb(0.65, 0.65, 0.65);
+const GREY_COLOR: Color = Color::from_rgb(0.6, 0.6, 0.6);
 const LIGHT_COLOR: Color = Color::from_rgb(0.9, 0.9, 0.9);
 const DARK_COLOR: Color = Color::from_rgb(0.3, 0.3, 0.3);
 const SMALL_RADIUS: f32 = 3.0;
 const LARGE_RADIUS: f32 = 5.0;
 const ICON_BUTTON_WIDTH: u16 = 30;
-pub const INNER_SPACING: u16 = 3;
+const INNER_SPACING: u16 = 3;
 pub const OUTER_SPACING: u16 = 6;
 pub const LARGE_SPACING: u16 = 6;
+const SHADOW_OFFSET: Vector<f32> = Vector::new(1.0, 2.0);
+const BORDER_WIDTH: f32 = 2.0;
 
 pub(crate) fn button_color(text: &str, action: Message) -> Button<Message> {
     let label = Text::new(text)
@@ -89,10 +94,10 @@ pub(crate) fn space_icon() -> Space {
 }
 
 pub(crate) fn space_scroll() -> Space {
-    Space::with_width(Length::Units(0))
+    Space::with_width(Length::Shrink)
 }
 
-pub(crate) fn space_inner_height() -> Space {
+pub(crate) fn space_inner() -> Space {
     Space::with_height(Length::Units(INNER_SPACING))
 }
 
@@ -119,8 +124,16 @@ pub(crate) fn button_main(text: &str, alt: bool, action: Message) -> Button<Mess
     }
 }
 
-pub(crate) fn row_list(children: Vec<Element<Message>>) -> Row<Message> {
+pub(crate) fn row_list<'a>() -> Row<'a, Message> {
+    Row::new()
+        .width(Length::Fill)
+        .align_items(Alignment::Center)
+        .spacing(INNER_SPACING)
+}
+
+pub(crate) fn row_list2(children: Vec<Element<Message>>) -> Row<Message> {
     Row::with_children(children)
+        .width(Length::Fill)
         .align_items(Alignment::Center)
         .spacing(INNER_SPACING)
 }
@@ -132,7 +145,17 @@ pub(crate) fn row_bar(children: Vec<Element<Message>>) -> Row<Message> {
 }
 
 pub(crate) fn column_list<'a>() -> Column<'a, Message> {
-    Column::new().width(Length::Fill).spacing(INNER_SPACING)
+    Column::new()
+        .width(Length::Fill)
+        .spacing(INNER_SPACING)
+        .padding(INNER_SPACING)
+}
+
+pub(crate) fn column_list2(children: Vec<Element<Message>>) -> Column<Message> {
+    Column::with_children(children)
+        .width(Length::Fill)
+        .spacing(INNER_SPACING)
+        .padding(INNER_SPACING)
 }
 
 pub(crate) fn column_main(children: Vec<Element<Message>>) -> Column<Message> {
@@ -142,26 +165,36 @@ pub(crate) fn column_main(children: Vec<Element<Message>>) -> Column<Message> {
         .padding(INNER_SPACING)
 }
 
-pub(crate) fn text(text: &str) -> Text {
+pub(crate) fn text<S: Into<String>>(text: S) -> Text {
     Text::new(text)
 }
 
-pub(crate) fn text_title(text: &str) -> Text {
+pub(crate) fn text_title<S: Into<String>>(text: S) -> Text {
     Text::new(text)
         .size(32)
         .horizontal_alignment(Horizontal::Center)
 }
 
-pub(crate) fn text_error(text: &str) -> Text {
+pub(crate) fn text_error<S: Into<String>>(text: S) -> Text {
     Text::new(text)
         .color(COMP_COLOR)
         .horizontal_alignment(Horizontal::Center)
 }
 
-pub(crate) fn text_center(text: &str) -> Text {
+pub(crate) fn text_center<S: Into<String>>(text: S) -> Text {
     Text::new(text)
         .horizontal_alignment(Horizontal::Center)
         .vertical_alignment(Vertical::Center)
+}
+
+pub(crate) fn pane_grid<'a, T, F>(state: &'a pane_grid::State<T>, view: F) -> PaneGrid<Message>
+where
+    F: Fn(Pane, &'a T) -> pane_grid::Content<'a, Message>,
+{
+    PaneGrid::new(state, view)
+        .on_resize(10, Message::PaneResized)
+        .on_drag(Message::PaneDragged)
+        .spacing(INNER_SPACING)
 }
 
 pub(crate) fn pane_border<'a>(
@@ -185,6 +218,14 @@ pub(crate) fn pane_border<'a>(
     pane_grid::Content::new(content)
         .title_bar(title_bar)
         .style(ContainerStyle::Pane)
+}
+
+pub(crate) fn scroll_pane<'a>(
+    title: &str,
+    button: Option<(&'a str, Message)>,
+    content: Element<'a, Message>,
+) -> pane_grid::Content<'a, Message> {
+    pane_border(title, button, Scrollable::new(content).into())
 }
 
 pub(crate) fn scroll_border<'a>(content: Element<'a, Message>) -> Container<'a, Message> {
@@ -244,6 +285,21 @@ where
     Checkbox::new(state, label, on_change)
 }
 
+pub(crate) fn pick_list<'a, T, F>(
+    options: impl Into<Cow<'a, [T]>>,
+    selected: Option<T>,
+    on_change: F,
+) -> PickList<'a, T, Message>
+where
+    T: ToString + Eq,
+    [T]: ToOwned<Owned = Vec<T>>,
+    F: 'static + Fn(T) -> Message,
+{
+    PickList::new(options, selected, on_change)
+        .style(PickListStyle::Normal)
+        .width(Length::Shrink)
+}
+
 pub enum ButtonStyle {
     GreyButton,
     LightButton,
@@ -273,19 +329,23 @@ pub enum ToggleStyle {
     Normal,
 }
 
+pub enum PickListStyle {
+    Normal,
+}
+
 impl container::StyleSheet for ContainerStyle {
     fn style(&self) -> container::Style {
         match &self {
             ContainerStyle::PaneTitleBar => container::Style {
                 text_color: Some(Color::WHITE),
-                background: Some(GREY_COLOR.into()),
+                background: Some(DARK_COLOR.into()),
                 border_radius: SMALL_RADIUS,
                 ..Default::default()
             },
             ContainerStyle::Pane => container::Style {
                 background: Some(Color::WHITE.into()),
-                border_width: 2.0,
-                border_color: GREY_COLOR,
+                border_width: BORDER_WIDTH,
+                border_color: DARK_COLOR,
                 border_radius: SMALL_RADIUS,
                 ..Default::default()
             },
@@ -302,7 +362,7 @@ impl button::StyleSheet for ButtonStyle {
     fn active(&self) -> button::Style {
         match &self {
             ButtonStyle::GreyButton => button::Style {
-                background: Some(GREY_COLOR.into()),
+                background: Some(DARK_COLOR.into()),
                 text_color: Color::WHITE,
                 border_radius: SMALL_RADIUS,
                 ..Default::default()
@@ -339,13 +399,21 @@ impl button::StyleSheet for ButtonStyle {
             },
         }
     }
+
+    fn hovered(&self) -> button::Style {
+        button::Style {
+            text_color: LIGHT_COLOR,
+            shadow_offset: SHADOW_OFFSET,
+            ..self.active()
+        }
+    }
 }
 
 impl text_input::StyleSheet for InputStyle {
     fn active(&self) -> text_input::Style {
         text_input::Style {
             background: Color::WHITE.into(),
-            border_color: GREY_COLOR,
+            border_color: DARK_COLOR,
             border_radius: SMALL_RADIUS,
             border_width: 1.0,
             ..Default::default()
@@ -397,6 +465,36 @@ impl iced::toggler::StyleSheet for ToggleStyle {
         iced::toggler::Style {
             foreground: LIGHT_COLOR,
             ..self.active(is_active)
+        }
+    }
+}
+
+impl iced::pick_list::StyleSheet for PickListStyle {
+    fn menu(&self) -> iced::pick_list::Menu {
+        iced::pick_list::Menu {
+            background: Background::Color(LIGHT_COLOR.into()),
+            selected_background: Background::Color(APP_COLOR),
+            border_color: DARK_COLOR,
+            border_width: 1.0,
+            ..iced::pick_list::Menu::default()
+        }
+    }
+
+    fn active(&self) -> iced::pick_list::Style {
+        iced::pick_list::Style {
+            border_radius: SMALL_RADIUS,
+            background: Background::Color(APP_COLOR.into()),
+            text_color: Color::WHITE,
+            border_color: APP_COLOR,
+            ..iced::pick_list::Style::default()
+        }
+    }
+
+    fn hovered(&self) -> iced::pick_list::Style {
+        iced::pick_list::Style {
+            border_color: Color::BLACK,
+            text_color: LIGHT_COLOR,
+            ..self.active()
         }
     }
 }

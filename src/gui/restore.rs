@@ -155,8 +155,8 @@ impl<'a> RestoreState<'a> {
                                 .width(Length::Fill)
                                 .into()
                         });
-                presets::row_list(vec![
-                    Space::with_width(Length::Shrink).into(),
+                presets::row_list2(vec![
+                    presets::space_inner().into(),
                     presets::checkbox(self.all, "", |_| Message::ToggleAll).into(),
                     presets::space_large().into(),
                     presets::regex_field(&self.filter, "Search", self.filter_ok, |s| {

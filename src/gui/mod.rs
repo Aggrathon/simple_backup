@@ -4,9 +4,9 @@ use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 
 use iced::alignment::{Horizontal, Vertical};
-use iced::pure::widget::{pane_grid, Column, PaneGrid, PickList, Row, Scrollable, Space};
+use iced::pure::widget::{pane_grid, Column, Row, Space};
 use iced::pure::{Application, Element};
-use iced::{clipboard, executor, Alignment, Command, Length, Settings, Subscription, Text};
+use iced::{clipboard, executor, Alignment, Command, Length, Settings, Subscription};
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
 
@@ -311,29 +311,26 @@ impl ConfigState {
     }
 
     fn view(&self) -> Element<Message> {
-        let pane_grid = PaneGrid::new(&self.panes, |_, pane| pane.content())
-            .on_resize(10, Message::PaneResized)
-            .on_drag(Message::PaneDragged)
-            .spacing(presets::OUTER_SPACING);
-        let bar = Row::with_children(vec![
+        let pane_grid = presets::pane_grid(&self.panes, |_, pane| pane.content());
+        let bar = presets::row_bar(vec![
             presets::button_nav("Back", Message::MainView, false).into(),
             Space::with_width(Length::Fill).into(),
-            Text::new("Threads:").into(),
-            PickList::new(
+            presets::text("Threads:").into(),
+            presets::pick_list(
                 &self.thread_alt,
                 Some(self.config.threads),
                 Message::ThreadCount,
             )
             .into(),
-            Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
-            Text::new("Compression quality:").into(),
-            PickList::new(
+            presets::space_large().into(),
+            presets::text("Compression quality:").into(),
+            presets::pick_list(
                 &self.compression_alt,
                 Some(self.config.quality),
                 Message::CompressionQuality,
             )
             .into(),
-            Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
+            presets::space_large().into(),
             presets::toggler(
                 self.config.incremental,
                 "Incremental backups:",
@@ -343,14 +340,8 @@ impl ConfigState {
             Space::with_width(Length::Fill).into(),
             presets::button_nav("Save", Message::Save, true).into(),
             presets::button_nav("Backup", Message::BackupView, true).into(),
-        ])
-        .spacing(presets::INNER_SPACING)
-        .align_items(Alignment::Center);
-        Column::with_children(vec![pane_grid.into(), bar.into()])
-            .width(Length::Fill)
-            .spacing(presets::INNER_SPACING)
-            .padding(presets::INNER_SPACING)
-            .into()
+        ]);
+        presets::column_main(vec![pane_grid.into(), bar.into()]).into()
     }
 
     fn update(&mut self, message: Message) -> iced::Command<Message> {
@@ -601,25 +592,17 @@ impl Pane {
     }
 
     fn content(&self) -> pane_grid::Content<Message> {
-        let content = Scrollable::new(
-            self.items.iter().fold(
-                Column::new()
-                    .width(Length::Fill)
-                    .spacing(presets::INNER_SPACING)
-                    .padding(presets::OUTER_SPACING),
-                |content, item| content.push(item.view()),
-            ),
-        );
+        let content = presets::column_list2(self.items.iter().map(|i| i.view()).collect());
         match self.content {
-            ConfigPane::Files => presets::pane_border(
+            ConfigPane::Files => presets::scroll_pane(
                 "Files",
                 Some(("Open", Message::FolderDialog)),
                 content.into(),
             ),
-            ConfigPane::Includes => presets::pane_border("Includes", None, content.into()),
-            ConfigPane::Excludes => presets::pane_border("Excludes", None, content.into()),
+            ConfigPane::Includes => presets::scroll_pane("Includes", None, content.into()),
+            ConfigPane::Excludes => presets::scroll_pane("Excludes", None, content.into()),
             ConfigPane::Filters => {
-                presets::pane_border("Filters", Some(("Add", Message::FilterAdd)), content.into())
+                presets::scroll_pane("Filters", Some(("Add", Message::FilterAdd)), content.into())
             }
         }
     }
@@ -670,11 +653,7 @@ impl ListItem {
     }
 
     fn view(&self) -> Element<Message> {
-        let row = Row::new()
-            .width(Length::Fill)
-            // .padding(presets::OUTER_SPACING)
-            .spacing(presets::INNER_SPACING)
-            .align_items(Alignment::Center);
+        let row = presets::row_list();
         let row = match self.state {
             ListState::File => row.push(presets::space_icon()),
             ListState::Folder => row.push(presets::tooltip_right(
@@ -703,7 +682,7 @@ impl ListItem {
         let row = match &self.state {
             ListState::Error => row.push(presets::text_error(&self.text).width(Length::Fill)),
             ListState::Filter => row,
-            _ => row.push(Text::new(&self.text).width(Length::Fill)),
+            _ => row.push(presets::text(&self.text).width(Length::Fill)),
         };
         let row = match &self.state {
             ListState::File | ListState::Folder | ListState::ParentFolder(_) => row
@@ -1066,9 +1045,7 @@ impl BackupState {
     }
 
     fn view(&self) -> Element<Message> {
-        let mut scroll = Column::new()
-            .width(Length::Fill)
-            .spacing(presets::INNER_SPACING);
+        let mut scroll = presets::column_list();
         match &self.stage {
             BackupStage::Scanning(_) => {
                 if !self.error.is_empty() {
@@ -1077,30 +1054,23 @@ impl BackupState {
                             .horizontal_alignment(Horizontal::Left),
                     );
                 }
-                let brow = Row::with_children(vec![
+                let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::EditConfig, false).into(),
                     Space::with_width(Length::Fill).into(),
-                    Text::new(format!(
+                    presets::text_center(format!(
                         "Scanning for files to backup: {} with total size {}\n",
                         self.total_count,
                         format_size(self.total_size)
                     ))
-                    .vertical_alignment(Vertical::Center)
                     .into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav("Backup", Message::None, true).into(),
-                ])
-                .align_items(Alignment::Center)
-                .spacing(presets::INNER_SPACING);
+                ]);
                 let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
-                Column::with_children(vec![scroll.into(), brow.into()])
-                    .width(Length::Fill)
-                    .spacing(presets::INNER_SPACING)
-                    .padding(presets::INNER_SPACING)
-                    .into()
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
             }
             BackupStage::Viewing(writer) => {
-                let trow = Row::with_children(vec![
+                let trow = presets::row_list2(vec![
                     presets::button_grey(
                         "Name",
                         Message::SortName,
@@ -1122,8 +1092,7 @@ impl BackupState {
                     )
                     .width(Length::Units(182))
                     .into(),
-                ])
-                .spacing(presets::INNER_SPACING);
+                ]);
                 if !self.error.is_empty() {
                     scroll = scroll.push(
                         presets::text_error(&self.error[1..])
@@ -1136,20 +1105,18 @@ impl BackupState {
                         .try_iter_files()
                         .expect("The files should already be crawled at this point"),
                     |f| {
-                        Row::with_children(vec![
-                            Text::new(f.copy_string()).width(Length::Fill).into(),
-                            Text::new(format_size(f.size))
+                        presets::row_list2(vec![
+                            presets::text(f.copy_string()).width(Length::Fill).into(),
+                            presets::text(format_size(f.size))
                                 .width(Length::Units(102))
                                 .horizontal_alignment(Horizontal::Right)
                                 .into(),
-                            Text::new(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
+                            presets::text(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
                                 .width(Length::Units(182))
                                 .horizontal_alignment(Horizontal::Right)
                                 .into(),
                             presets::space_scroll().into(),
                         ])
-                        .align_items(Alignment::Center)
-                        .spacing(presets::INNER_SPACING)
                         .into()
                     },
                 );
@@ -1168,28 +1135,16 @@ impl BackupState {
                         format_size(self.total_size)
                     )
                 };
-                let brow = Row::with_children(vec![
+                let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::EditConfig, false).into(),
                     Space::with_width(Length::Fill).into(),
-                    Text::new(status)
-                        .vertical_alignment(Vertical::Center)
-                        .into(),
+                    presets::text_center(status).into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_color("Export list", Message::Export).into(),
                     presets::button_nav("Backup", Message::Backup, true).into(),
-                ])
-                .align_items(Alignment::Center)
-                .spacing(presets::INNER_SPACING);
+                ]);
                 let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
-                Column::with_children(vec![
-                    trow.into(),
-                    scroll.into(),
-                    presets::space_inner_height().into(),
-                    brow.into(),
-                ])
-                .width(Length::Fill)
-                .padding(presets::INNER_SPACING)
-                .into()
+                presets::column_main(vec![trow.into(), scroll.into(), brow.into()]).into()
             }
             BackupStage::Performing(_) | BackupStage::Cancelling(_) => {
                 if !self.error.is_empty() {
@@ -1199,11 +1154,11 @@ impl BackupState {
                     );
                 }
                 let status = if let BackupStage::Cancelling(_) = self.stage {
-                    Text::new("Cancelling the backup...")
+                    presets::text_error("Cancelling the backup...")
                 } else if self.current_count >= self.total_count {
-                    Text::new("Waiting for the compression to complete...")
+                    presets::text("Waiting for the compression to complete...")
                 } else {
-                    Text::new(&format!(
+                    presets::text(&format!(
                         "Backing up file {} of {}, {} of {}",
                         self.current_count,
                         self.total_count,
@@ -1214,7 +1169,7 @@ impl BackupState {
                 let max = (self.total_size / 1024 + self.total_count as u64) as f32;
                 let current = (self.current_size / 1024 + self.current_count as u64) as f32;
                 let bar = presets::progress_bar(current + max * 0.005, max * 1.01);
-                let brow = Row::with_children(vec![
+                let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::None, false).into(),
                     Space::with_width(Length::Fill).into(),
                     status.vertical_alignment(Vertical::Center).into(),
@@ -1229,15 +1184,9 @@ impl BackupState {
                         false,
                     )
                     .into(),
-                ])
-                .align_items(Alignment::Center)
-                .spacing(presets::INNER_SPACING);
+                ]);
                 let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
-                Column::with_children(vec![scroll.into(), bar.into(), brow.into()])
-                    .width(Length::Fill)
-                    .spacing(presets::INNER_SPACING)
-                    .padding(presets::INNER_SPACING)
-                    .into()
+                presets::column_main(vec![scroll.into(), bar.into(), brow.into()]).into()
             }
             BackupStage::Failure => {
                 if !self.error.is_empty() {
@@ -1246,19 +1195,13 @@ impl BackupState {
                             .horizontal_alignment(Horizontal::Left),
                     );
                 }
-                let brow = Row::with_children(vec![
+                let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::None, false).into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav("Refresh", Message::BackupView, true).into(),
-                ])
-                .align_items(Alignment::Center)
-                .spacing(presets::INNER_SPACING);
+                ]);
                 let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
-                Column::with_children(vec![scroll.into(), brow.into()])
-                    .width(Length::Fill)
-                    .spacing(presets::INNER_SPACING)
-                    .padding(presets::INNER_SPACING)
-                    .into()
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
             }
         }
     }
