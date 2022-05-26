@@ -43,9 +43,9 @@ pub(crate) fn button_grey(text: &str, action: Message, light: bool) -> Button<Me
         .horizontal_alignment(Horizontal::Center)
         .vertical_alignment(Vertical::Center);
     let but = if light {
-        Button::new(label).style(ButtonStyle::LightButton)
-    } else {
         Button::new(label).style(ButtonStyle::GreyButton)
+    } else {
+        Button::new(label).style(ButtonStyle::DarkButton)
     };
     if let Message::None = action {
         but
@@ -301,8 +301,8 @@ where
 }
 
 pub enum ButtonStyle {
+    DarkButton,
     GreyButton,
-    LightButton,
     MainButton,
     MainButtonAlt,
     ColorButton,
@@ -361,15 +361,15 @@ impl container::StyleSheet for ContainerStyle {
 impl button::StyleSheet for ButtonStyle {
     fn active(&self) -> button::Style {
         match &self {
-            ButtonStyle::GreyButton => button::Style {
+            ButtonStyle::DarkButton => button::Style {
                 background: Some(DARK_COLOR.into()),
                 text_color: Color::WHITE,
                 border_radius: SMALL_RADIUS,
                 ..Default::default()
             },
-            ButtonStyle::LightButton => button::Style {
-                background: Some(LIGHT_COLOR.into()),
-                text_color: Color::BLACK,
+            ButtonStyle::GreyButton => button::Style {
+                background: Some(GREY_COLOR.into()),
+                text_color: Color::WHITE,
                 border_radius: SMALL_RADIUS,
                 ..Default::default()
             },
