@@ -19,6 +19,7 @@ use crate::utils::{format_size, get_config_from_pathbuf};
 
 mod paginated;
 mod presets;
+mod restore;
 
 #[allow(dead_code)]
 #[cfg_attr(target_os = "windows", link(name = "Kernel32"))]
@@ -38,39 +39,39 @@ pub fn gui() {
 pub(crate) enum Message {
     PaneResized(pane_grid::ResizeEvent),
     PaneDragged(pane_grid::DragEvent),
-    Main,
+    MainView,
     CreateConfig,
     EditConfig,
-    Backup,
-    Restore,
-    ToggleIncremental(bool),
+    BackupView,
+    RestoreView,
+    Incremental(bool),
     ThreadCount(u32),
     CompressionQuality(i32),
-    AddInclude(usize),
-    RemoveInclude(usize),
-    CopyInclude(usize),
-    AddExclude(usize),
-    RemoveExclude(usize),
-    CopyExclude(usize),
-    AddFilter,
-    RemoveFilter(usize),
-    EditFilter(usize, String),
-    OpenFolder(usize),
-    GoUp,
-    DialogFolder,
-    SaveConfig,
+    IncludeAdd(usize),
+    IncludeRemove(usize),
+    IncludeCopy(usize),
+    ExcludeAdd(usize),
+    ExcludeRemove(usize),
+    ExcludeCopy(usize),
+    FilterAdd,
+    FilterRemove(usize),
+    FilterEdit(usize, String),
+    FolderOpen(usize),
+    FolderUp,
+    FolderDialog,
+    Save,
     SortName,
     SortSize,
     SortTime,
     GoTo(usize),
-    StartBackup,
-    CancelBackup,
+    Backup,
+    Cancel,
     Export,
     Tick,
-    ToggleSelected(usize),
+    Toggle(usize),
     ToggleAll,
-    RestoreAll,
-    ExtractSelected,
+    Restore,
+    Extract,
     None,
 }
 
@@ -78,7 +79,7 @@ enum ApplicationState<'a> {
     Main(MainState),
     Config(ConfigState),
     Backup(BackupState),
-    Restore(RestoreState<'a>),
+    Restore(restore::RestoreState<'a>),
 }
 
 fn open_config() -> Option<Config> {
@@ -156,7 +157,7 @@ impl<'a> Application for ApplicationState<'a> {
                 }
                 Command::none()
             }
-            Message::Backup => {
+            Message::BackupView => {
                 if let ApplicationState::Config(state) = self {
                     let mut config = std::mem::take(&mut state.config);
                     if let Some(path) = FileDialog::new()
@@ -176,9 +177,9 @@ impl<'a> Application for ApplicationState<'a> {
                 };
                 Command::none()
             }
-            Message::Restore => {
+            Message::RestoreView => {
                 if let Some(reader) = open_backup() {
-                    *self = ApplicationState::Restore(RestoreState::new(reader));
+                    *self = ApplicationState::Restore(restore::RestoreState::new(reader));
                 }
                 Command::none()
             }
@@ -186,7 +187,7 @@ impl<'a> Application for ApplicationState<'a> {
                 eprintln!("Unspecified GUI message");
                 Command::none()
             }
-            Message::Main => {
+            Message::MainView => {
                 *self = ApplicationState::Main(MainState::new());
                 Command::none()
             }
@@ -230,8 +231,8 @@ impl MainState {
             Space::with_height(Length::Shrink).into(),
             presets::button_main("Create", false, Message::CreateConfig).into(),
             presets::button_main("Edit", false, Message::EditConfig).into(),
-            presets::button_main("Backup", false, Message::Backup).into(),
-            presets::button_main("Restore", true, Message::Restore).into(),
+            presets::button_main("Backup", false, Message::BackupView).into(),
+            presets::button_main("Restore", true, Message::RestoreView).into(),
             Space::with_height(Length::Fill).into(),
         ])
         .align_items(Alignment::Center)
@@ -316,7 +317,7 @@ impl ConfigState {
             .on_drag(Message::PaneDragged)
             .spacing(presets::OUTER_SPACING);
         let bar = Row::with_children(vec![
-            presets::button_nav("Back", Message::Main, false).into(),
+            presets::button_nav("Back", Message::MainView, false).into(),
             Space::with_width(Length::Fill).into(),
             Text::new("Threads:").into(),
             PickList::new(
@@ -337,12 +338,12 @@ impl ConfigState {
             Checkbox::new(
                 self.config.incremental,
                 "Incremental backups",
-                Message::ToggleIncremental,
+                Message::Incremental,
             )
             .into(),
             Space::with_width(Length::Fill).into(),
-            presets::button_nav("Save", Message::SaveConfig, true).into(),
-            presets::button_nav("Backup", Message::Backup, true).into(),
+            presets::button_nav("Save", Message::Save, true).into(),
+            presets::button_nav("Backup", Message::BackupView, true).into(),
         ])
         .spacing(presets::INNER_SPACING)
         .align_items(Alignment::Center);
@@ -362,10 +363,10 @@ impl ConfigState {
                 self.panes.swap(&pane, &target)
             }
             Message::PaneDragged(_) => {}
-            Message::ToggleIncremental(t) => self.config.incremental = t,
+            Message::Incremental(t) => self.config.incremental = t,
             Message::ThreadCount(text) => self.config.set_threads(text),
             Message::CompressionQuality(text) => self.config.set_quality(text),
-            Message::AddInclude(i) => {
+            Message::IncludeAdd(i) => {
                 let pane = self.panes.get_mut(&self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
                     let s = std::mem::take(&mut li.text);
@@ -379,19 +380,19 @@ impl ConfigState {
                     self.refresh_files();
                 }
             }
-            Message::RemoveInclude(i) => {
+            Message::IncludeRemove(i) => {
                 if i < self.config.include.len() {
                     self.config.include.remove(i);
                     self.refresh_includes();
                     self.refresh_files();
                 }
             }
-            Message::CopyInclude(i) => {
+            Message::IncludeCopy(i) => {
                 if let Some(s) = self.config.include.get(i) {
                     clipboard::write::<Message>(s.to_string());
                 }
             }
-            Message::AddExclude(i) => {
+            Message::ExcludeAdd(i) => {
                 let pane = self.panes.get_mut(&self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
                     let s = std::mem::take(&mut li.text);
@@ -405,30 +406,30 @@ impl ConfigState {
                     self.refresh_files();
                 }
             }
-            Message::RemoveExclude(i) => {
+            Message::ExcludeRemove(i) => {
                 if i < self.config.exclude.len() {
                     self.config.exclude.remove(i);
                     self.refresh_excludes();
                     self.refresh_files();
                 }
             }
-            Message::CopyExclude(i) => {
+            Message::ExcludeCopy(i) => {
                 if let Some(s) = self.config.exclude.get(i) {
                     clipboard::write::<Message>(s.to_string());
                 }
             }
-            Message::AddFilter => {
+            Message::FilterAdd => {
                 self.config.regex.push(String::new());
                 self.refresh_filters();
             }
-            Message::RemoveFilter(i) => {
+            Message::FilterRemove(i) => {
                 if i < self.config.regex.len() {
                     self.config.regex.remove(i);
                     self.refresh_filters();
                     self.refresh_files();
                 }
             }
-            Message::EditFilter(i, s) => {
+            Message::FilterEdit(i, s) => {
                 let pane = self.panes.get_mut(&self.filters).unwrap();
                 let mut refresh = false;
                 if let Some(item) = pane.items.get_mut(i) {
@@ -448,14 +449,14 @@ impl ConfigState {
                     self.refresh_files();
                 }
             }
-            Message::OpenFolder(i) => {
+            Message::FolderOpen(i) => {
                 let pane = self.panes.get_mut(&self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
                     self.current_dir = FileInfo::from(std::mem::take(&mut li.text));
                     self.refresh_files();
                 }
             }
-            Message::DialogFolder => {
+            Message::FolderDialog => {
                 if let Some(folder) = FileDialog::new()
                     .set_directory(self.current_dir.get_path())
                     .set_title("Open Directory")
@@ -465,13 +466,13 @@ impl ConfigState {
                     self.refresh_files();
                 }
             }
-            Message::GoUp => {
+            Message::FolderUp => {
                 if let Some(dir) = self.current_dir.get_path().parent() {
                     self.current_dir = FileInfo::from(dir);
                     self.refresh_files();
                 }
             }
-            Message::SaveConfig => {
+            Message::Save => {
                 if let Some(file) = FileDialog::new()
                     .set_directory(self.config.get_output())
                     .set_title("Save config file")
@@ -613,13 +614,13 @@ impl Pane {
         match self.content {
             ConfigPane::Files => presets::pane_border(
                 "Files",
-                Some(("Open", Message::DialogFolder)),
+                Some(("Open", Message::FolderDialog)),
                 content.into(),
             ),
             ConfigPane::Includes => presets::pane_border("Includes", None, content.into()),
             ConfigPane::Excludes => presets::pane_border("Excludes", None, content.into()),
             ConfigPane::Filters => {
-                presets::pane_border("Filters", Some(("Add", Message::AddFilter)), content.into())
+                presets::pane_border("Filters", Some(("Add", Message::FilterAdd)), content.into())
             }
         }
     }
@@ -678,20 +679,24 @@ impl ListItem {
         let row = match self.state {
             ListState::File => row.push(presets::space_icon()),
             ListState::Folder => row.push(presets::tooltip_right(
-                presets::button_icon(">", Message::OpenFolder(self.index), false).into(),
+                presets::button_icon(">", Message::FolderOpen(self.index), false).into(),
                 "Open",
             )),
             ListState::ParentFolder(up) => row.push(presets::tooltip_right(
-                presets::button_icon("<", if up { Message::GoUp } else { Message::None }, true)
-                    .into(),
+                presets::button_icon(
+                    "<",
+                    if up { Message::FolderUp } else { Message::None },
+                    true,
+                )
+                .into(),
                 "Go Up",
             )),
             ListState::Include => row.push(presets::tooltip_right(
-                presets::button_icon("C", Message::CopyInclude(self.index), false).into(),
+                presets::button_icon("C", Message::IncludeCopy(self.index), false).into(),
                 "Copy",
             )),
             ListState::Exclude => row.push(presets::tooltip_right(
-                presets::button_icon("C", Message::CopyExclude(self.index), false).into(),
+                presets::button_icon("C", Message::ExcludeCopy(self.index), false).into(),
                 "Copy",
             )),
             ListState::Error | ListState::Filter => row,
@@ -709,7 +714,7 @@ impl ListItem {
                         if self.status {
                             Message::None
                         } else {
-                            Message::AddInclude(self.index)
+                            Message::IncludeAdd(self.index)
                         },
                         false,
                     )
@@ -720,7 +725,7 @@ impl ListItem {
                     presets::button_icon(
                         "-",
                         if self.status {
-                            Message::AddExclude(self.index)
+                            Message::ExcludeAdd(self.index)
                         } else {
                             Message::None
                         },
@@ -730,16 +735,16 @@ impl ListItem {
                     "Exclude",
                 )),
             ListState::Include => row.push(presets::tooltip_left(
-                presets::button_icon("-", Message::RemoveInclude(self.index), true).into(),
+                presets::button_icon("-", Message::IncludeRemove(self.index), true).into(),
                 "Remove",
             )),
             ListState::Exclude => row.push(presets::tooltip_left(
-                presets::button_icon("-", Message::RemoveExclude(self.index), true).into(),
+                presets::button_icon("-", Message::ExcludeRemove(self.index), true).into(),
                 "Remove",
             )),
             ListState::Filter => {
                 let i = self.index;
-                let mess = move |t| Message::EditFilter(i, t);
+                let mess = move |t| Message::FilterEdit(i, t);
                 let row = row.push(presets::regex_field(
                     &self.text,
                     "Regex filter",
@@ -752,7 +757,7 @@ impl ListItem {
                     row
                 }
                 .push(presets::tooltip_left(
-                    presets::button_icon("-", Message::RemoveFilter(self.index), true).into(),
+                    presets::button_icon("-", Message::FilterRemove(self.index), true).into(),
                     "Remove",
                 ))
             }
@@ -904,7 +909,7 @@ impl BackupState {
                                                         self.error.push_str(&e.to_string());
                                                     };
                                                 }
-                                                self.pagination.change_total(self.total_count);
+                                                self.pagination.set_total(self.total_count);
                                                 self.stage = BackupStage::Viewing(bw);
                                             }
                                             Err(_) => self.error.push_str(
@@ -997,7 +1002,7 @@ impl BackupState {
                         .sort_unstable_by(|a, b| b.time.unwrap().cmp(&a.time.unwrap()));
                 }
             }
-            Message::StartBackup => {
+            Message::Backup => {
                 if let BackupStage::Viewing(_) = &self.stage {
                     self.list_sort = ListSort::Name;
                     if let BackupStage::Viewing(mut writer) =
@@ -1010,7 +1015,7 @@ impl BackupState {
                     }
                 }
             }
-            Message::CancelBackup => {
+            Message::Cancel => {
                 if let BackupStage::Performing(_) = &self.stage {
                     if let BackupStage::Performing(wrapper) =
                         std::mem::replace(&mut self.stage, BackupStage::Failure)
@@ -1172,7 +1177,7 @@ impl BackupState {
                         .into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_color("Export list", Message::Export).into(),
-                    presets::button_nav("Backup", Message::StartBackup, true).into(),
+                    presets::button_nav("Backup", Message::Backup, true).into(),
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
@@ -1220,7 +1225,7 @@ impl BackupState {
                         if let BackupStage::Cancelling(_) = self.stage {
                             Message::None
                         } else {
-                            Message::CancelBackup
+                            Message::Cancel
                         },
                         false,
                     )
@@ -1245,7 +1250,7 @@ impl BackupState {
                 let brow = Row::with_children(vec![
                     presets::button_nav("Edit", Message::None, false).into(),
                     Space::with_width(Length::Fill).into(),
-                    presets::button_nav("Refresh", Message::Backup, true).into(),
+                    presets::button_nav("Refresh", Message::BackupView, true).into(),
                 ])
                 .align_items(Alignment::Center)
                 .spacing(presets::INNER_SPACING);
@@ -1257,183 +1262,5 @@ impl BackupState {
                     .into()
             }
         }
-    }
-}
-
-enum RestoreStage<'a> {
-    Error,
-    View(BackupReader<'a>, Vec<(bool, String)>, paginated::State),
-    // Extract,
-}
-
-struct RestoreState<'a> {
-    filter: String,
-    error: String,
-    stage: RestoreStage<'a>,
-    all: bool,
-}
-
-impl<'a> RestoreState<'a> {
-    fn new(mut reader: BackupReader<'a>) -> Self {
-        let mut state = Self {
-            error: String::new(),
-            stage: RestoreStage::Error,
-            all: false,
-            filter: String::new(),
-        };
-        if let Err(e) = reader.read_all() {
-            state.error.push('\n');
-            state.error.push_str(&e.to_string());
-            return state;
-        }
-        let list: Vec<(bool, String)> = reader
-            .get_list()
-            .expect("The list should already be extracted")
-            .split('\n')
-            .map(|s| (false, String::from(s)))
-            .collect();
-        let size = list.len();
-        state.stage = RestoreStage::View(reader, list, paginated::State::new(100, size));
-        state
-    }
-
-    fn update(&mut self, message: Message) -> Command<Message> {
-        //TODO Restore func
-        match message {
-            Message::ToggleSelected(i) => {
-                if let RestoreStage::View(_, list, _) = &mut self.stage {
-                    if let Some((b, _)) = list.get_mut(i) {
-                        *b = !*b;
-                    }
-                    self.all = false;
-                }
-            }
-            Message::RestoreAll => todo!(),
-            Message::ExtractSelected => todo!(),
-            Message::Export => {
-                if let RestoreStage::View(reader, _, _) = &mut self.stage {
-                    if let Some(file) = FileDialog::new()
-                        .set_directory(&reader.path)
-                        .set_title("Save the list of files in the backup")
-                        .set_file_name("files.txt")
-                        .add_filter("Text file", &["txt"])
-                        .add_filter("Csv file", &["csv"])
-                        .save_file()
-                    {
-                        if let Err(e) = reader.export_list(file) {
-                            self.error.push('\n');
-                            self.error.push_str(&e.to_string());
-                            self.stage = RestoreStage::Error;
-                        }
-                    }
-                }
-            }
-            Message::ToggleAll => {
-                if let RestoreStage::View(_, list, _) = &mut self.stage {
-                    //TODO search filter
-                    if self.all {
-                        list.iter_mut().for_each(|(b, _)| *b = false);
-                        self.all = false;
-                    } else {
-                        list.iter_mut().for_each(|(b, _)| *b = true);
-                        self.all = true;
-                    }
-                }
-            }
-            Message::EditFilter(_, s) => {
-                self.filter = s;
-            }
-            Message::AddFilter => {
-                //TODO search filter
-                todo!();
-            }
-            Message::GoTo(index) => {
-                if let RestoreStage::View(_, _, pagination) = &mut self.stage {
-                    pagination.goto(index)
-                }
-            }
-            _ => {}
-        }
-        Command::none()
-    }
-
-    fn view(&self) -> Element<Message> {
-        let mut scroll = Column::new()
-            .width(Length::Fill)
-            .spacing(presets::INNER_SPACING);
-        if !self.error.is_empty() {
-            scroll = scroll.push(presets::text_error(&self.error[1..]))
-        }
-        let trow = match &self.stage {
-            RestoreStage::Error => Space::with_height(Length::Shrink).into(),
-            RestoreStage::View(_, list, view) => {
-                //TODO search filter
-                scroll = view.push_to(scroll, list.iter().enumerate(), |(i, (sel, file))| {
-                    Checkbox::new(*sel, file, move |_| Message::ToggleSelected(i))
-                        .width(Length::Fill)
-                        .into()
-                });
-                let regex = Regex::new(&self.filter).is_ok();
-                Row::with_children(vec![
-                    Space::with_width(Length::Units(0)).into(),
-                    Checkbox::new(self.all, "", |_| Message::ToggleAll).into(),
-                    Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
-                    presets::regex_field(&self.filter, "Regex filter", regex, |s| {
-                        Message::EditFilter(0, s)
-                    })
-                    .width(Length::Fill)
-                    .on_submit(Message::AddFilter)
-                    .into(),
-                    presets::button_nav(
-                        "Search",
-                        if regex {
-                            Message::AddFilter
-                        } else {
-                            Message::None
-                        },
-                        true,
-                    )
-                    .into(),
-                ])
-                .align_items(Alignment::Center)
-                .spacing(presets::INNER_SPACING)
-                .into()
-            }
-        };
-        let mut brow = Row::with_children(vec![
-            presets::button_nav("Back", Message::Main, false).into(),
-            Space::with_width(Length::Fill).into(),
-        ])
-        .align_items(Alignment::Center)
-        .spacing(presets::INNER_SPACING);
-        if let RestoreStage::View(reader, list, _) = &self.stage {
-            brow = brow
-                .push(Text::new(&match reader
-                    .config
-                    .as_ref()
-                    .expect("The config should already be read")
-                    .time
-                {
-                    Some(t) => format!(
-                        "{} files from {}",
-                        list.len(),
-                        t.format("%Y-%m-%d %H:%M:%S")
-                    ),
-                    None => format!("{} files", list.len(),),
-                }))
-                .push(Space::with_width(Length::Fill))
-                .push(presets::button_color("Export list", Message::Export))
-                .push(presets::button_color(
-                    "Extract selected",
-                    Message::ExtractSelected,
-                ))
-                .push(presets::button_color("Restore all", Message::RestoreAll));
-        }
-        let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
-        Column::with_children(vec![trow, scroll.into(), brow.into()])
-            .width(Length::Fill)
-            .spacing(presets::INNER_SPACING)
-            .padding(presets::INNER_SPACING)
-            .into()
     }
 }

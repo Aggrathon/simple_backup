@@ -42,9 +42,13 @@ impl State {
         };
     }
 
-    pub fn change_total(&mut self, total: usize) {
+    pub fn set_total(&mut self, total: usize) {
         self.total = total;
         self.index = 0;
+    }
+
+    pub fn get_total(&mut self) -> usize {
+        self.total
     }
 
     pub fn push_to<'a, T>(
@@ -54,7 +58,8 @@ impl State {
         renderer: fn(T) -> Element<'a, Message>,
     ) -> Column<'a, Message> {
         let mut scroll = scroll;
-        for item in items.skip(self.index).take(self.length) {
+        let count = min(self.index + self.length, self.total) - self.index;
+        for item in items.skip(self.index).take(count) {
             let item: Element<Message> = renderer(item);
             scroll = scroll.push(item);
         }
@@ -83,9 +88,10 @@ impl State {
                     )
                     .into(),
                     presets::text_center(&format!(
-                        "{:3} - {:3}",
+                        "{} - {} ({})",
                         self.index,
-                        min(self.index + self.length, self.total)
+                        min(self.index + self.length, self.total),
+                        self.total
                     ))
                     .into(),
                     presets::button_grey(
