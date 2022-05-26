@@ -214,6 +214,20 @@ pub fn get_backup_from_path<'a, S: AsRef<str>>(
     }
 }
 
+pub fn strip_absolute_from_path(path: &str) -> String {
+    let path = path.trim_start_matches('.');
+    let path = path.trim_start_matches('/');
+    #[cfg(target_os = "windows")]
+    {
+        let path = path.trim_start_matches('\\');
+        path.replace(':', "")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        path.into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
@@ -222,7 +236,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{get_backup_from_path, get_config_from_path, BackupIterator};
-    use crate::Config;
+    use crate::{utils::strip_absolute_from_path, Config};
 
     #[test]
     fn try_macros() {
@@ -284,5 +298,16 @@ mod tests {
         );
         assert_eq!(get_backup_from_path(f1.to_string_lossy()).unwrap().path, f1);
         Ok(())
+    }
+
+    #[test]
+    fn strip_abs() {
+        assert_eq!("server/path", strip_absolute_from_path("/server/path"));
+        assert_eq!("path", strip_absolute_from_path("../path"));
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!("server\\path", strip_absolute_from_path("\\\\server\\path"));
+            assert_eq!("E\\path", strip_absolute_from_path("E:\\path"));
+        }
     }
 }

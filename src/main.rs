@@ -53,7 +53,7 @@ fn arg_output<'a>(restore: bool) -> Arg<'a, 'a> {
         .value_name("PATH")
         .takes_value(true);
     if restore {
-        arg.help("The root directory to restore to")
+        arg.help("The directory to restore to (if not original)")
     } else {
         arg.help(
             "Where should the backup be stored (either a direcory or a file ending in `.tar.zst`)",
@@ -302,7 +302,7 @@ fn main() {
         cli::restore(
             get_backup_from_path(matches.value_of("source").unwrap())
                 .expect("Could not find backup"),
-            matches.value_of("output").unwrap_or("."),
+            matches.value_of("output"),
             matches
                 .values_of("include")
                 .unwrap_or(Values::default())

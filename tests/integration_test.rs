@@ -3,11 +3,13 @@
 use std::fs::{remove_file, File};
 use std::path::PathBuf;
 
+use path_absolutize::Absolutize;
 use simple_backup;
 use simple_backup::backup::{BackupReader, BackupWriter};
 use simple_backup::cli::{backup, restore};
 use simple_backup::config::Config;
 use simple_backup::parse_date::naive_now;
+use simple_backup::utils::strip_absolute_from_path;
 use tempfile::tempdir;
 
 #[test]
@@ -55,7 +57,7 @@ fn cli_test() {
     reader.export_list(dir.path().join("files.txt")).unwrap();
     restore(
         reader,
-        &dir.path().to_string_lossy(),
+        None,
         vec![&f1.to_string_lossy()],
         vec![],
         false,
@@ -74,7 +76,7 @@ fn cli_test() {
     let conf = Config::from_yaml(&mut bw1.config.to_yaml().unwrap()).unwrap();
     restore(
         BackupReader::from_config(conf).unwrap(),
-        &dir.path().to_string_lossy(),
+        None,
         vec![],
         vec![&f2.to_string_lossy().replace('\\', "/")],
         false,
@@ -93,7 +95,7 @@ fn cli_test() {
     let conf = Config::from_yaml(&mut bw1.config.to_yaml().unwrap()).unwrap();
     restore(
         BackupReader::from_config(conf).unwrap(),
-        &dir2.to_string_lossy(),
+        Some(&dir2.to_string_lossy()),
         vec![],
         vec![],
         true,
@@ -201,7 +203,7 @@ fn local_test() -> Result<(), Box<dyn std::error::Error>> {
     let reader = BackupReader::from_config(config)?;
     restore(
         reader,
-        &dir.path().to_string_lossy(),
+        Some(&dir.path().to_string_lossy()),
         vec![],
         vec![],
         false,
@@ -216,6 +218,94 @@ fn local_test() -> Result<(), Box<dyn std::error::Error>> {
     assert!(!dir.path().join(".target").exists());
     assert!(!dir.path().join(".git").exists());
     assert!(!dir.path().join("README.md").exists());
+    Ok(())
+}
+
+#[test]
+fn flatten_test() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempdir().unwrap();
+
+    let config = Config {
+        include: vec![
+            "./src/lib.rs".to_string(),
+            PathBuf::from("./src/cli.rs")
+                .absolutize()?
+                .to_string_lossy()
+                .to_string(),
+        ],
+        exclude: vec![],
+        regex: vec![],
+        output: dir.path().to_path_buf(),
+        incremental: false,
+        quality: 11,
+        local: true,
+        threads: 1,
+        time: None,
+        origin: PathBuf::new(),
+    };
+    backup(config.clone(), false, false, false, true);
+
+    let reader = BackupReader::from_config(config)?;
+    restore(
+        reader,
+        Some(&dir.path().to_string_lossy()),
+        vec![],
+        vec![],
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+    );
+
+    assert!(dir.path().join("cli.rs").exists());
+    assert!(dir.path().join("lib.rs").exists());
+    Ok(())
+}
+
+#[test]
+fn extract_test() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempdir().unwrap();
+
+    let inc = vec![
+        "./src/lib.rs".to_string(),
+        PathBuf::from("./src/cli.rs")
+            .absolutize()?
+            .to_string_lossy()
+            .to_string(),
+    ];
+    let config = Config {
+        include: inc.clone(),
+        exclude: vec![],
+        regex: vec![],
+        output: dir.path().to_path_buf(),
+        incremental: false,
+        quality: 11,
+        local: true,
+        threads: 1,
+        time: None,
+        origin: PathBuf::new(),
+    };
+    backup(config.clone(), false, false, false, true);
+
+    let reader = BackupReader::from_config(config)?;
+    restore(
+        reader,
+        Some(&dir.path().to_string_lossy()),
+        vec![],
+        vec![],
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+    );
+
+    for p in inc.iter() {
+        assert!(dir.path().join(strip_absolute_from_path(p)).exists());
+    }
     Ok(())
 }
 
@@ -269,7 +359,7 @@ fn time_test() -> std::io::Result<()> {
 
     restore(
         BackupReader::from_config(config)?,
-        &dir.path().to_string_lossy(),
+        None,
         vec![],
         vec![],
         false,

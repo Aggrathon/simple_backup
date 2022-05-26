@@ -9,7 +9,7 @@ use regex::RegexSet;
 use crate::backup::{BackupReader, BackupWriter};
 use crate::config::Config;
 use crate::files::{FileAccessError, FileInfo};
-use crate::utils::sanitise_windows_paths;
+use crate::utils::{sanitise_windows_paths, strip_absolute_from_path};
 
 /// Backup files
 pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool) {
@@ -121,47 +121,41 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
 /// Restore files from a backup
 pub fn restore(
     mut source: BackupReader,
-    output: &str,
+    output: Option<&str>,
     include: Vec<&str>,
     regex: Vec<&str>,
     flatten: bool,
-    non_incremental: bool,
+    only_this: bool,
     force: bool,
     verbose: bool,
     dry: bool,
     quiet: bool,
 ) {
-    let non_incremental = {
+    let only_this = {
         let mut conf = source.get_config().expect("Could not read the backup");
         if conf.incremental {
-            if non_incremental {
-                // non_incremental => !config.incremental
+            if only_this {
                 conf.incremental = false;
             }
-            non_incremental
+            only_this
         } else {
-            // !config.incremental => non_incremental
             true
         }
     };
     let list_str: String;
     let list: Vec<String>;
     let include: Vec<&str> = if include.is_empty() {
-        if non_incremental && regex.is_empty() {
-            vec![]
+        list_str = source
+            .extract_list()
+            .expect("Could not get list of files from backup");
+        if regex.is_empty() {
+            list_str.split('\n').collect()
         } else {
-            list_str = source
-                .extract_list()
-                .expect("Could not get list of files from backup");
-            if regex.is_empty() {
-                list_str.split('\n').collect()
-            } else {
-                let regex = RegexSet::new(regex).expect("Could not parse regex");
-                list_str
-                    .split('\n')
-                    .filter(|f| !regex.is_match(f))
-                    .collect()
-            }
+            let regex = RegexSet::new(regex).expect("Could not parse regex");
+            list_str
+                .split('\n')
+                .filter(|f| !regex.is_match(f))
+                .collect()
         }
     } else {
         if regex.is_empty() {
@@ -177,7 +171,7 @@ pub fn restore(
         list.iter().map(String::as_str).collect()
     };
 
-    if include.is_empty() && !non_incremental {
+    if include.is_empty() && !only_this {
         if !quiet {
             eprintln!("No files to backup");
         }
@@ -207,7 +201,6 @@ pub fn restore(
         bar.tick();
         bar.enable_steady_tick(1000);
 
-        let output = PathBuf::from(output);
         let callback = |res| match res {
             Ok(_) => bar.inc(1),
             Err(e) => {
@@ -217,25 +210,30 @@ pub fn restore(
         };
 
         if flatten {
+            let output = PathBuf::from(output.expect("Output directory required for flattening"));
             let path_transform = |mut fi: FileInfo| {
                 bar.set_message(fi.move_string());
                 FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
             };
-            if non_incremental && include.is_empty() {
+            if only_this && include.is_empty() {
                 source.restore_this(path_transform, callback, force)
             } else {
                 source.restore_selected(include, path_transform, callback, force)
             }
         } else {
+            let output = output.map(PathBuf::from);
             let path_transform = |mut fi: FileInfo| {
-                bar.set_message(fi.move_string());
-                if fi.get_path().has_root() {
-                    fi
+                if let Some(o) = &output {
+                    let s = fi.move_string();
+                    let path = strip_absolute_from_path(&s);
+                    bar.set_message(s);
+                    FileInfo::from(o.join(path))
                 } else {
-                    FileInfo::from(output.join(fi.consume_path()))
+                    bar.set_message(fi.move_string());
+                    fi
                 }
             };
-            if non_incremental && include.is_empty() {
+            if only_this && include.is_empty() {
                 source.restore_this(path_transform, callback, force)
             } else {
                 source.restore_selected(include, path_transform, callback, force)
