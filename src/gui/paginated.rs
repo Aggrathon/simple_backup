@@ -1,4 +1,5 @@
 #![cfg(feature = "gui")]
+
 use std::cmp::min;
 
 use iced::pure::widget::{Column, Space};

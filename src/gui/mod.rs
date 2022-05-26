@@ -17,6 +17,7 @@ mod config;
 mod paginated;
 mod presets;
 mod restore;
+mod threads;
 
 #[allow(dead_code)]
 #[cfg_attr(target_os = "windows", link(name = "Kernel32"))]

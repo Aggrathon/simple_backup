@@ -1,4 +1,5 @@
 #![cfg(feature = "gui")]
+
 use std::borrow::Cow;
 
 use iced::alignment::{Horizontal, Vertical};

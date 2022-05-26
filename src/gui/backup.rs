@@ -1,72 +1,16 @@
 #![cfg(feature = "gui")]
-use std::sync::mpsc::Receiver;
-use std::thread::JoinHandle;
 
 use iced::alignment::{Horizontal, Vertical};
 use iced::pure::Element;
 use iced::{Command, Length, Space, Subscription};
 use rfd::FileDialog;
 
+use super::threads::ThreadWrapper;
 use super::{paginated, presets, Message};
 use crate::backup::{BackupError, BackupWriter};
 use crate::config::Config;
 use crate::files::FileInfo;
 use crate::utils::format_size;
-struct ThreadWrapper<T1, T2> {
-    queue: Receiver<T1>,
-    handle: JoinHandle<T2>,
-}
-
-impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
-    fn crawl_for_files(config: Config) -> Self {
-        let (send, queue) = std::sync::mpsc::channel();
-        let handle = std::thread::spawn(move || {
-            let (mut writer, error) = BackupWriter::new(config);
-            #[allow(unused_must_use)]
-            if let Some(e) = error {
-                send.send(Err(e));
-            }
-            let error = writer.foreach_file(true, |res| {
-                send.send(match res {
-                    Ok(fi) => Ok(fi.clone()),
-                    Err(e) => Err(BackupError::FileAccessError(e)),
-                })
-                .map_err(|_| BackupError::Cancel)
-            });
-            #[allow(unused_must_use)]
-            if let Err(e) = error {
-                send.send(Err(e));
-            }
-            std::mem::drop(send);
-            writer
-        });
-        Self { queue, handle }
-    }
-
-    fn backup_files(writer: BackupWriter) -> Self {
-        let (send, queue) = std::sync::mpsc::channel();
-        let handle = std::thread::spawn(move || {
-            let mut writer = writer;
-            let error = writer.write(
-                #[allow(unused_must_use)]
-                |fi, res| {
-                    if let Err(e) = res {
-                        send.send(Err(e));
-                    }
-                    send.send(Ok(fi.clone())).map_err(|_| BackupError::Cancel)
-                },
-                || {},
-            );
-            #[allow(unused_must_use)]
-            if let Err(e) = error {
-                send.send(Err(e));
-            }
-            std::mem::drop(send);
-            writer
-        });
-        Self { queue, handle }
-    }
-}
 
 #[derive(PartialEq, Eq)]
 enum ListSort {
@@ -74,6 +18,7 @@ enum ListSort {
     Size,
     Time,
 }
+
 enum BackupStage {
     Scanning(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
     Viewing(BackupWriter),
@@ -115,7 +60,7 @@ impl BackupState {
             Message::Tick => match &mut self.stage {
                 BackupStage::Scanning(crawler) => {
                     for _ in 0..1000 {
-                        match crawler.queue.try_recv() {
+                        match crawler.try_recv() {
                             Ok(res) => match res {
                                 Ok(fi) => {
                                     self.total_count += 1;
@@ -134,7 +79,7 @@ impl BackupState {
                                     if let BackupStage::Scanning(crawler) =
                                         std::mem::replace(&mut self.stage, BackupStage::Failure)
                                     {
-                                        match crawler.handle.join() {
+                                        match crawler.join() {
                                             Ok(mut bw) => {
                                                 if self.config.incremental && bw.prev_time.is_some()
                                                 {
@@ -168,7 +113,7 @@ impl BackupState {
                 }
                 BackupStage::Performing(wrapper) => {
                     for _ in 0..1000 {
-                        match wrapper.queue.try_recv() {
+                        match wrapper.try_recv() {
                             Ok(res) => match res {
                                 Ok(fi) => {
                                     self.current_count += 1;
@@ -187,7 +132,7 @@ impl BackupState {
                                     if let BackupStage::Performing(wrapper) =
                                         std::mem::replace(&mut self.stage, BackupStage::Failure)
                                     {
-                                        match wrapper.handle.join() {
+                                        match wrapper.join() {
                                             Ok(bw) => {
                                                 self.current_count = 0;
                                                 self.stage = BackupStage::Viewing(bw)
@@ -207,8 +152,7 @@ impl BackupState {
                     if let BackupStage::Cancelling(wrapper) =
                         std::mem::replace(&mut self.stage, BackupStage::Failure)
                     {
-                        std::mem::drop(wrapper.queue);
-                        match wrapper.handle.join() {
+                        match wrapper.cancel() {
                             Ok(writer) => {
                                 self.current_count = 0;
                                 self.stage = BackupStage::Viewing(writer)
