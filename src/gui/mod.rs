@@ -6,9 +6,7 @@ use std::thread::JoinHandle;
 use iced::alignment::{Horizontal, Vertical};
 use iced::pure::widget::{pane_grid, Column, PaneGrid, PickList, Row, Scrollable, Space};
 use iced::pure::{Application, Element};
-use iced::{
-    clipboard, executor, Alignment, Checkbox, Command, Length, Settings, Subscription, Text,
-};
+use iced::{clipboard, executor, Alignment, Command, Length, Settings, Subscription, Text};
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
 
@@ -72,6 +70,7 @@ pub(crate) enum Message {
     ToggleAll,
     Restore,
     Extract,
+    Flat(bool),
     None,
 }
 
@@ -335,9 +334,9 @@ impl ConfigState {
             )
             .into(),
             Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
-            Checkbox::new(
+            presets::toggler(
                 self.config.incremental,
-                "Incremental backups",
+                "Incremental backups:",
                 Message::Incremental,
             )
             .into(),

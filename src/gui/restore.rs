@@ -1,8 +1,7 @@
 #![cfg(feature = "gui")]
 
-use iced::pure::widget::{Checkbox, Column, Row, Text};
 use iced::pure::Element;
-use iced::{Alignment, Command, Length, Space};
+use iced::{Command, Length, Space};
 use regex::Regex;
 use rfd::FileDialog;
 
@@ -21,6 +20,7 @@ pub(crate) struct RestoreState<'a> {
     error: String,
     stage: RestoreStage<'a>,
     all: bool,
+    flat: bool,
     pagination: paginated::State,
 }
 
@@ -32,6 +32,7 @@ impl<'a> RestoreState<'a> {
             all: false,
             filter: String::new(),
             filter_ok: true,
+            flat: false,
             pagination: paginated::State::new(100, 0),
         };
         if let Err(e) = reader.read_all() {
@@ -95,8 +96,9 @@ impl<'a> RestoreState<'a> {
                     self.all = false;
                 }
             }
-            Message::Restore => todo!(),
+            Message::Flat(b) => self.flat = b,
             Message::Extract => todo!(),
+            Message::Restore => todo!(),
             Message::Export => {
                 if let RestoreStage::View(reader, _) = &mut self.stage {
                     if let Some(file) = FileDialog::new()
@@ -139,9 +141,7 @@ impl<'a> RestoreState<'a> {
     }
 
     pub fn view(&self) -> Element<Message> {
-        let mut scroll = Column::new()
-            .width(Length::Fill)
-            .spacing(presets::INNER_SPACING);
+        let mut scroll = presets::column_list();
         if !self.error.is_empty() {
             scroll = scroll.push(presets::text_error(&self.error[1..]))
         }
@@ -151,14 +151,14 @@ impl<'a> RestoreState<'a> {
                 scroll =
                     self.pagination
                         .push_to(scroll, list.iter().enumerate(), |(i, (sel, file))| {
-                            Checkbox::new(*sel, file, move |_| Message::Toggle(i))
+                            presets::checkbox(*sel, file, move |_| Message::Toggle(i))
                                 .width(Length::Fill)
                                 .into()
                         });
-                Row::with_children(vec![
-                    Space::with_width(Length::Units(0)).into(),
-                    Checkbox::new(self.all, "", |_| Message::ToggleAll).into(),
-                    Space::with_width(Length::Units(presets::LARGE_SPACING)).into(),
+                presets::row_list(vec![
+                    Space::with_width(Length::Shrink).into(),
+                    presets::checkbox(self.all, "", |_| Message::ToggleAll).into(),
+                    presets::space_large().into(),
                     presets::regex_field(&self.filter, "Search", self.filter_ok, |s| {
                         Message::FilterEdit(0, s)
                     })
@@ -166,20 +166,16 @@ impl<'a> RestoreState<'a> {
                     .on_submit(Message::FilterAdd)
                     .into(),
                 ])
-                .align_items(Alignment::Center)
-                .spacing(presets::INNER_SPACING)
                 .into()
             }
         };
-        let mut brow = Row::with_children(vec![
+        let mut brow = presets::row_bar(vec![
             presets::button_nav("Back", Message::MainView, false).into(),
             Space::with_width(Length::Fill).into(),
-        ])
-        .align_items(Alignment::Center)
-        .spacing(presets::INNER_SPACING);
+        ]);
         if let RestoreStage::View(reader, list) = &self.stage {
             brow = brow
-                .push(Text::new(&match reader
+                .push(presets::text(&match reader
                     .config
                     .as_ref()
                     .expect("The config should already be read")
@@ -194,14 +190,11 @@ impl<'a> RestoreState<'a> {
                 }))
                 .push(Space::with_width(Length::Fill))
                 .push(presets::button_color("Export list", Message::Export))
+                .push(presets::toggler(self.flat, "Flat", Message::Flat))
                 .push(presets::button_color("Extract", Message::Extract))
                 .push(presets::button_color("Restore", Message::Restore));
         }
         let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
-        Column::with_children(vec![trow, scroll.into(), brow.into()])
-            .width(Length::Fill)
-            .spacing(presets::INNER_SPACING)
-            .padding(presets::INNER_SPACING)
-            .into()
+        presets::column_main(vec![trow, scroll.into(), brow.into()]).into()
     }
 }

@@ -145,7 +145,7 @@ fn arg_flatten<'a>() -> Arg<'a, 'a> {
     Arg::with_name("flatten")
         .short("F")
         .long("flatten")
-        .help("Remove the paths and restore all files to the same directory")
+        .help("Remove the paths and restore all files to the same directory (if an output path is given)")
         .requires("output")
 }
 

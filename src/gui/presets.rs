@@ -1,10 +1,11 @@
 #![cfg(feature = "gui")]
 use iced::alignment::{Horizontal, Vertical};
 use iced::pure::widget::{
-    button, pane_grid, text_input, Button, Container, Row, Scrollable, Text, TextInput, Tooltip,
+    button, pane_grid, text_input, Button, Checkbox, Column, Container, ProgressBar, Row,
+    Scrollable, Space, Text, TextInput, Toggler, Tooltip,
 };
 use iced::pure::Element;
-use iced::{container, progress_bar, tooltip, Color, Length, ProgressBar, Space};
+use iced::{container, progress_bar, tooltip, Alignment, Color, Length};
 
 use super::Message;
 
@@ -95,6 +96,10 @@ pub(crate) fn space_inner_height() -> Space {
     Space::with_height(Length::Units(INNER_SPACING))
 }
 
+pub(crate) fn space_large() -> Space {
+    Space::with_height(Length::Units(LARGE_SPACING))
+}
+
 pub(crate) fn button_main(text: &str, alt: bool, action: Message) -> Button<Message> {
     let label = Text::new(text)
         .horizontal_alignment(Horizontal::Center)
@@ -112,6 +117,33 @@ pub(crate) fn button_main(text: &str, alt: bool, action: Message) -> Button<Mess
     } else {
         but.on_press(action)
     }
+}
+
+pub(crate) fn row_list(children: Vec<Element<Message>>) -> Row<Message> {
+    Row::with_children(children)
+        .align_items(Alignment::Center)
+        .spacing(INNER_SPACING)
+}
+
+pub(crate) fn row_bar(children: Vec<Element<Message>>) -> Row<Message> {
+    Row::with_children(children)
+        .align_items(Alignment::Center)
+        .spacing(INNER_SPACING)
+}
+
+pub(crate) fn column_list<'a>() -> Column<'a, Message> {
+    Column::new().width(Length::Fill).spacing(INNER_SPACING)
+}
+
+pub(crate) fn column_main(children: Vec<Element<Message>>) -> Column<Message> {
+    Column::with_children(children)
+        .width(Length::Fill)
+        .spacing(INNER_SPACING)
+        .padding(INNER_SPACING)
+}
+
+pub(crate) fn text(text: &str) -> Text {
+    Text::new(text)
 }
 
 pub(crate) fn text_title(text: &str) -> Text {
@@ -194,6 +226,24 @@ pub(crate) fn progress_bar<'a>(current: f32, max: f32) -> ProgressBar<'a> {
         .style(ProgressStyle::Normal)
 }
 
+pub(crate) fn toggler<F>(state: bool, label: &str, on_change: F) -> Toggler<Message>
+where
+    F: 'static + Fn(bool) -> Message,
+{
+    iced::pure::toggler(Some(label.into()), state, on_change)
+        .spacing(INNER_SPACING)
+        .text_alignment(Horizontal::Right)
+        .style(ToggleStyle::Normal)
+        .width(Length::Shrink)
+}
+
+pub(crate) fn checkbox<F>(state: bool, label: &str, on_change: F) -> Checkbox<Message>
+where
+    F: 'static + Fn(bool) -> Message,
+{
+    Checkbox::new(state, label, on_change)
+}
+
 pub enum ButtonStyle {
     GreyButton,
     LightButton,
@@ -216,6 +266,10 @@ pub enum InputStyle {
 }
 
 pub enum ProgressStyle {
+    Normal,
+}
+
+pub enum ToggleStyle {
     Normal,
 }
 
@@ -325,6 +379,24 @@ impl progress_bar::StyleSheet for ProgressStyle {
             background: LIGHT_COLOR.into(),
             bar: APP_COLOR.into(),
             border_radius: LARGE_RADIUS,
+        }
+    }
+}
+
+impl iced::toggler::StyleSheet for ToggleStyle {
+    fn active(&self, is_active: bool) -> iced::toggler::Style {
+        iced::toggler::Style {
+            background: if is_active { APP_COLOR } else { GREY_COLOR },
+            background_border: None,
+            foreground: Color::WHITE,
+            foreground_border: None,
+        }
+    }
+
+    fn hovered(&self, is_active: bool) -> iced::toggler::Style {
+        iced::toggler::Style {
+            foreground: LIGHT_COLOR,
+            ..self.active(is_active)
         }
     }
 }
