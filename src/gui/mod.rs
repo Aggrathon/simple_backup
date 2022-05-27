@@ -196,6 +196,7 @@ impl Application for ApplicationState {
                 ApplicationState::Backup(state) => state.update(message),
                 ApplicationState::Restore(state) => state.update(message),
             },
+            // TODO: Merge backups
         }
     }
 
@@ -232,6 +233,7 @@ impl MainState {
             presets::button_main("Create", false, Message::CreateConfig).into(),
             presets::button_main("Edit", false, Message::EditConfig).into(),
             presets::button_main("Backup", false, Message::BackupView).into(),
+            presets::button_main("Merge", false, Message::None).into(),
             presets::button_main("Restore", true, Message::RestoreView).into(),
             Space::with_height(Length::Fill).into(),
         ])

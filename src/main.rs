@@ -292,6 +292,12 @@ fn main() {
                 .arg(arg_threads())
                 .arg(arg_quality())
                 .arg(arg_dry())
+        )
+        .subcommand(
+            SubCommand::with_name("merge")
+                .version(crate_version!())
+                .about("Merge two backup archives")
+                // TODO more args
         );
     #[cfg(not(feature = "gui"))]
     let app = app.setting(clap::AppSettings::SubcommandRequiredElseHelp);
@@ -355,6 +361,8 @@ fn main() {
             matches.is_present("dry"),
             false,
         );
+    } else if let Some(matches) = matches.subcommand_matches("merge") {
+        // TODO merge archives
     } else {
         #[cfg(feature = "gui")]
         gui::gui();
