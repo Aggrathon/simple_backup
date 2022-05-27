@@ -54,7 +54,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
             }
             Ok(())
         })
-        .expect("Could not crawl for files");
+        .expect("Could not crawl for files:");
     } else {
         if !quiet {
             println!("Crawling for files...");
@@ -69,7 +69,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
             }
             Ok(())
         })
-        .expect("Could not crawl for files");
+        .expect("Could not crawl for files:");
     }
 
     if num_files == 0 {
@@ -111,7 +111,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
             },
             || bar.set_message("Waiting for the compression to complete..."),
         )
-        .expect("Could not create backup file");
+        .expect("Could not create backup file:");
         bar.disable_steady_tick();
         bar.set_message("Backup completed!");
         bar.finish();
@@ -131,9 +131,9 @@ pub fn restore(
     dry: bool,
     quiet: bool,
 ) {
-    source.get_meta().expect("Could not read the backup");
+    source.get_meta().expect("Could not read the backup:");
     let only_this = {
-        let mut conf = source.get_config().expect("Could not read the backup");
+        let mut conf = source.get_config().expect("Could not read the backup:");
         if conf.incremental {
             if only_this {
                 conf.incremental = false;
@@ -148,21 +148,18 @@ pub fn restore(
     let include: Vec<&str> = if include.is_empty() {
         list_str = source
             .move_list()
-            .expect("Could not get list of files from backup");
+            .expect("Could not get list of files from backup:");
         if regex.is_empty() {
             list_str.split('\n').collect()
         } else {
-            let regex = RegexSet::new(regex).expect("Could not parse regex");
-            list_str
-                .split('\n')
-                .filter(|f| !regex.is_match(f))
-                .collect()
+            let regex = RegexSet::new(regex).expect("Could not parse regex:");
+            list_str.split('\n').filter(|f| regex.is_match(f)).collect()
         }
     } else {
         if regex.is_empty() {
             list = include.into_iter().map(sanitise_windows_paths).collect();
         } else {
-            let regex = RegexSet::new(regex).expect("Could not parse regex");
+            let regex = RegexSet::new(regex).expect("Could not parse regex:");
             list = include
                 .into_iter()
                 .filter(|f| !regex.is_match(f))
@@ -214,7 +211,7 @@ pub fn restore(
         };
 
         if flatten {
-            let output = PathBuf::from(output.expect("Output directory required for flattening"));
+            let output = PathBuf::from(output.expect("Output directory required for flattening!"));
             let path_transform = |mut fi: FileInfo| {
                 bar.set_message(fi.move_string());
                 FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
@@ -243,7 +240,7 @@ pub fn restore(
                 source.restore_selected(include, path_transform, callback, force)
             }
         }
-        .expect("Could not restore from backup");
+        .expect("Could not restore from backup:");
 
         bar.disable_steady_tick();
         bar.set_message("Restoration Completed!");

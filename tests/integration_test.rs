@@ -88,9 +88,9 @@ fn cli_test() {
     );
 
     assert!(f1.exists());
-    assert!(!f2.exists());
-    assert!(f3.exists());
-    assert!(f4.exists());
+    assert!(f2.exists());
+    assert!(!f3.exists());
+    assert!(!f4.exists());
 
     let conf = Config::from_yaml(&mut bw1.config.to_yaml().unwrap()).unwrap();
     restore(

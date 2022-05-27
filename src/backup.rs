@@ -554,7 +554,7 @@ impl BackupReader {
                     if !overwrite && path.get_path().exists() {
                         callback(Err(std::io::Error::new(
                             std::io::ErrorKind::AlreadyExists,
-                            format!("File '{}' already exists", path.get_string()),
+                            format!("File '{}' already exists.", path.get_string()),
                         )))?;
                     } else {
                         if let Some(dir) = path.get_path().parent() {
@@ -625,7 +625,7 @@ impl BackupReader {
                         if !overwrite && path.get_path().exists() {
                             callback(Err(std::io::Error::new(
                                 std::io::ErrorKind::AlreadyExists,
-                                format!("File '{}' already exists", path.get_string()),
+                                format!("File '{}' already exists.", path.get_string()),
                             )))?;
                         } else {
                             if let Some(dir) = path.get_path().parent() {
@@ -656,7 +656,7 @@ impl BackupReader {
                         callback(Err(std::io::Error::new(
                             std::io::ErrorKind::NotFound,
                             format!(
-                                "Could not find '{}' in backup '{}'",
+                                "Could not find '{}' in backup '{}'.",
                                 f,
                                 self.path.to_string_lossy()
                             ),

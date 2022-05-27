@@ -182,10 +182,10 @@ fn arg_quality<'a>() -> Arg<'a, 'a> {
                 if v >= 1 && v <= 22 {
                     Ok(())
                 } else {
-                    Err(String::from("Must be a number between 1-22"))
+                    Err(String::from("Must be a number between 1-22!"))
                 }
             }
-            Err(_) => Err(String::from("Must be a number between 1-22")),
+            Err(_) => Err(String::from("Must be a number between 1-22!")),
         })
 }
 
@@ -201,12 +201,12 @@ fn arg_threads<'a>() -> Arg<'a, 'a> {
             Ok(i) => {
                 let cpus = num_cpus::get() as u32;
                 if i < 1 || i > cpus {
-                    Err(format!("Must be a number between 1-{}", cpus))
+                    Err(format!("Must be a number between 1-{}!", cpus))
                 } else {
                     Ok(())
                 }
             }
-            Err(_) => Err(String::from("Must be a number equal or greater than one")),
+            Err(_) => Err(String::from("Must be a number equal or greater than one!")),
         })
 }
 
@@ -301,7 +301,7 @@ fn main() {
         // Restore backed up files
         cli::restore(
             get_backup_from_path(matches.value_of("source").unwrap())
-                .expect("Could not find backup"),
+                .expect("Could not find backup:"),
             matches.value_of("output"),
             matches
                 .values_of("include")
@@ -327,7 +327,7 @@ fn main() {
     } else if let Some(matches) = matches.subcommand_matches("backup") {
         // Backup using an existing config
         let path = matches.value_of("file").unwrap();
-        let config = get_config_from_path(path).expect("Could not load config");
+        let config = get_config_from_path(path).expect("Could not load config:");
         cli::backup(
             config,
             matches.is_present("verbose"),
@@ -339,11 +339,11 @@ fn main() {
         // Create a config file
         let mut config = Config::from_args(&matches);
         if matches.is_present("dry") {
-            println!("{}", config.to_yaml().expect("Could not serialise config"));
+            println!("{}", config.to_yaml().expect("Could not serialise config:"));
         } else {
             config
                 .write_yaml(matches.value_of("file").unwrap())
-                .expect("Could not serialise config");
+                .expect("Could not serialise config:");
         }
     } else if let Some(matches) = matches.subcommand_matches("direct") {
         // Backup using arguments

@@ -70,17 +70,17 @@ impl Config {
             incremental: args.is_present("incremental"),
             quality: args
                 .value_of("quality")
-                .map(|v| clamp(v.parse::<i32>().expect("Could not parse number"), 1, 22))
+                .map(|v| clamp(v.parse::<i32>().expect("Could not parse number:"), 1, 22))
                 .unwrap_or(21),
             threads: args
                 .value_of("threads")
-                .map(|v| v.parse::<u32>().expect("Could not parse number"))
+                .map(|v| v.parse::<u32>().expect("Could not parse number:"))
                 .map(|i| clamp(i, 1, num_cpus::get() as u32))
                 .unwrap_or(1),
             local: args.is_present("local"),
             time: args
                 .value_of("time")
-                .map(|v| parse_date::try_parse(v).expect("Could not parse time"))
+                .map(|v| parse_date::try_parse(v).expect("Could not parse time:"))
                 .unwrap_or(None),
             origin: PathBuf::new(),
         };
