@@ -1,6 +1,6 @@
 #![cfg(feature = "gui")]
 
-use iced::alignment::{Horizontal, Vertical};
+use iced::alignment::Horizontal;
 use iced::pure::Element;
 use iced::{Command, Length, Space, Subscription};
 use rfd::FileDialog;
@@ -255,27 +255,22 @@ impl BackupState {
 
     pub fn view(&self) -> Element<Message> {
         let mut scroll = presets::column_list();
+        if !self.error.is_empty() {
+            scroll = scroll.push(presets::text_error(&self.error[1..]));
+        }
         match &self.stage {
             BackupStage::Scanning(_) => {
-                if !self.error.is_empty() {
-                    scroll = scroll.push(
-                        presets::text_error(&self.error[1..])
-                            .horizontal_alignment(Horizontal::Left),
-                    );
-                }
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::EditConfig, false).into(),
-                    Space::with_width(Length::Fill).into(),
                     presets::text_center(format!(
                         "Scanning for files to backup: {} with total size {}\n",
                         self.total_count,
                         format_size(self.total_size)
                     ))
                     .into(),
-                    Space::with_width(Length::Fill).into(),
                     presets::button_nav("Backup", Message::None, true).into(),
                 ]);
-                let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
+                let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![scroll.into(), brow.into()]).into()
             }
             BackupStage::Viewing(writer) => {
@@ -302,17 +297,11 @@ impl BackupState {
                     .width(Length::Units(182))
                     .into(),
                 ]);
-                if !self.error.is_empty() {
-                    scroll = scroll.push(
-                        presets::text_error(&self.error[1..])
-                            .horizontal_alignment(Horizontal::Left),
-                    );
-                }
                 scroll = self.pagination.push_to(
                     scroll,
                     writer
                         .try_iter_files()
-                        .expect("The files should already be crawled at this point"),
+                        .expect("The files should already be crawled at this point!"),
                     |f| {
                         presets::row_list2(vec![
                             presets::text(f.copy_string()).width(Length::Fill).into(),
@@ -346,28 +335,20 @@ impl BackupState {
                 };
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::EditConfig, false).into(),
-                    Space::with_width(Length::Fill).into(),
                     presets::text_center(status).into(),
-                    Space::with_width(Length::Fill).into(),
                     presets::button_color("Export list", Message::Export).into(),
                     presets::button_nav("Backup", Message::Backup, true).into(),
                 ]);
-                let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
+                let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![trow.into(), scroll.into(), brow.into()]).into()
             }
             BackupStage::Performing(_) | BackupStage::Cancelling(_) => {
-                if !self.error.is_empty() {
-                    scroll = scroll.push(
-                        presets::text_error(&self.error[1..])
-                            .horizontal_alignment(Horizontal::Left),
-                    );
-                }
                 let status = if let BackupStage::Cancelling(_) = self.stage {
-                    presets::text_error("Cancelling the backup...")
+                    presets::text_center_error("Cancelling the backup...")
                 } else if self.current_count >= self.total_count {
-                    presets::text("Waiting for the compression to complete...")
+                    presets::text_center("Waiting for the compression to complete...")
                 } else {
-                    presets::text(&format!(
+                    presets::text_center(&format!(
                         "Backing up file {} of {}, {} of {}",
                         self.current_count,
                         self.total_count,
@@ -380,9 +361,7 @@ impl BackupState {
                 let bar = presets::progress_bar(current + max * 0.005, max * 1.01);
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::None, false).into(),
-                    Space::with_width(Length::Fill).into(),
-                    status.vertical_alignment(Vertical::Center).into(),
-                    Space::with_width(Length::Fill).into(),
+                    status.into(),
                     presets::button_nav(
                         "Cancel",
                         if let BackupStage::Cancelling(_) = self.stage {
@@ -394,22 +373,16 @@ impl BackupState {
                     )
                     .into(),
                 ]);
-                let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
+                let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![scroll.into(), bar.into(), brow.into()]).into()
             }
             BackupStage::Failure => {
-                if !self.error.is_empty() {
-                    scroll = scroll.push(
-                        presets::text_error(&self.error[1..])
-                            .horizontal_alignment(Horizontal::Left),
-                    );
-                }
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::None, false).into(),
                     Space::with_width(Length::Fill).into(),
                     presets::button_nav("Refresh", Message::BackupView, true).into(),
                 ]);
-                let scroll = presets::scroll_border(scroll.into()).height(Length::Fill);
+                let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![scroll.into(), brow.into()]).into()
             }
         }

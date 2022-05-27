@@ -9,7 +9,7 @@ use iced::Length;
 use super::{presets, Message};
 
 pub(crate) struct State {
-    index: usize,
+    pub index: usize,
     total: usize,
     length: usize,
 }
@@ -48,7 +48,7 @@ impl State {
         self.index = 0;
     }
 
-    pub fn get_total(&mut self) -> usize {
+    pub fn get_total(&self) -> usize {
         self.total
     }
 
@@ -87,12 +87,13 @@ impl State {
                     false,
                 )
                 .into(),
-                presets::text_center(&format!(
+                presets::text(&format!(
                     "{} - {} ({})",
                     self.index,
                     min(self.index + self.length, self.total),
                     self.total
                 ))
+                .vertical_alignment(iced::alignment::Vertical::Center)
                 .into(),
                 presets::button_grey(
                     ">",

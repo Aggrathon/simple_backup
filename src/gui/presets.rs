@@ -177,15 +177,22 @@ pub(crate) fn text_title<S: Into<String>>(text: S) -> Text {
 }
 
 pub(crate) fn text_error<S: Into<String>>(text: S) -> Text {
-    Text::new(text)
-        .color(COMP_COLOR)
-        .horizontal_alignment(Horizontal::Center)
+    Text::new(text).color(COMP_COLOR)
 }
 
 pub(crate) fn text_center<S: Into<String>>(text: S) -> Text {
     Text::new(text)
         .horizontal_alignment(Horizontal::Center)
         .vertical_alignment(Vertical::Center)
+        .width(Length::Fill)
+}
+
+pub(crate) fn text_center_error<S: Into<String>>(text: S) -> Text {
+    Text::new(text)
+        .horizontal_alignment(Horizontal::Center)
+        .color(COMP_COLOR)
+        .vertical_alignment(Vertical::Center)
+        .width(Length::Fill)
 }
 
 pub(crate) fn pane_grid<'a, T, F>(state: &'a pane_grid::State<T>, view: F) -> PaneGrid<Message>
@@ -233,6 +240,7 @@ pub(crate) fn scroll_border<'a>(content: Element<'a, Message>) -> Container<'a, 
     Container::new(Scrollable::new(content).height(Length::Fill))
         .style(ContainerStyle::Pane)
         .padding(INNER_SPACING)
+        .height(Length::Fill)
 }
 
 pub(crate) fn tooltip_right<'a>(content: Element<'a, Message>, tip: &str) -> Tooltip<'a, Message> {
@@ -264,6 +272,12 @@ where
 
 pub(crate) fn progress_bar<'a>(current: f32, max: f32) -> ProgressBar<'a> {
     ProgressBar::new(0.0..=max, current)
+        .width(Length::Fill)
+        .style(ProgressStyle::Normal)
+}
+
+pub(crate) fn progress_bar2<'a>(current: usize, max: usize) -> ProgressBar<'a> {
+    ProgressBar::new(0.0..=max as f32, current as f32)
         .width(Length::Fill)
         .style(ProgressStyle::Normal)
 }
