@@ -1,8 +1,10 @@
 #![cfg(feature = "gui")]
 
+use std::path::PathBuf;
+
 use iced::pure::widget::pane_grid;
 use iced::pure::Element;
-use iced::{clipboard, Command, Length, Space};
+use iced::{Command, Length, Space};
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
 
@@ -142,9 +144,19 @@ impl ConfigState {
                     self.refresh_files();
                 }
             }
-            Message::IncludeCopy(i) => {
+            Message::IncludeOpen(i) => {
                 if let Some(s) = self.config.include.get(i) {
-                    clipboard::write::<Message>(s.to_string());
+                    let p = PathBuf::from(s);
+                    match p.metadata() {
+                        Ok(m) => {
+                            if m.is_dir() {
+                                self.open_dir(p);
+                            } else if let Some(p) = p.parent() {
+                                self.open_dir(p);
+                            }
+                        }
+                        Err(_) => {}
+                    }
                 }
             }
             Message::ExcludeAdd(i) => {
@@ -168,9 +180,19 @@ impl ConfigState {
                     self.refresh_files();
                 }
             }
-            Message::ExcludeCopy(i) => {
+            Message::ExcludeOpen(i) => {
                 if let Some(s) = self.config.exclude.get(i) {
-                    clipboard::write::<Message>(s.to_string());
+                    let p = PathBuf::from(s);
+                    match p.metadata() {
+                        Ok(m) => {
+                            if m.is_dir() {
+                                self.open_dir(p);
+                            } else if let Some(p) = p.parent() {
+                                self.open_dir(p);
+                            }
+                        }
+                        Err(_) => {}
+                    }
                 }
             }
             Message::FilterAdd => {
@@ -207,8 +229,8 @@ impl ConfigState {
             Message::FolderOpen(i) => {
                 let pane = self.panes.get_mut(&self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
-                    self.current_dir = FileInfo::from(std::mem::take(&mut li.text));
-                    self.refresh_files();
+                    let dir: FileInfo = std::mem::take(&mut li.text).into();
+                    self.open_dir(dir);
                 }
             }
             Message::FolderDialog => {
@@ -217,14 +239,13 @@ impl ConfigState {
                     .set_title("Open Directory")
                     .pick_folder()
                 {
-                    self.current_dir = FileInfo::from(folder);
-                    self.refresh_files();
+                    self.open_dir(folder);
                 }
             }
             Message::FolderUp => {
                 if let Some(dir) = self.current_dir.get_path().parent() {
-                    self.current_dir = FileInfo::from(dir);
-                    self.refresh_files();
+                    let dir: FileInfo = dir.into();
+                    self.open_dir(dir);
                 }
             }
             Message::Save => {
@@ -251,6 +272,11 @@ impl ConfigState {
             _ => eprintln!("Unexpected GUI message"),
         }
         Command::none()
+    }
+
+    fn open_dir<P: Into<FileInfo>>(&mut self, folder: P) {
+        self.current_dir = folder.into();
+        self.refresh_files();
     }
 
     fn refresh_files(&mut self) {
@@ -435,12 +461,12 @@ impl ListItem {
                 "Go Up",
             )),
             ListState::Include => row.push(presets::tooltip_right(
-                presets::button_icon("C", Message::IncludeCopy(self.index), false).into(),
-                "Copy",
+                presets::button_icon("O", Message::IncludeOpen(self.index), false).into(),
+                "Open",
             )),
             ListState::Exclude => row.push(presets::tooltip_right(
-                presets::button_icon("C", Message::ExcludeCopy(self.index), false).into(),
-                "Copy",
+                presets::button_icon("O", Message::ExcludeOpen(self.index), false).into(),
+                "Open",
             )),
             ListState::Error | ListState::Filter => row,
         };
