@@ -131,6 +131,7 @@ pub fn restore(
     dry: bool,
     quiet: bool,
 ) {
+    source.get_meta().expect("Could not read the backup");
     let only_this = {
         let mut conf = source.get_config().expect("Could not read the backup");
         if conf.incremental {
@@ -146,7 +147,7 @@ pub fn restore(
     let list: Vec<String>;
     let include: Vec<&str> = if include.is_empty() {
         list_str = source
-            .extract_list()
+            .move_list()
             .expect("Could not get list of files from backup");
         if regex.is_empty() {
             list_str.split('\n').collect()

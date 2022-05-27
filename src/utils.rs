@@ -201,9 +201,9 @@ pub fn get_config_from_pathbuf(path: PathBuf) -> Result<Config, BackupError> {
 }
 
 /// Get a BackupReader based upon the path
-pub fn get_backup_from_path<'a, S: AsRef<str>>(
+pub fn get_backup_from_path<S: AsRef<str>>(
     path: S,
-) -> Result<BackupReader<'a>, Box<dyn std::error::Error>> {
+) -> Result<BackupReader, Box<dyn std::error::Error>> {
     match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
         ConfigPathType::Config(path) => Ok(BackupReader::from_config(Config::read_yaml(path)?)?),
         ConfigPathType::Backup(path) => Ok(BackupReader::read(path)?),
@@ -236,7 +236,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{get_backup_from_path, get_config_from_path, BackupIterator};
-    use crate::{utils::strip_absolute_from_path, Config};
+    use crate::utils::strip_absolute_from_path;
+    use crate::Config;
 
     #[test]
     fn try_macros() {

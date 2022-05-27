@@ -53,7 +53,7 @@ fn cli_test() {
     let mut reader = BackupReader::from_config(conf).unwrap();
     reader.get_config().unwrap();
     reader.get_list().unwrap();
-    let _ = reader.read_all().unwrap();
+    let _ = reader.get_meta().unwrap();
     reader.export_list(dir.path().join("files.txt")).unwrap();
     restore(
         reader,

@@ -1,5 +1,4 @@
 /// This module contains the objects for reading and writing backups
-use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs::{create_dir_all, File};
 use std::io::{BufWriter, Read, Write};
@@ -8,7 +7,7 @@ use std::path::{Path, PathBuf};
 use chrono::NaiveDateTime;
 use number_prefix::NumberPrefix;
 
-use crate::compression::{CompressionDecoder, CompressionDecoderEntry, CompressionEncoder};
+use crate::compression::{CompressionDecoder, CompressionEncoder};
 use crate::config::Config;
 use crate::files::{FileAccessError, FileCrawler, FileInfo};
 use crate::parse_date::{self, naive_now};
@@ -339,22 +338,17 @@ impl BackupWriter {
     }
 }
 
-pub struct BackupReader<'a> {
-    decoder: CompressionDecoder<'a>,
-    used: bool,
+pub struct BackupReader {
     pub path: PathBuf,
     pub config: Option<Config>,
     pub list: Option<String>,
 }
 
-impl<'a> BackupReader<'a> {
+impl BackupReader {
     /// Read a backup
     pub fn read<P: AsRef<Path>>(path: P) -> Result<Self, BackupError> {
-        let decoder = CompressionDecoder::read(&path).map_err(|e| BackupError::ArchiveError(e))?;
         Ok(BackupReader {
             path: path.as_ref().to_path_buf(),
-            decoder,
-            used: false,
             list: None,
             config: None,
         })
@@ -366,24 +360,15 @@ impl<'a> BackupReader<'a> {
             .get_backups()
             .get_latest()
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Backup not found"))?;
-        let decoder = CompressionDecoder::read(prev.as_path())?;
         Ok(BackupReader {
             path: prev,
-            decoder,
-            used: false,
             config: Some(config),
             list: None,
         })
     }
 
-    fn use_decoder(&mut self) -> Result<(), BackupError> {
-        if self.used {
-            self.decoder =
-                CompressionDecoder::read(&self.path).map_err(|e| BackupError::ArchiveError(e))?;
-        } else {
-            self.used = true;
-        }
-        Ok(())
+    fn get_decoder<'a>(&self) -> Result<CompressionDecoder<'a>, BackupError> {
+        CompressionDecoder::read(&self.path.as_path()).map_err(|e| BackupError::ArchiveError(e))
     }
 
     /// Read a backup, but only return the embedded config
@@ -395,19 +380,18 @@ impl<'a> BackupReader<'a> {
 
     /// Read the embedded config from the backup
     fn read_config(&mut self) -> Result<&mut Config, BackupError> {
-        self.use_decoder()?;
-        let entry = self
-            .decoder
+        let mut decoder = self.get_decoder()?;
+        let entry = decoder
             .entries()
             .map_err(|e| BackupError::ArchiveError(e))?
             .next();
         let mut entry = match entry {
             Some(Ok(e)) => e,
             Some(Err(e)) => return Err(BackupError::ArchiveError(e)),
-            None => return Err(BackupError::NoConfig(self.path.clone())),
+            None => return Err(BackupError::NoConfig(self.path.to_path_buf())),
         };
         if entry.0.get_string() != "config.yml" {
-            return Err(BackupError::NoConfig(self.path.clone()));
+            return Err(BackupError::NoConfig(self.path.to_path_buf()));
         }
         let mut s = String::new();
         entry
@@ -415,7 +399,7 @@ impl<'a> BackupReader<'a> {
             .read_to_string(&mut s)
             .map_err(|e| BackupError::ArchiveError(e))?;
         let mut conf: Config = Config::from_yaml(&s).map_err(|e| BackupError::YamlError(e))?;
-        conf.origin = self.path.clone();
+        conf.origin = self.path.to_path_buf();
         self.config = Some(conf);
         Ok(self.config.as_mut().unwrap())
     }
@@ -431,19 +415,18 @@ impl<'a> BackupReader<'a> {
 
     /// Read the embedded list of files from the backup
     fn read_list(&mut self) -> Result<&String, BackupError> {
-        self.use_decoder()?;
-        let mut entries = self
-            .decoder
+        let mut decoder = self.get_decoder()?;
+        let mut entries = decoder
             .entries()
             .map_err(|e| BackupError::ArchiveError(e))?
             .skip(1);
         let entry = entries.next();
         if entry.is_none() {
-            return Err(BackupError::NoList(self.path.clone()));
+            return Err(BackupError::NoList(self.path.to_path_buf()));
         }
         let mut entry = entry.unwrap().map_err(|e| BackupError::ArchiveError(e))?;
         if entry.0.get_string() != "files.csv" {
-            return Err(BackupError::NoList(self.path.clone()));
+            return Err(BackupError::NoList(self.path.to_path_buf()));
         }
         let mut s = String::new();
         entry
@@ -464,71 +447,62 @@ impl<'a> BackupReader<'a> {
     }
 
     /// move the list of files out of the backup
-    pub fn extract_list(&mut self) -> Result<String, BackupError> {
+    pub fn move_list(&mut self) -> Result<String, BackupError> {
         if self.list.is_none() {
             self.read_list()?;
         }
         Ok(std::mem::take(&mut self.list).unwrap())
     }
 
-    /// Iterator over the files in the backup
-    pub fn files(
-        &mut self,
-    ) -> Result<impl Iterator<Item = std::io::Result<CompressionDecoderEntry<'_, 'a>>>, BackupError>
-    {
-        self.use_decoder()?;
-        Ok(self
-            .decoder
+    /// Read the embedded config and file list
+    pub fn read_meta(&mut self) -> Result<(&Config, &String), BackupError> {
+        let mut decoder = self.get_decoder()?;
+        let mut entries = decoder
             .entries()
-            .map_err(|e| BackupError::ArchiveError(e))?
-            .skip(2))
-    }
-
-    /// Read the embedded config and file list, and return the iterator over the files
-    pub fn read_all(
-        &mut self,
-    ) -> Result<
-        (
-            &Config,
-            &String,
-            impl Iterator<Item = std::io::Result<CompressionDecoderEntry<'_, 'a>>>,
-        ),
-        Box<dyn Error>,
-    > {
-        self.use_decoder()?;
-        let mut entries = self.decoder.entries()?;
+            .map_err(|e| BackupError::ArchiveError(e))?;
         // Read Config
         let entry = entries.next();
         if entry.is_none() {
-            return Err(Box::new(BackupError::NoConfig(self.path.clone())));
+            return Err(BackupError::NoConfig(self.path.to_path_buf()));
         }
-        let mut entry = entry.unwrap()?;
+        let mut entry = entry.unwrap().map_err(|e| BackupError::ArchiveError(e))?;
         if entry.0.get_string() != "config.yml" {
-            return Err(Box::new(BackupError::NoConfig(self.path.clone())));
+            return Err(BackupError::NoConfig(self.path.to_path_buf()));
         }
         let mut s = String::new();
-        entry.1.read_to_string(&mut s)?;
+        entry
+            .1
+            .read_to_string(&mut s)
+            .map_err(|e| BackupError::ArchiveError(e))?;
         let mut conf: Config = Config::from_yaml(&s)?;
-        conf.origin = self.path.clone();
+        conf.origin = self.path.to_path_buf();
         self.config = Some(conf);
         // Read File List
         let entry = entries.next();
         if entry.is_none() {
-            return Err(Box::new(BackupError::NoList(self.path.clone())));
+            return Err(BackupError::NoList(self.path.to_path_buf()));
         }
-        let mut entry = entry.unwrap()?;
+        let mut entry = entry.unwrap().map_err(|e| BackupError::ArchiveError(e))?;
         if entry.0.get_string() != "files.csv" {
-            return Err(Box::new(BackupError::NoList(self.path.clone())));
+            return Err(BackupError::NoList(self.path.to_path_buf()));
         }
         s.truncate(0);
-        entry.1.read_to_string(&mut s)?;
+        entry
+            .1
+            .read_to_string(&mut s)
+            .map_err(|e| BackupError::ArchiveError(e))?;
         self.list = Some(s);
         // Rest
-        Ok((
-            self.config.as_ref().unwrap(),
-            self.list.as_ref().unwrap(),
-            entries,
-        ))
+        Ok((self.config.as_ref().unwrap(), self.list.as_ref().unwrap()))
+    }
+
+    /// Get the embedded list of files
+    pub fn get_meta(&mut self) -> Result<(&Config, &String), BackupError> {
+        if self.config.is_none() || self.list.is_none() {
+            return self.read_meta();
+        } else {
+            Ok((self.config.as_mut().unwrap(), self.list.as_ref().unwrap()))
+        }
     }
 
     /// Is this an incemental backup
@@ -568,7 +542,12 @@ impl<'a> BackupReader<'a> {
         mut callback: impl FnMut(std::io::Result<FileInfo>) -> Result<(), BackupError>,
         overwrite: bool,
     ) -> Result<(), BackupError> {
-        for res in self.files()? {
+        for res in self
+            .get_decoder()?
+            .entries()
+            .map_err(|e| BackupError::ArchiveError(e))?
+            .skip(2)
+        {
             match res {
                 Ok((fi, mut entry)) => {
                     let mut path = path_transform(fi);
@@ -602,7 +581,7 @@ impl<'a> BackupReader<'a> {
         callback: impl FnMut(std::io::Result<FileInfo>) -> Result<(), BackupError>,
         overwrite: bool,
     ) -> Result<(), BackupError> {
-        let list = self.extract_list()?;
+        let list = self.move_list()?;
         let files = list.split('\n').collect();
         let res = self.restore_selected(files, path_transform, callback, overwrite);
         self.list = Some(list);
@@ -623,7 +602,12 @@ impl<'a> BackupReader<'a> {
             Some(f) => f,
             None => return Ok(()),
         };
-        for res in self.files()? {
+        for res in self
+            .get_decoder()?
+            .entries()
+            .map_err(|e| BackupError::ArchiveError(e))?
+            .skip(2)
+        {
             match res {
                 Ok((mut fi, mut entry)) => {
                     {

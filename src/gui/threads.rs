@@ -80,27 +80,22 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
     }
 }
 
-impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader<'static>> {
+impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader> {
     pub fn restore_files(
-        reader: BackupReader<'static>,
+        reader: BackupReader,
         selection: Vec<String>,
         flatten: bool,
         output: Option<PathBuf>,
-    ) -> Self {
+    ) -> Result<Self, BackupError> {
+        if flatten && output.is_none() {
+            return Err(BackupError::GenericError(
+                "The output must be given if flatten=true",
+            ));
+        }
+
         let (send, queue) = std::sync::mpsc::channel();
         let handle = std::thread::spawn(move || {
             let mut reader = reader;
-            let output = output;
-            let selection = selection;
-            let flatten = flatten;
-            #[allow(unused_must_use)]
-            if flatten && output.is_none() {
-                send.send(Err(BackupError::GenericError(
-                    "The output must be given if flatten=true",
-                )));
-                std::mem::drop(send);
-                return reader;
-            }
 
             let callback = |res: std::io::Result<FileInfo>| {
                 match res {
@@ -133,6 +128,6 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader<'static>> {
             std::mem::drop(send);
             reader
         });
-        Self { queue, handle }
+        Ok(Self { queue, handle })
     }
 }

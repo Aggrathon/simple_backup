@@ -74,11 +74,11 @@ pub(crate) enum Message {
     None,
 }
 
-enum ApplicationState<'a> {
+enum ApplicationState {
     Main(MainState),
     Config(ConfigState),
     Backup(BackupState),
-    Restore(RestoreState<'a>),
+    Restore(RestoreState),
 }
 
 fn open_config() -> Option<Config> {
@@ -102,7 +102,7 @@ fn open_config() -> Option<Config> {
             }
         })
 }
-fn open_backup<'a>() -> Option<BackupReader<'a>> {
+fn open_backup() -> Option<BackupReader> {
     FileDialog::new()
         .set_directory(dirs::home_dir().unwrap_or_default())
         .set_title("Open backup file")
@@ -122,7 +122,7 @@ fn open_backup<'a>() -> Option<BackupReader<'a>> {
         })
 }
 
-impl<'a> Application for ApplicationState<'a> {
+impl Application for ApplicationState {
     type Message = Message;
     type Executor = executor::Default;
     type Flags = ();
@@ -211,6 +211,7 @@ impl<'a> Application for ApplicationState<'a> {
     fn subscription(&self) -> iced::Subscription<Self::Message> {
         match self {
             ApplicationState::Backup(state) => state.subscription(),
+            ApplicationState::Restore(state) => state.subscription(),
             _ => Subscription::none(),
         }
     }
