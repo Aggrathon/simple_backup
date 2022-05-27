@@ -83,7 +83,7 @@ impl<'a> CompressionDecoder<'a> {
     {
         Ok(self.0.entries()?.map(|entry| {
             let entry = entry?;
-            let path = entry.header().path()?;
+            let path = entry.path()?;
             Ok((path_from_archive(&path), entry))
         }))
     }

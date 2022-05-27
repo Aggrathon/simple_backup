@@ -377,3 +377,45 @@ fn time_test() -> std::io::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn longname_test() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempdir().unwrap();
+    let f1 = dir.path().join(format!("{:50}.txt", 3));
+    File::create(&f1)?;
+
+    let mut config = Config {
+        include: vec![f1.to_string_lossy().to_string()],
+        exclude: vec![],
+        regex: vec![],
+        output: dir.path().to_path_buf(),
+        incremental: false,
+        quality: 11,
+        local: false,
+        threads: 1,
+        time: None,
+        origin: PathBuf::new(),
+    };
+
+    let conf = Config::from_yaml(config.to_yaml()?)?;
+    backup(conf, false, false, false, true);
+
+    remove_file(&f1)?;
+
+    let reader = BackupReader::from_config(config)?;
+    restore(
+        reader,
+        None,
+        vec![],
+        vec![],
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+    );
+
+    assert!(f1.exists());
+    Ok(())
+}
