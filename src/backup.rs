@@ -12,6 +12,7 @@ use crate::config::Config;
 use crate::files::{FileAccessError, FileCrawler, FileInfo};
 use crate::lists::{FileListString, FileListVec};
 use crate::parse_date::naive_now;
+use crate::utils::extend_pathbuf;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -29,6 +30,7 @@ pub enum BackupError {
     IOError(std::io::Error),
     GenericError(&'static str),
     Unspecified,
+    FileExists(PathBuf),
 }
 
 impl Display for BackupError {
@@ -73,6 +75,7 @@ impl Display for BackupError {
             BackupError::IOError(e) => e.fmt(f),
             BackupError::GenericError(e) => e.fmt(f),
             BackupError::Unspecified => write!(f, "Unspecified error"),
+            BackupError::FileExists(p) => write!(f, "Path already exists: {}", p.to_string_lossy()),
         }
     }
 }
@@ -209,7 +212,6 @@ impl BackupWriter {
         encoder.append_data("config.yml", self.config.to_yaml()?)?;
         encoder.append_data(list_string.filename(), list_string)?;
 
-        let prev_time = self.prev_time.clone();
         let list = self.list.as_mut().unwrap();
         for (b, fi) in list.iter_mut() {
             if *b {
@@ -551,14 +553,19 @@ impl BackupReader {
 }
 
 pub struct BackupMerger {
+    path: PathBuf,
     readers: Vec<BackupReader>,
-    files: FileListVec,
+    pub files: FileListVec,
 }
 
 impl BackupMerger {
     /// Create a new backup merger.
     /// The merged backup can either contain only files mentioned in the latest backup, or all files from all backups.
-    pub fn new(mut readers: Vec<BackupReader>, all: bool) -> Result<Self, BackupError> {
+    pub fn new<P: AsRef<Path>>(
+        path: Option<P>,
+        mut readers: Vec<BackupReader>,
+        all: bool,
+    ) -> Result<Self, BackupError> {
         if readers.len() < 2 {
             return Err(BackupError::GenericError(
                 "At least two backups are needed for merging",
@@ -570,23 +577,22 @@ impl BackupMerger {
         readers.sort_by_cached_key(|r| {
             r.config
                 .as_ref()
-                .expect("The config should already be read at this point!")
+                .unwrap()
                 .time
                 .expect("A stored backup should always contain the backup time!")
         });
+        readers.reverse();
+
+        let path = match path {
+            Some(path) => path.as_ref().to_path_buf(),
+            None => readers.first().unwrap().path.to_path_buf(),
+        };
+
         let mut files = FileListVec::new();
         if all {
             let mut lists = readers
                 .iter()
-                .map(|r| {
-                    Box::new(
-                        r.list
-                            .as_ref()
-                            .expect("The list should already be read at this point")
-                            .iter()
-                            .peekable(),
-                    )
-                })
+                .map(|r| Box::new(r.list.as_ref().unwrap().iter().peekable()))
                 .collect::<Vec<_>>();
             loop {
                 let s = {
@@ -614,48 +620,53 @@ impl BackupMerger {
             }
         } else {
             readers
-                .last()
-                .expect("The number of readers is more than one")
+                .first()
+                .unwrap()
                 .list
                 .as_ref()
-                .expect("The list should already be read at this point!")
+                .unwrap()
                 .iter()
                 .for_each(|(b, f)| files.push(b, FileInfo::from(f)));
         };
-        Ok(Self { readers, files })
+        Ok(Self {
+            path,
+            readers,
+            files,
+        })
     }
 
     /// Write (and compress) the backup to disk
-    pub fn write<P: AsRef<Path>>(
+    pub fn write(
         &mut self,
-        file: P,
         on_added: impl FnMut(&mut FileInfo, Result<(), BackupError>) -> Result<(), BackupError>,
         on_final: impl FnOnce(),
-    ) -> Result<(), BackupError> {
-        match self.write_internal(file.as_ref(), on_added, on_final) {
-            Ok(_) => Ok(()),
-            #[allow(unused_must_use)]
-            Err(e) => {
+    ) -> Result<PathBuf, BackupError> {
+        let path = self.get_tmp_output();
+        self.write_internal(&path, on_added, on_final)
+            .map_err(|e| {
                 // Clean up failed merge (allowed to fail without checking)
-                std::fs::remove_file(file.as_ref());
-                Err(e)
-            }
-        }
+                #[allow(unused_must_use)]
+                {
+                    std::fs::remove_file(&path);
+                }
+                e
+            })
+            .map(|_| path)
     }
 
-    fn write_internal<P: AsRef<Path>>(
+    fn write_internal(
         &mut self,
-        file: P,
+        path: &Path,
         mut on_added: impl FnMut(&mut FileInfo, Result<(), BackupError>) -> Result<(), BackupError>,
         on_final: impl FnOnce(),
     ) -> Result<(), BackupError> {
         let config = self
             .readers
-            .last_mut()
-            .expect("The number of readers is more than one!")
+            .first_mut()
+            .expect("The number of readers should always be more than one!")
             .config
             .as_mut()
-            .expect("The config shoulf already be read!");
+            .expect("The config should already be read!");
         let quality = config.quality;
         let threads = config.threads;
         let config = config.to_yaml()?;
@@ -674,10 +685,12 @@ impl BackupMerger {
                     .peekable())
             })
             .collect::<Result<Vec<_>, BackupError>>()?;
-        entries.reverse();
 
+        if let Some(p) = path.parent() {
+            std::fs::create_dir_all(p)?;
+        }
         let list = FileListString::from(&mut self.files);
-        let mut encoder = CompressionEncoder::create(file, quality, threads)?;
+        let mut encoder = CompressionEncoder::create(&path, quality, threads)?;
         encoder.append_data("config.yml", config)?;
         encoder.append_data(list.filename(), list)?;
 
@@ -712,6 +725,53 @@ impl BackupMerger {
         }
         on_final();
         encoder.close()?;
+        Ok(())
+    }
+
+    fn get_tmp_output(&self) -> PathBuf {
+        let mut path = self.path.clone();
+        while path.exists() {
+            path = extend_pathbuf(path, ".tmp");
+        }
+        path
+    }
+
+    pub fn cleanup(
+        &mut self,
+        output: Option<PathBuf>,
+        delete: bool,
+        overwrite: bool,
+    ) -> Result<(), BackupError> {
+        if delete {
+            for r in self.readers.iter_mut() {
+                std::fs::remove_file(&r.path)?;
+            }
+        } else {
+            for r in self.readers.iter_mut() {
+                let mut path = r.path.to_path_buf();
+                path = extend_pathbuf(path, ".old");
+                while path.exists() {
+                    path = extend_pathbuf(path, ".old");
+                }
+                std::fs::rename(&r.path, &path)?;
+                r.path = path;
+            }
+        }
+        if let Some(path) = output {
+            if self.path != path {
+                if self.path.exists() {
+                    if overwrite {
+                        std::fs::remove_file(&self.path)?;
+                    } else {
+                        return Err(BackupError::FileExists(self.path.to_path_buf()));
+                    }
+                }
+                if let Some(p) = self.path.parent() {
+                    std::fs::create_dir_all(p)?;
+                }
+                std::fs::rename(&path, &self.path)?;
+            }
+        }
         Ok(())
     }
 }

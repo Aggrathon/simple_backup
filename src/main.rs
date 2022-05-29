@@ -363,15 +363,17 @@ fn main() {
             false,
         );
     } else if let Some(matches) = matches.subcommand_matches("merge") {
-        cli::merge(
+        // TODO merge options
+        cli::merge::<&str>(
             vec![],
+            None,
             true,
+            false,
             matches.is_present("verbose"),
             matches.is_present("force"),
             matches.is_present("dry"),
             false,
         )
-        // TODO merge archives
     } else {
         #[cfg(feature = "gui")]
         gui::gui();

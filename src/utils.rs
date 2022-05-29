@@ -1,5 +1,6 @@
 /// This module contains utility functions (such as getting backups and configs)
 use std::cmp::{Ordering, PartialOrd};
+use std::ffi::{OsStr, OsString};
 use std::fs::ReadDir;
 use std::path::{Path, PathBuf};
 
@@ -216,6 +217,13 @@ pub fn strip_absolute_from_path(path: &str) -> String {
     {
         path.into()
     }
+}
+
+pub fn extend_pathbuf<S: AsRef<OsStr>>(mut path: PathBuf, extension: S) -> PathBuf {
+    let mut p: OsString = path.into();
+    p.push(extension);
+    path = p.into();
+    path
 }
 
 #[cfg(test)]

@@ -1,12 +1,12 @@
 /// This module contains the logic for running the program from a command line
 use core::panic;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use number_prefix::NumberPrefix;
 use regex::RegexSet;
 
-use crate::backup::{BackupError, BackupMerger, BackupReader, BackupWriter};
+use crate::backup::{BackupMerger, BackupReader, BackupWriter};
 use crate::config::Config;
 use crate::files::{FileAccessError, FileInfo};
 use crate::lists::FileListString;
@@ -245,14 +245,77 @@ pub fn restore(
     }
 }
 
-pub fn merge(backups: Vec<String>, all: bool, verbose: bool, force: bool, dry: bool, quiet: bool) {
-    let mut merger = BackupMerger::new(backups.into_iter().map(BackupReader::new).collect(), all)
-        .expect("Could not read the backups:");
-    // TODO bars and dry
-    // TODO filename
-    merger
-        .write(".", |_, _| Ok(()), || {})
+pub fn merge<P: AsRef<Path>>(
+    backups: Vec<P>,
+    path: Option<P>,
+    all: bool,
+    delete: bool,
+    verbose: bool,
+    force: bool,
+    dry: bool,
+    quiet: bool,
+) {
+    let path = path.as_ref();
+
+    let mut merger = BackupMerger::new(
+        path,
+        backups.into_iter().map(BackupReader::new).collect(),
+        all,
+    )
+    .expect("Could not read the backups:");
+    let count;
+    if verbose {
+        eprintln!("Files in the merged backup:");
+        count = merger
+            .files
+            .iter()
+            .filter(|(b, f)| {
+                println!("{}", f);
+                *b
+            })
+            .count();
+        eprintln!("");
+    } else {
+        count = merger.files.iter().filter(|(b, _)| *b).count();
+    }
+    if dry {
+        return;
+    }
+
+    let bar = if quiet {
+        ProgressBar::hidden()
+    } else {
+        ProgressBar::new(count as u64 + 1)
+    };
+    bar.set_style(ProgressStyle::default_bar().template(
+        "{wide_msg} {pos:>8} / {len:<8}\n{wide_bar} {elapsed_precise:>8} / {duration_precise:<8}",
+    ));
+    bar.set_message("Merging backups...");
+    bar.tick();
+    bar.enable_steady_tick(1000);
+
+    let path = merger
+        .write(
+            |fi: &mut FileInfo, err| {
+                bar.set_message(fi.move_string());
+                bar.inc(1);
+                if let Err(e) = err {
+                    bar.println(format!(
+                        "Could not add '{}' to the backup: {}",
+                        fi.get_string(),
+                        e
+                    ));
+                }
+                Ok(())
+            },
+            || bar.set_message("Waiting for the compression to complete..."),
+        )
         .expect("Could not merge the backups:");
-    // TODO handle afterwards
-    todo!();
+    bar.disable_steady_tick();
+    bar.set_message("Merge complete!");
+    bar.finish();
+
+    merger
+        .cleanup(Some(path), delete, force)
+        .expect("Could not cleanup backup files:");
 }
