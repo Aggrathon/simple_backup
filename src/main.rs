@@ -12,6 +12,7 @@ mod config;
 mod files;
 #[cfg(feature = "gui")]
 mod gui;
+mod lists;
 mod parse_date;
 
 use std::path::PathBuf;
@@ -362,6 +363,14 @@ fn main() {
             false,
         );
     } else if let Some(matches) = matches.subcommand_matches("merge") {
+        cli::merge(
+            vec![],
+            true,
+            matches.is_present("verbose"),
+            matches.is_present("force"),
+            matches.is_present("dry"),
+            false,
+        )
         // TODO merge archives
     } else {
         #[cfg(feature = "gui")]

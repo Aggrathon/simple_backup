@@ -56,7 +56,7 @@ impl RestoreState {
                 self.stage = RestoreStage::Error;
             }
             Ok((_, list)) => {
-                let list: Vec<_> = list.iter_all().map(|s| (true, String::from(s))).collect();
+                let list: Vec<_> = list.iter().map(|(_, s)| (true, String::from(s))).collect();
                 self.pagination.set_total(list.len());
                 self.all = true;
                 self.stage = RestoreStage::Viewing(reader, list);

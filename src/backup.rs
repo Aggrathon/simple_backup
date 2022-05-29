@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 /// This module contains the objects for reading and writing backups
 use std::fmt::{Display, Formatter};
 use std::fs::{create_dir_all, File};
@@ -11,6 +10,7 @@ use number_prefix::NumberPrefix;
 use crate::compression::{CompressionDecoder, CompressionDecoderEntry, CompressionEncoder};
 use crate::config::Config;
 use crate::files::{FileAccessError, FileCrawler, FileInfo};
+use crate::lists::{FileListString, FileListVec};
 use crate::parse_date::naive_now;
 
 #[derive(Debug)]
@@ -28,6 +28,7 @@ pub enum BackupError {
     FileAccessError(FileAccessError),
     IOError(std::io::Error),
     GenericError(&'static str),
+    Unspecified,
 }
 
 impl Display for BackupError {
@@ -71,6 +72,7 @@ impl Display for BackupError {
             BackupError::FileAccessError(e) => e.fmt(f),
             BackupError::IOError(e) => e.fmt(f),
             BackupError::GenericError(e) => e.fmt(f),
+            BackupError::Unspecified => write!(f, "Unspecified error"),
         }
     }
 }
@@ -92,203 +94,6 @@ impl From<std::io::Error> for BackupError {
 impl From<FileAccessError> for BackupError {
     fn from(e: FileAccessError) -> Self {
         BackupError::FileAccessError(e)
-    }
-}
-
-pub struct FileListVec(Vec<(bool, FileInfo)>);
-
-impl FileListVec {
-    pub fn crawl(crawler: FileCrawler, time: Option<NaiveDateTime>) -> Self {
-        let mut list: Vec<(bool, FileInfo)> = match time {
-            Some(prev) => crawler
-                .into_iter()
-                .filter_map(|fi| match fi {
-                    Ok(fi) => Some((fi.time.unwrap() >= prev, fi)),
-                    Err(_) => None,
-                })
-                .collect(),
-            None => crawler
-                .into_iter()
-                .filter_map(|fi| match fi {
-                    Ok(fi) => Some((true, fi)),
-                    Err(_) => None,
-                })
-                .collect(),
-        };
-        list.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-        Self { 0: list }
-    }
-
-    pub fn crawl_with_callback(
-        crawler: FileCrawler,
-        time: Option<NaiveDateTime>,
-        all: bool,
-        mut callback: impl FnMut(Result<&mut FileInfo, FileAccessError>) -> Result<(), BackupError>,
-    ) -> Result<Self, BackupError> {
-        let all = all || time.is_none();
-        let mut list: Vec<(bool, FileInfo)> = vec![];
-        for f in crawler.into_iter() {
-            match f {
-                Ok(mut fi) => {
-                    let inc = match time {
-                        Some(t) => fi.time.unwrap() >= t,
-                        None => true,
-                    };
-                    if all || inc {
-                        callback(Ok(&mut fi))?;
-                    }
-                    list.push((inc, fi));
-                }
-                Err(e) => callback(Err(e))?,
-            }
-        }
-        list.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-        Ok(Self { 0: list })
-    }
-
-    pub fn for_each(
-        &mut self,
-        all: bool,
-        mut callback: impl FnMut(Result<&mut FileInfo, FileAccessError>) -> Result<(), BackupError>,
-    ) -> Result<(), BackupError> {
-        if all {
-            for fi in self.iter_all_mut() {
-                callback(Ok(fi))?;
-            }
-        } else {
-            for fi in self.iter_inc_mut() {
-                callback(Ok(fi))?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &(bool, FileInfo)> {
-        self.0.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (bool, FileInfo)> {
-        self.0.iter_mut()
-    }
-
-    pub fn iter_inc(&self) -> impl Iterator<Item = &FileInfo> {
-        self.0
-            .iter()
-            .filter_map(|(b, f)| if *b { Some(f) } else { None })
-    }
-
-    pub fn iter_inc_mut(&mut self) -> impl Iterator<Item = &mut FileInfo> {
-        self.0
-            .iter_mut()
-            .filter_map(|(b, f)| if *b { Some(f) } else { None })
-    }
-
-    pub fn iter_all(&self) -> impl Iterator<Item = &FileInfo> {
-        self.0.iter().map(|(_, f)| f)
-    }
-
-    pub fn iter_all_mut(&mut self) -> impl Iterator<Item = &mut FileInfo> {
-        self.0.iter_mut().map(|(_, f)| f)
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn sort_unstable_by<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&FileInfo, &FileInfo) -> Ordering,
-    {
-        self.0.sort_unstable_by(|a, b| f(&a.1, &b.1));
-    }
-
-    pub fn sort_unstable(&mut self) {
-        self.0.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-    }
-}
-
-pub struct FileListString {
-    list: String,
-    version: u8,
-}
-
-impl AsRef<[u8]> for FileListString {
-    fn as_ref(&self) -> &[u8] {
-        self.list.as_ref()
-    }
-}
-
-impl FileListString {
-    pub fn new<S: AsRef<str>>(filename: S, content: String) -> Result<Self, BackupError> {
-        let version = match filename.as_ref() {
-            "files.csv" => 1,
-            "files_v2.csv" => 2,
-            _ => return Err(BackupError::NoList(PathBuf::new())),
-        };
-        Ok(Self {
-            list: content,
-            version,
-        })
-    }
-
-    /// Convert a FileListVec to a FileListString
-    pub fn from(files: &mut FileListVec) -> Self {
-        let mut list = String::with_capacity(files.len() * 200);
-        files.iter_mut().for_each(|(b, fi)| {
-            list.push(if *b { '1' } else { '0' });
-            list.push(',');
-            #[cfg(target_os = "windows")]
-            list.push_str(&fi.get_string().replace('\\', "/"));
-            #[cfg(not(target_os = "windows"))]
-            list_string.push_str(fi.get_string());
-            list.push('\n');
-        });
-        list.pop();
-        Self { list, version: 2 }
-    }
-
-    /// Get an iterator over all the files in the list with a flag
-    pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (bool, &str)> + 'a> {
-        match self.version {
-            2 => Box::new(self.list.split('\n').filter_map(|s: &str| {
-                if s.starts_with('1') {
-                    Some((s.starts_with('1'), &s[2..]))
-                } else {
-                    None
-                }
-            })),
-            _ => Box::new(self.list.split('\n').map(|s| (true, s))),
-        }
-    }
-
-    /// Get an iterator over all the files that are included
-    pub fn iter_included<'a>(&'a self) -> Box<dyn Iterator<Item = &str> + 'a> {
-        match self.version {
-            2 => Box::new(self.list.split('\n').filter_map(|s: &str| {
-                if s.starts_with('1') {
-                    Some(&s[2..])
-                } else {
-                    None
-                }
-            })),
-            _ => Box::new(self.list.split('\n')),
-        }
-    }
-
-    /// Get an iterator over all the files
-    pub fn iter_all(&self) -> impl Iterator<Item = &str> {
-        let offset = match self.version {
-            2 => 2,
-            _ => 0,
-        };
-        self.list.split('\n').map(move |s| &s[offset..])
-    }
-
-    pub fn filename(&self) -> &'static str {
-        match self.version {
-            2 => "files_v2.csv",
-            _ => "files.csv",
-        }
     }
 }
 
@@ -352,13 +157,10 @@ impl BackupWriter {
         all: bool,
         mut callback: impl FnMut(Result<&mut FileInfo, FileAccessError>) -> Result<(), BackupError>,
     ) -> Result<(), BackupError> {
+        let all = all || self.prev_time.is_none();
         if self.list.is_some() {
-            if all || self.prev_time.is_none() {
-                for fi in self.list.as_mut().unwrap().iter_all_mut() {
-                    callback(Ok(fi))?
-                }
-            } else {
-                for fi in self.list.as_mut().unwrap().iter_inc_mut() {
+            for (b, fi) in self.list.as_mut().unwrap().iter_mut() {
+                if all || *b {
                     callback(Ok(fi))?
                 }
             }
@@ -409,13 +211,8 @@ impl BackupWriter {
 
         let prev_time = self.prev_time.clone();
         let list = self.list.as_mut().unwrap();
-        if prev_time.is_some() {
-            for fi in list.iter_inc_mut() {
-                let res = encoder.append_file(fi.get_path());
-                on_added(fi, res.map_err(BackupError::IOError))?;
-            }
-        } else {
-            for fi in list.iter_all_mut() {
+        for (b, fi) in list.iter_mut() {
+            if *b {
                 let res = encoder.append_file(fi.get_path());
                 on_added(fi, res.map_err(BackupError::IOError))?;
             }
@@ -453,12 +250,9 @@ impl BackupWriter {
             }
             .map_err(BackupError::WriteError)
         };
-        if all || self.prev_time.is_none() {
-            for fi in self.get_files()?.iter_all_mut() {
-                callback(fi)?;
-            }
-        } else {
-            for fi in self.get_files()?.iter_inc_mut() {
+        let all = all || self.prev_time.is_none();
+        for (b, fi) in self.get_files()?.iter_mut() {
+            if all || *b {
                 callback(fi)?;
             }
         }
@@ -643,7 +437,7 @@ impl BackupReader {
 
     pub fn export_list<P: AsRef<Path>>(&mut self, path: P) -> Result<(), BackupError> {
         let mut f = File::create(path).map_err(BackupError::FileError)?;
-        f.write_all(&self.get_list()?.list.as_bytes())
+        f.write_all(&self.get_list()?.as_ref())
             .map_err(BackupError::WriteError)?;
         Ok(())
     }
@@ -670,7 +464,7 @@ impl BackupReader {
         overwrite: bool,
     ) -> Result<(), BackupError> {
         let list = self.move_list()?;
-        let selection = list.iter_all().collect();
+        let selection = list.iter().map(|v| v.1).collect();
         let res = self.restore(selection, path_transform, callback, overwrite, true);
         self.list = Some(list);
         res
@@ -752,6 +546,172 @@ impl BackupReader {
                 )))?;
             }
         }
+        Ok(())
+    }
+}
+
+pub struct BackupMerger {
+    readers: Vec<BackupReader>,
+    files: FileListVec,
+}
+
+impl BackupMerger {
+    /// Create a new backup merger.
+    /// The merged backup can either contain only files mentioned in the latest backup, or all files from all backups.
+    pub fn new(mut readers: Vec<BackupReader>, all: bool) -> Result<Self, BackupError> {
+        if readers.len() < 2 {
+            return Err(BackupError::GenericError(
+                "At least two backups are needed for merging",
+            ));
+        }
+        for r in readers.iter_mut() {
+            r.get_meta()?;
+        }
+        readers.sort_by_cached_key(|r| {
+            r.config
+                .as_ref()
+                .expect("The config should already be read at this point!")
+                .time
+                .expect("A stored backup should always contain the backup time!")
+        });
+        let mut files = FileListVec::new();
+        if all {
+            let mut lists = readers
+                .iter()
+                .map(|r| {
+                    Box::new(
+                        r.list
+                            .as_ref()
+                            .expect("The list should already be read at this point")
+                            .iter()
+                            .peekable(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            loop {
+                let s = {
+                    lists
+                        .iter_mut()
+                        .filter_map(|p| p.peek())
+                        .min()
+                        .map(|(_, s)| String::from(*s))
+                };
+                let mut inc = false;
+                match s {
+                    None => break,
+                    Some(s) => {
+                        for p in lists.iter_mut() {
+                            if let Some((b, s2)) = p.peek() {
+                                inc = inc || *b;
+                                if s.as_str() >= *s2 {
+                                    p.next();
+                                }
+                            }
+                        }
+                        files.push(inc, FileInfo::from(s));
+                    }
+                };
+            }
+        } else {
+            readers
+                .last()
+                .expect("The number of readers is more than one")
+                .list
+                .as_ref()
+                .expect("The list should already be read at this point!")
+                .iter()
+                .for_each(|(b, f)| files.push(b, FileInfo::from(f)));
+        };
+        Ok(Self { readers, files })
+    }
+
+    /// Write (and compress) the backup to disk
+    pub fn write<P: AsRef<Path>>(
+        &mut self,
+        file: P,
+        on_added: impl FnMut(&mut FileInfo, Result<(), BackupError>) -> Result<(), BackupError>,
+        on_final: impl FnOnce(),
+    ) -> Result<(), BackupError> {
+        match self.write_internal(file.as_ref(), on_added, on_final) {
+            Ok(_) => Ok(()),
+            #[allow(unused_must_use)]
+            Err(e) => {
+                // Clean up failed merge (allowed to fail without checking)
+                std::fs::remove_file(file.as_ref());
+                Err(e)
+            }
+        }
+    }
+
+    fn write_internal<P: AsRef<Path>>(
+        &mut self,
+        file: P,
+        mut on_added: impl FnMut(&mut FileInfo, Result<(), BackupError>) -> Result<(), BackupError>,
+        on_final: impl FnOnce(),
+    ) -> Result<(), BackupError> {
+        let config = self
+            .readers
+            .last_mut()
+            .expect("The number of readers is more than one!")
+            .config
+            .as_mut()
+            .expect("The config shoulf already be read!");
+        let quality = config.quality;
+        let threads = config.threads;
+        let config = config.to_yaml()?;
+
+        let mut decoders = self
+            .readers
+            .iter_mut()
+            .map(|r| r.get_decoder())
+            .collect::<Result<Vec<_>, BackupError>>()?;
+        let mut entries = decoders
+            .iter_mut()
+            .map(|d| {
+                Ok(d.entries()
+                    .map_err(|e| BackupError::ArchiveError(e))?
+                    .skip(2)
+                    .peekable())
+            })
+            .collect::<Result<Vec<_>, BackupError>>()?;
+        entries.reverse();
+
+        let list = FileListString::from(&mut self.files);
+        let mut encoder = CompressionEncoder::create(file, quality, threads)?;
+        encoder.append_data("config.yml", config)?;
+        encoder.append_data(list.filename(), list)?;
+
+        for (_, file) in self.files.iter_mut() {
+            let file = file.get_string();
+            'outer: for p in entries.iter_mut() {
+                loop {
+                    match p.peek_mut() {
+                        Some(e) => match e {
+                            Err(_) => {
+                                p.next().unwrap()?;
+                            }
+                            Ok((fi, _)) => match fi.get_string().cmp(file) {
+                                std::cmp::Ordering::Less => {
+                                    p.next();
+                                }
+                                std::cmp::Ordering::Equal => {
+                                    let (mut fi, entry) = p.next().unwrap()?;
+                                    on_added(
+                                        &mut fi,
+                                        encoder.append_entry(entry).map_err(BackupError::IOError),
+                                    )?;
+                                    break 'outer;
+                                }
+                                std::cmp::Ordering::Greater => break,
+                            },
+                        },
+                        None => break,
+                    }
+                }
+            }
+        }
+        on_final();
+        encoder.close()?;
         Ok(())
     }
 }

@@ -7,6 +7,7 @@ pub mod compression;
 pub mod config;
 pub mod files;
 pub mod gui;
+pub mod lists;
 pub mod parse_date;
 
 #[allow(unused_imports)]

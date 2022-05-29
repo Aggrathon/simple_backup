@@ -303,7 +303,8 @@ impl BackupState {
                         .list
                         .as_ref()
                         .expect("The files should already be crawled at this point!")
-                        .iter_inc(),
+                        .iter()
+                        .filter_map(|(b, fi)| if *b { Some(fi) } else { None }),
                     |f| {
                         presets::row_list2(vec![
                             presets::text(f.copy_string()).width(Length::Fill).into(),

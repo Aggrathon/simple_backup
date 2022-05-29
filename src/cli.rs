@@ -6,9 +6,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use number_prefix::NumberPrefix;
 use regex::RegexSet;
 
-use crate::backup::{BackupReader, BackupWriter, FileListString};
+use crate::backup::{BackupError, BackupMerger, BackupReader, BackupWriter};
 use crate::config::Config;
 use crate::files::{FileAccessError, FileInfo};
+use crate::lists::FileListString;
 use crate::utils::strip_absolute_from_path;
 
 /// Backup files
@@ -152,7 +153,7 @@ pub fn restore(
         if only_this {
             tmp1.iter_included()
         } else {
-            Box::new(tmp1.iter_all())
+            Box::new(tmp1.iter().map(|v| v.1))
         }
     } else {
         #[cfg(target_os = "windows")]
@@ -242,4 +243,16 @@ pub fn restore(
         bar.set_message("Restoration Completed!");
         bar.finish();
     }
+}
+
+pub fn merge(backups: Vec<String>, all: bool, verbose: bool, force: bool, dry: bool, quiet: bool) {
+    let mut merger = BackupMerger::new(backups.into_iter().map(BackupReader::new).collect(), all)
+        .expect("Could not read the backups:");
+    // TODO bars and dry
+    // TODO filename
+    merger
+        .write(".", |_, _| Ok(()), || {})
+        .expect("Could not merge the backups:");
+    // TODO handle afterwards
+    todo!();
 }
