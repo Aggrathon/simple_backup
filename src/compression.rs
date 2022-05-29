@@ -52,6 +52,15 @@ impl<'a> CompressionEncoder<'a> {
         header.set_size(content.len() as u64);
         self.0.append_data(&mut header, &name, content)
     }
+
+    pub fn append_entry(
+        &mut self,
+        entry: Entry<'_, Decoder<'_, BufReader<File>>>,
+    ) -> std::io::Result<()> {
+        let mut head = entry.header().clone();
+        let path = entry.path()?.to_path_buf();
+        self.0.append_data(&mut head, path, entry)
+    }
 }
 
 pub type CompressionDecoderEntry<'dummy, 'a> =
@@ -72,6 +81,7 @@ impl<'a> CompressionDecoder<'a> {
         let mut archive = Archive::new(decoder);
         archive.set_unpack_xattrs(true);
         archive.set_preserve_permissions(true);
+        archive.set_preserve_mtime(true);
         archive.set_overwrite(true);
         Ok(Self { 0: archive })
     }

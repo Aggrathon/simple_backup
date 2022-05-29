@@ -6,10 +6,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use number_prefix::NumberPrefix;
 use regex::RegexSet;
 
-use crate::backup::{BackupReader, BackupWriter};
+use crate::backup::{BackupReader, BackupWriter, FileListString};
 use crate::config::Config;
 use crate::files::{FileAccessError, FileInfo};
-use crate::utils::{sanitise_windows_paths, strip_absolute_from_path};
+use crate::utils::strip_absolute_from_path;
 
 /// Backup files
 pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool) {
@@ -143,33 +143,37 @@ pub fn restore(
             true
         }
     };
-    let list_str: String;
-    let list: Vec<String>;
-    let include: Vec<&str> = if include.is_empty() {
-        list_str = source
+    let tmp1: FileListString;
+    let tmp2: Vec<String>;
+    let inc_iter = if include.is_empty() {
+        tmp1 = source
             .move_list()
             .expect("Could not get list of files from backup:");
-        if regex.is_empty() {
-            list_str.split('\n').collect()
+        if only_this {
+            tmp1.iter_included()
         } else {
-            let regex = RegexSet::new(regex).expect("Could not parse regex:");
-            list_str.split('\n').filter(|f| regex.is_match(f)).collect()
+            Box::new(tmp1.iter_all())
         }
     } else {
-        if regex.is_empty() {
-            list = include.into_iter().map(sanitise_windows_paths).collect();
-        } else {
-            let regex = RegexSet::new(regex).expect("Could not parse regex:");
-            list = include
+        #[cfg(target_os = "windows")]
+        {
+            tmp2 = include
                 .into_iter()
-                .filter(|f| !regex.is_match(f))
-                .map(sanitise_windows_paths)
-                .collect();
+                .map(|s| s.replace('\\', "/"))
+                .collect::<Vec<_>>();
+            Box::new(tmp2.iter().map(String::as_str))
         }
-        list.iter().map(String::as_str).collect()
+        #[cfg(not(target_os = "windows"))]
+        Box::new(include.into_iter())
+    };
+    let include: Vec<&str> = if regex.is_empty() {
+        inc_iter.collect()
+    } else {
+        let regex = RegexSet::new(regex).expect("Could not parse regex:");
+        inc_iter.filter(|f| regex.is_match(f)).collect()
     };
 
-    if include.is_empty() && !only_this {
+    if include.is_empty() {
         if !quiet {
             eprintln!("No files to backup");
         }
@@ -216,11 +220,7 @@ pub fn restore(
                 bar.set_message(fi.move_string());
                 FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
             };
-            if only_this && include.is_empty() {
-                source.restore_this(path_transform, callback, force)
-            } else {
-                source.restore_selected(include, path_transform, callback, force)
-            }
+            source.restore(include, path_transform, callback, force, !only_this)
         } else {
             let output = output.map(PathBuf::from);
             let path_transform = |mut fi: FileInfo| {
@@ -234,11 +234,7 @@ pub fn restore(
                     fi
                 }
             };
-            if only_this && include.is_empty() {
-                source.restore_this(path_transform, callback, force)
-            } else {
-                source.restore_selected(include, path_transform, callback, force)
-            }
+            source.restore(include, path_transform, callback, force, !only_this)
         }
         .expect("Could not restore from backup:");
 

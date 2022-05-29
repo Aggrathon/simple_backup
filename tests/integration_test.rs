@@ -41,7 +41,6 @@ fn cli_test() {
     let mut bw1 = BackupWriter::new(config).0;
     bw1.export_list(&f4, false).unwrap();
     bw1.export_list(&f3, true).unwrap();
-    bw1.iter_files().unwrap().skip(1).next();
     bw1.write(|_, _| Ok(()), || ()).unwrap();
 
     remove_file(&f1).unwrap();
@@ -82,7 +81,7 @@ fn cli_test() {
         false,
         true,
         true,
-        false,
+        true,
         false,
         true,
     );
@@ -310,7 +309,7 @@ fn extract_test() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn time_test() -> std::io::Result<()> {
+fn time_test() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir()?;
     let f1 = dir.path().join("a.txt");
     let f2 = dir.path().join("b.txt");

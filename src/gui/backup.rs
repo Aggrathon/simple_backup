@@ -300,8 +300,10 @@ impl BackupState {
                 scroll = self.pagination.push_to(
                     scroll,
                     writer
-                        .try_iter_files()
-                        .expect("The files should already be crawled at this point!"),
+                        .list
+                        .as_ref()
+                        .expect("The files should already be crawled at this point!")
+                        .iter_inc(),
                     |f| {
                         presets::row_list2(vec![
                             presets::text(f.copy_string()).width(Length::Fill).into(),

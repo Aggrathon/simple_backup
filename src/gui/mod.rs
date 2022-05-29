@@ -108,18 +108,7 @@ fn open_backup() -> Option<BackupReader> {
         .set_title("Open backup file")
         .add_filter("Backup files", &["tar.zst"])
         .pick_file()
-        .and_then(|file| match BackupReader::read(file) {
-            Ok(reader) => Some(reader),
-            Err(e) => {
-                MessageDialog::new()
-                    .set_description(&e.to_string())
-                    .set_level(rfd::MessageLevel::Error)
-                    .set_buttons(rfd::MessageButtons::Ok)
-                    .set_title("Problem with reading backup")
-                    .show();
-                None
-            }
-        })
+        .and_then(|file| Some(BackupReader::new(file)))
 }
 
 impl Application for ApplicationState {

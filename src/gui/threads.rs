@@ -110,7 +110,7 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader> {
                 let path_transform = |fi: FileInfo| {
                     FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
                 };
-                reader.restore_selected(selection, path_transform, callback, true)
+                reader.restore(selection, path_transform, callback, true, true)
             } else {
                 let path_transform = |mut fi: FileInfo| match &output {
                     Some(output) => {
@@ -118,7 +118,7 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader> {
                     }
                     None => fi,
                 };
-                reader.restore_selected(selection, path_transform, callback, true)
+                reader.restore(selection, path_transform, callback, true, true)
             };
 
             #[allow(unused_must_use)]

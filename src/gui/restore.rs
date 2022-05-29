@@ -51,13 +51,12 @@ impl RestoreState {
     fn view_list(&mut self, mut reader: BackupReader) {
         match reader.get_meta() {
             Err(e) => {
-                self.error.push('\n');
+                self.error.push_str("\nProblem with reading backup:");
                 self.error.push_str(&e.to_string());
                 self.stage = RestoreStage::Error;
             }
             Ok((_, list)) => {
-                let list: Vec<(bool, String)> =
-                    list.split('\n').map(|s| (true, String::from(s))).collect();
+                let list: Vec<_> = list.iter_all().map(|s| (true, String::from(s))).collect();
                 self.pagination.set_total(list.len());
                 self.all = true;
                 self.stage = RestoreStage::Viewing(reader, list);

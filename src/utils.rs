@@ -18,16 +18,6 @@ macro_rules! try_some {
     };
 }
 
-#[cfg(target_os = "windows")]
-pub(crate) fn sanitise_windows_paths<S: AsRef<str>>(path: S) -> String {
-    path.as_ref().replace('\\', "/")
-}
-
-#[cfg(not(target_os = "windows"))]
-pub(crate) fn sanitise_windows_paths<S: AsRef<str>>(path: S) -> String {
-    path.as_ref().to_string()
-}
-
 pub fn clamp<T>(value: T, min: T, max: T) -> T
 where
     T: PartialOrd,
@@ -206,10 +196,10 @@ pub fn get_backup_from_path<S: AsRef<str>>(
 ) -> Result<BackupReader, Box<dyn std::error::Error>> {
     match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
         ConfigPathType::Config(path) => Ok(BackupReader::from_config(Config::read_yaml(path)?)?),
-        ConfigPathType::Backup(path) => Ok(BackupReader::read(path)?),
+        ConfigPathType::Backup(path) => Ok(BackupReader::new(path)),
         ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
             None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
-            Some(path) => Ok(BackupReader::read(path)?),
+            Some(path) => Ok(BackupReader::new(path)),
         },
     }
 }
@@ -235,8 +225,9 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{get_backup_from_path, get_config_from_path, BackupIterator};
-    use crate::utils::strip_absolute_from_path;
+    use super::{
+        get_backup_from_path, get_config_from_path, strip_absolute_from_path, BackupIterator,
+    };
     use crate::Config;
 
     #[test]
