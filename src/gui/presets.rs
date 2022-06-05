@@ -236,7 +236,7 @@ pub(crate) fn scroll_pane<'a>(
     pane_border(title, button, Scrollable::new(content).into())
 }
 
-pub(crate) fn scroll_border<'a>(content: Element<'a, Message>) -> Container<'a, Message> {
+pub(crate) fn scroll_border(content: Element<'_, Message>) -> Container<'_, Message> {
     Container::new(Scrollable::new(content).height(Length::Fill))
         .style(ContainerStyle::Pane)
         .padding(INNER_SPACING)
@@ -431,7 +431,7 @@ impl text_input::StyleSheet for InputStyle {
             border_color: DARK_COLOR,
             border_radius: SMALL_RADIUS,
             border_width: 1.0,
-            ..Default::default()
+            // ..Default::default()
         }
     }
 
@@ -487,7 +487,7 @@ impl iced::toggler::StyleSheet for ToggleStyle {
 impl iced::pick_list::StyleSheet for PickListStyle {
     fn menu(&self) -> iced::pick_list::Menu {
         iced::pick_list::Menu {
-            background: Background::Color(LIGHT_COLOR.into()),
+            background: Background::Color(LIGHT_COLOR),
             selected_background: Background::Color(APP_COLOR),
             border_color: DARK_COLOR,
             border_width: 1.0,
@@ -498,7 +498,7 @@ impl iced::pick_list::StyleSheet for PickListStyle {
     fn active(&self) -> iced::pick_list::Style {
         iced::pick_list::Style {
             border_radius: SMALL_RADIUS,
-            background: Background::Color(APP_COLOR.into()),
+            background: Background::Color(APP_COLOR),
             text_color: Color::WHITE,
             border_color: APP_COLOR,
             ..iced::pick_list::Style::default()

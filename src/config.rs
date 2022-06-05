@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
-use clap::{ArgMatches, Values};
+use clap::ArgMatches;
 use path_absolutize::Absolutize;
 use serde::{Deserialize, Serialize};
 
@@ -50,17 +50,17 @@ impl Config {
         let mut c = Config {
             include: args
                 .values_of("include")
-                .unwrap_or(Values::default())
+                .unwrap_or_default()
                 .map(|x| x.to_string())
                 .collect(),
             exclude: args
                 .values_of("exclude")
-                .unwrap_or(Values::default())
+                .unwrap_or_default()
                 .map(|x| x.to_string())
                 .collect(),
             regex: args
                 .values_of("regex")
-                .unwrap_or(Values::default())
+                .unwrap_or_default()
                 .map(|x| x.to_string())
                 .collect(),
             output: args
@@ -145,7 +145,7 @@ impl Config {
     }
 
     /// serialise the config as a yaml string
-    pub fn to_yaml(&mut self) -> serde_yaml::Result<String> {
+    pub fn as_yaml(&mut self) -> serde_yaml::Result<String> {
         self.sort();
         serde_yaml::to_string(&self)
     }
@@ -173,9 +173,7 @@ impl Config {
                 None => PathBuf::from("."),
             };
         }
-        if self.local {
-            path
-        } else if path.is_absolute() {
+        if self.local || path.is_absolute() {
             path
         } else {
             match path.absolutize() {
@@ -202,9 +200,9 @@ mod tests {
     #[test]
     fn yaml() {
         let mut config = Config::new();
-        let yaml = config.to_yaml().unwrap();
+        let yaml = config.as_yaml().unwrap();
         let mut config2 = Config::from_yaml(&yaml).unwrap();
-        let yaml2 = config2.to_yaml().unwrap();
+        let yaml2 = config2.as_yaml().unwrap();
         assert_eq!(config.include, config2.include);
         assert_eq!(config.exclude, config2.exclude);
         assert_eq!(config.regex, config2.regex);

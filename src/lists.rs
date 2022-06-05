@@ -9,7 +9,7 @@ pub struct FileListVec(Vec<(bool, FileInfo)>);
 
 impl FileListVec {
     pub fn new() -> Self {
-        Self { 0: vec![] }
+        Self(Vec::new())
     }
 
     pub fn push(&mut self, included: bool, file: FileInfo) {
@@ -34,7 +34,7 @@ impl FileListVec {
                 .collect(),
         };
         list.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-        Self { 0: list }
+        Self(list)
     }
 
     pub fn crawl_with_callback(
@@ -45,7 +45,7 @@ impl FileListVec {
     ) -> Result<Self, BackupError> {
         let all = all || time.is_none();
         let mut list: Vec<(bool, FileInfo)> = vec![];
-        for f in crawler.into_iter() {
+        for f in crawler {
             match f {
                 Ok(mut fi) => {
                     let inc = match time {
@@ -61,7 +61,7 @@ impl FileListVec {
             }
         }
         list.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-        Ok(Self { 0: list })
+        Ok(Self(list))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &(bool, FileInfo)> {
@@ -134,7 +134,7 @@ impl FileListString {
             2 => Box::new(
                 self.list
                     .split('\n')
-                    .filter_map(|s: &str| Some((s.starts_with('1'), &s[2..]))),
+                    .map(|s: &str| (s.starts_with('1'), &s[2..])),
             ),
             _ => Box::new(self.list.split('\n').map(|s| (true, s))),
         }

@@ -12,7 +12,7 @@ use regex::RegexSet;
 use crate::parse_date;
 
 /// A struct that contains both the PathBuf and String versions of a path
-#[derive(Debug, Eq, Ord, Clone)]
+#[derive(Debug, Eq, Clone)]
 pub struct FileInfo {
     string: Option<String>,
     path: Option<PathBuf>,
@@ -102,6 +102,15 @@ impl PartialOrd for FileInfo {
             }
         }
         None
+    }
+}
+
+impl Ord for FileInfo {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.partial_cmp(other) {
+            Some(o) => o,
+            None => self.copy_string().cmp(&other.copy_string()),
+        }
     }
 }
 
@@ -259,7 +268,7 @@ impl FileCrawler {
         let regex = RegexSet::new(
             filter
                 .as_ref()
-                .into_iter()
+                .iter()
                 .filter(|s| !s.as_ref().is_empty())
                 .map(|s| s.as_ref())
                 .chain(exc.iter().map(|s| s.as_str())),
@@ -288,9 +297,10 @@ impl FileCrawler {
         } else {
             p
         };
-        if let Ok(_) = self
+        if self
             .stack
             .binary_search_by(|fi| p.cmp(fi.path.as_ref().unwrap()))
+            .is_ok()
         {
             return true;
         }
@@ -370,7 +380,7 @@ impl Iterator for FileCrawler {
                         self.temp.push((fi, entry));
                     }
                 }
-                if self.temp.len() > 0 {
+                if !self.temp.is_empty() {
                     // Sort the added items to preserve lexicographic ordering
                     self.temp
                         .sort_unstable_by(|a, b| a.1.file_name().cmp(&b.1.file_name()));
@@ -382,7 +392,7 @@ impl Iterator for FileCrawler {
                         for (fi1, _) in self.temp.iter() {
                             // SAFETY: count is guaranteed to be between zero and self.stack.len()
                             let fi2 = unsafe { self.stack.get_unchecked(count) };
-                            match fi1.path.as_ref().unwrap().cmp(&fi2.path.as_ref().unwrap()) {
+                            match fi1.path.as_ref().unwrap().cmp(fi2.path.as_ref().unwrap()) {
                                 std::cmp::Ordering::Less => {}
                                 std::cmp::Ordering::Equal => {
                                     self.stack.remove(count);
@@ -410,7 +420,7 @@ impl Iterator for FileCrawler {
                     // If the top of the stack is not sorted
                     if needs_sorting {
                         self.stack[count..].sort_unstable_by(|a, b| {
-                            b.path.as_ref().unwrap().cmp(&a.path.as_ref().unwrap())
+                            b.path.as_ref().unwrap().cmp(a.path.as_ref().unwrap())
                         });
                     }
                 }

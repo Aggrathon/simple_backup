@@ -5,7 +5,7 @@ use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, ParseError};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serializer};
 
-const FORMATS_DT: [&'static str; 13] = [
+const FORMATS_DT: [&str; 13] = [
     "%Y-%m-%d_%H-%M-%S",
     "%Y-%m-%d %H:%M:%S",
     "%Y-%m-%d %H:%M",
@@ -20,7 +20,7 @@ const FORMATS_DT: [&'static str; 13] = [
     "%y%m%d%H%M%S",
     "%y%m%d%H%M",
 ];
-const FORMATS_D: [&'static str; 6] = [
+const FORMATS_D: [&str; 6] = [
     "%Y-%m-%d", "%y-%m-%d", "%Y.%m.%d", "%y.%m.%d", "%Y%m%d", "%y%m%d",
 ];
 
@@ -41,12 +41,12 @@ where
     D: Deserializer<'a>,
 {
     let date = &String::deserialize(deserializer)?;
-    if date == "" {
+    if date.is_empty() {
         Ok(None)
     } else {
-        NaiveDateTime::parse_from_str(&date, "%Y-%m-%d %H:%M:%S")
+        NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S")
             .map_err(Error::custom)
-            .map(|v| Some(v))
+            .map(Some)
     }
 }
 
@@ -57,7 +57,7 @@ pub fn system_to_naive(time: SystemTime) -> NaiveDateTime {
 
 /// Try parsing a string into a NaiveDateTime
 pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &str> {
-    if input == "" {
+    if input.is_empty() {
         return Ok(None);
     }
     for f in FORMATS_DT.iter() {

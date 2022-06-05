@@ -108,7 +108,7 @@ fn open_backup() -> Option<BackupReader> {
         .set_title("Open backup file")
         .add_filter("Backup files", &["tar.zst"])
         .pick_file()
-        .and_then(|file| Some(BackupReader::new(file)))
+        .map(BackupReader::new)
 }
 
 impl Application for ApplicationState {

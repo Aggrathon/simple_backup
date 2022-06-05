@@ -147,15 +147,12 @@ impl ConfigState {
             Message::IncludeOpen(i) => {
                 if let Some(s) = self.config.include.get(i) {
                     let p = PathBuf::from(s);
-                    match p.metadata() {
-                        Ok(m) => {
-                            if m.is_dir() {
-                                self.open_dir(p);
-                            } else if let Some(p) = p.parent() {
-                                self.open_dir(p);
-                            }
+                    if let Ok(m) = p.metadata() {
+                        if m.is_dir() {
+                            self.open_dir(p);
+                        } else if let Some(p) = p.parent() {
+                            self.open_dir(p);
                         }
-                        Err(_) => {}
                     }
                 }
             }
@@ -183,15 +180,12 @@ impl ConfigState {
             Message::ExcludeOpen(i) => {
                 if let Some(s) = self.config.exclude.get(i) {
                     let p = PathBuf::from(s);
-                    match p.metadata() {
-                        Ok(m) => {
-                            if m.is_dir() {
-                                self.open_dir(p);
-                            } else if let Some(p) = p.parent() {
-                                self.open_dir(p);
-                            }
+                    if let Ok(m) = p.metadata() {
+                        if m.is_dir() {
+                            self.open_dir(p);
+                        } else if let Some(p) = p.parent() {
+                            self.open_dir(p);
                         }
-                        Err(_) => {}
                     }
                 }
             }

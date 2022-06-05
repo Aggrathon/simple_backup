@@ -81,7 +81,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
     // Perform the backup
     if !dry {
         if verbose {
-            eprintln!("");
+            eprintln!();
         }
         if !quiet {
             eprintln!("Backing up files...");
@@ -186,7 +186,7 @@ pub fn restore(
         for f in include.iter() {
             println!("{}", f);
         }
-        eprintln!("");
+        eprintln!();
     }
 
     if !dry {
@@ -274,7 +274,7 @@ pub fn merge<P: AsRef<Path>>(
                 *b
             })
             .count();
-        eprintln!("");
+        eprintln!();
     } else {
         count = merger.files.iter().filter(|(b, _)| *b).count();
     }

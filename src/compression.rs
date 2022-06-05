@@ -26,7 +26,7 @@ impl<'a> CompressionEncoder<'a> {
         let mut encoder = Encoder::new(file, quality).map_err(cleanup)?;
         encoder.multithread(threads).map_err(cleanup)?;
         let archive = Builder::new(encoder);
-        Ok(CompressionEncoder { 0: archive })
+        Ok(CompressionEncoder(archive))
     }
 
     /// Finnish compressing the archive and close the file
@@ -37,7 +37,7 @@ impl<'a> CompressionEncoder<'a> {
 
     /// Add a file to the compressed archive
     pub fn append_file(&mut self, file: &PathBuf) -> std::io::Result<()> {
-        let name = path_to_archive(&file);
+        let name = path_to_archive(file);
         self.0.append_path_with_name(&file, name)
     }
 
@@ -83,7 +83,7 @@ impl<'a> CompressionDecoder<'a> {
         archive.set_preserve_permissions(true);
         archive.set_preserve_mtime(true);
         archive.set_overwrite(true);
-        Ok(Self { 0: archive })
+        Ok(Self(archive))
     }
 
     /// Iterate over the files in the compressed archive
@@ -123,10 +123,10 @@ fn path_to_archive(path: &PathBuf) -> String {
 fn path_from_archive<P: AsRef<Path>>(path: P) -> FileInfo {
     let path = path.as_ref();
     let string = path.to_string_lossy();
-    if string.starts_with("rel/") {
-        FileInfo::from(string[4..].to_string())
-    } else if string.starts_with("abs") {
-        FileInfo::from(string[3..].to_string())
+    if let Some(s) = string.strip_prefix("rel/") {
+        FileInfo::from(s.to_string())
+    } else if let Some(s) = string.strip_prefix("abs") {
+        FileInfo::from(s.to_string())
     } else if string == "rel" {
         FileInfo::from(".")
     } else {

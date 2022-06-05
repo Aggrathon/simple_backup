@@ -47,15 +47,15 @@ pub fn format_size(size: u64) -> String {
 
 const PATTERN_LENGTH: usize = "2020-20-20_20-20-20.tar.zst".len();
 
-fn compare_backup_paths(p1: &PathBuf, p2: &PathBuf) -> Ordering {
-    let f1 = match p1.file_name() {
+fn compare_backup_paths<P: AsRef<Path>>(p1: &P, p2: &P) -> Ordering {
+    let f1 = match p1.as_ref().file_name() {
         None => return Ordering::Less,
         Some(f) => match f.to_str() {
             None => return Ordering::Less,
             Some(s) => s,
         },
     };
-    let f2 = match p2.file_name() {
+    let f2 = match p2.as_ref().file_name() {
         None => return Ordering::Greater,
         Some(f) => match f.to_str() {
             None => return Ordering::Greater,
@@ -147,7 +147,7 @@ impl<P: AsRef<Path>> ConfigPathType<P> {
     /// Parse a path to get how the config should be extracted
     pub fn parse<S: AsRef<str>>(path: P, string: S) -> Result<Self, BackupError> {
         let p = path.as_ref();
-        let md = p.metadata().map_err(|e| BackupError::FileError(e))?;
+        let md = p.metadata().map_err(BackupError::FileError)?;
         if md.is_dir() {
             return Ok(Self::Dir(path));
         } else if md.is_file() {
@@ -166,9 +166,7 @@ impl<P: AsRef<Path>> ConfigPathType<P> {
 /// Get a config based upon the path
 pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, BackupError> {
     match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
-        ConfigPathType::Config(path) => {
-            Config::read_yaml(path).map_err(|e| BackupError::FileError(e))
-        }
+        ConfigPathType::Config(path) => Config::read_yaml(path).map_err(BackupError::FileError),
         ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
         ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
             None => Err(BackupError::NoBackup(path.to_path_buf())),
@@ -180,9 +178,7 @@ pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, BackupErro
 /// Get a config based upon the path
 pub fn get_config_from_pathbuf(path: PathBuf) -> Result<Config, BackupError> {
     match ConfigPathType::parse(path.as_path(), path.to_string_lossy())? {
-        ConfigPathType::Config(path) => {
-            Config::read_yaml(path).map_err(|e| BackupError::FileError(e))
-        }
+        ConfigPathType::Config(path) => Config::read_yaml(path).map_err(BackupError::FileError),
         ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
         ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
             None => Err(BackupError::NoBackup(path.to_path_buf())),

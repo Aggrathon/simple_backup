@@ -17,7 +17,7 @@ mod parse_date;
 
 use std::path::PathBuf;
 
-use clap::{App, Arg, SubCommand, Values};
+use clap::{App, Arg, SubCommand};
 use config::Config;
 use utils::{get_backup_from_path, get_config_from_path};
 
@@ -180,7 +180,7 @@ fn arg_quality<'a>() -> Arg<'a, 'a> {
         .default_value("21")
         .validator(|v: String| match v.parse::<u32>() {
             Ok(v) => {
-                if v >= 1 && v <= 22 {
+                if (1..=22).contains(&v) {
                     Ok(())
                 } else {
                     Err(String::from("Must be a number between 1-22!"))
@@ -298,6 +298,9 @@ fn main() {
             SubCommand::with_name("merge")
                 .version(crate_version!())
                 .about("Merge two backup archives")
+                .arg(arg_verbose())
+                .arg(arg_force())
+                .arg(arg_dry())
                 // TODO more args
         );
     #[cfg(not(feature = "gui"))]
@@ -310,14 +313,8 @@ fn main() {
             get_backup_from_path(matches.value_of("source").unwrap())
                 .expect("Could not find backup:"),
             matches.value_of("output"),
-            matches
-                .values_of("include")
-                .unwrap_or(Values::default())
-                .collect(),
-            matches
-                .values_of("regex")
-                .unwrap_or(Values::default())
-                .collect(),
+            matches.values_of("include").unwrap_or_default().collect(),
+            matches.values_of("regex").unwrap_or_default().collect(),
             matches.is_present("flatten"),
             matches.is_present("this"),
             matches.is_present("force"),
@@ -325,7 +322,7 @@ fn main() {
             matches.is_present("dry"),
             false,
         );
-    } else if let Some(_) = matches.subcommand_matches("gui") {
+    } else if matches.subcommand_matches("gui").is_some() {
         // Start a graphical user interface
         #[cfg(not(feature = "gui"))]
         println!("The GUI is disabled (in this executable)!");
@@ -344,9 +341,9 @@ fn main() {
         );
     } else if let Some(matches) = matches.subcommand_matches("config") {
         // Create a config file
-        let mut config = Config::from_args(&matches);
+        let mut config = Config::from_args(matches);
         if matches.is_present("dry") {
-            println!("{}", config.to_yaml().expect("Could not serialise config:"));
+            println!("{}", config.as_yaml().expect("Could not serialise config:"));
         } else {
             config
                 .write_yaml(matches.value_of("file").unwrap())
@@ -354,7 +351,7 @@ fn main() {
         }
     } else if let Some(matches) = matches.subcommand_matches("direct") {
         // Backup using arguments
-        let config = Config::from_args(&matches);
+        let config = Config::from_args(matches);
         cli::backup(
             config,
             matches.is_present("verbose"),

@@ -209,7 +209,7 @@ impl BackupWriter {
         let mut encoder =
             CompressionEncoder::create(&self.path, self.config.quality, self.config.threads)?;
         self.config.time = Some(self.time);
-        encoder.append_data("config.yml", self.config.to_yaml()?)?;
+        encoder.append_data("config.yml", self.config.as_yaml()?)?;
         encoder.append_data(list_string.filename(), list_string)?;
 
         let list = self.list.as_mut().unwrap();
@@ -227,7 +227,7 @@ impl BackupWriter {
     pub fn export_list<P: AsRef<Path>>(&mut self, path: P, all: bool) -> Result<(), BackupError> {
         let f = File::create(path).map_err(BackupError::FileError)?;
         let mut f = BufWriter::new(f);
-        write!(f, "{:19}, {:10}, {}", "Time", "Size", "Path").map_err(BackupError::WriteError)?;
+        write!(f, "{:19}, {:10}, Path", "Time", "Size").map_err(BackupError::WriteError)?;
         let mut callback = |fi: &mut FileInfo| {
             match NumberPrefix::binary(fi.size as f64) {
                 NumberPrefix::Standalone(number) => {
@@ -291,7 +291,7 @@ impl BackupReader {
     }
 
     fn get_decoder<'a>(&self) -> Result<CompressionDecoder<'a>, BackupError> {
-        CompressionDecoder::read(&self.path.as_path()).map_err(|e| BackupError::ArchiveError(e))
+        CompressionDecoder::read(&self.path.as_path()).map_err(BackupError::ArchiveError)
     }
 
     /// Read a backup, but only return the embedded config
@@ -304,10 +304,7 @@ impl BackupReader {
     /// Read the embedded config from the backup
     fn read_config(&mut self) -> Result<&mut Config, BackupError> {
         let mut decoder = self.get_decoder()?;
-        let entry = decoder
-            .entries()
-            .map_err(|e| BackupError::ArchiveError(e))?
-            .next();
+        let entry = decoder.entries().map_err(BackupError::ArchiveError)?.next();
         let entry = match entry {
             Some(Ok(e)) => e,
             Some(Err(e)) => return Err(BackupError::ArchiveError(e)),
@@ -325,8 +322,8 @@ impl BackupReader {
         entry
             .1
             .read_to_string(&mut s)
-            .map_err(|e| BackupError::ArchiveError(e))?;
-        let mut conf: Config = Config::from_yaml(&s).map_err(|e| BackupError::YamlError(e))?;
+            .map_err(BackupError::ArchiveError)?;
+        let mut conf: Config = Config::from_yaml(&s).map_err(BackupError::YamlError)?;
         conf.origin = self.path.to_path_buf();
         self.config = Some(conf);
         Ok(())
@@ -346,10 +343,10 @@ impl BackupReader {
         let mut decoder = self.get_decoder()?;
         let mut entries = decoder
             .entries()
-            .map_err(|e| BackupError::ArchiveError(e))?
+            .map_err(BackupError::ArchiveError)?
             .skip(1);
         match entries.next() {
-            Some(entry) => self.parse_list(entry.map_err(|e| BackupError::ArchiveError(e))?),
+            Some(entry) => self.parse_list(entry.map_err(BackupError::ArchiveError)?),
             None => Err(BackupError::NoList(self.path.to_path_buf())),
         }?;
         Ok(self.list.as_ref().unwrap())
@@ -361,7 +358,7 @@ impl BackupReader {
         entry
             .1
             .read_to_string(&mut content)
-            .map_err(|e| BackupError::ArchiveError(e))?;
+            .map_err(BackupError::ArchiveError)?;
         self.list = Some(
             FileListString::new(filename, content)
                 .map_err(|_| BackupError::NoList(self.path.to_path_buf()))?,
@@ -389,17 +386,15 @@ impl BackupReader {
     /// Read the embedded config and file list
     pub fn read_meta(&mut self) -> Result<(&Config, &FileListString), BackupError> {
         let mut decoder = self.get_decoder()?;
-        let mut entries = decoder
-            .entries()
-            .map_err(|e| BackupError::ArchiveError(e))?;
+        let mut entries = decoder.entries().map_err(BackupError::ArchiveError)?;
         // Read Config
         match entries.next() {
-            Some(entry) => self.parse_config(entry.map_err(|e| BackupError::ArchiveError(e))?),
+            Some(entry) => self.parse_config(entry.map_err(BackupError::ArchiveError)?),
             None => Err(BackupError::NoConfig(self.path.to_path_buf())),
         }?;
         // Read File List
         match entries.next() {
-            Some(entry) => self.parse_list(entry.map_err(|e| BackupError::ArchiveError(e))?),
+            Some(entry) => self.parse_list(entry.map_err(BackupError::ArchiveError)?),
             None => Err(BackupError::NoList(self.path.to_path_buf())),
         }?;
         // Rest
@@ -409,7 +404,7 @@ impl BackupReader {
     /// Get the embedded list of files
     pub fn get_meta(&mut self) -> Result<(&Config, &FileListString), BackupError> {
         if self.config.is_none() || self.list.is_none() {
-            return self.read_meta();
+            self.read_meta()
         } else {
             Ok((self.config.as_mut().unwrap(), self.list.as_ref().unwrap()))
         }
@@ -439,7 +434,7 @@ impl BackupReader {
 
     pub fn export_list<P: AsRef<Path>>(&mut self, path: P) -> Result<(), BackupError> {
         let mut f = File::create(path).map_err(BackupError::FileError)?;
-        f.write_all(&self.get_list()?.as_ref())
+        f.write_all(self.get_list()?.as_ref())
             .map_err(BackupError::WriteError)?;
         Ok(())
     }
@@ -490,7 +485,7 @@ impl BackupReader {
         for res in self
             .get_decoder()?
             .entries()
-            .map_err(|e| BackupError::ArchiveError(e))?
+            .map_err(BackupError::ArchiveError)?
             .skip(2)
         {
             match res {
@@ -512,15 +507,13 @@ impl BackupReader {
                                 std::io::ErrorKind::AlreadyExists,
                                 format!("File '{}' already exists.", path.get_string()),
                             )))?;
+                        } else if let Some(dir) = path.get_path().parent() {
+                            callback(
+                                create_dir_all(dir)
+                                    .and_then(|_| entry.unpack(path.get_path()).and(Ok(path))),
+                            )?;
                         } else {
-                            if let Some(dir) = path.get_path().parent() {
-                                callback(
-                                    create_dir_all(dir)
-                                        .and_then(|_| entry.unpack(path.get_path()).and(Ok(path))),
-                                )?;
-                            } else {
-                                callback(entry.unpack(path.get_path()).and(Ok(path)))?;
-                            }
+                            callback(entry.unpack(path.get_path()).and(Ok(path)))?;
                         }
                         current = match list.next() {
                             Some(s) => s,
@@ -531,7 +524,7 @@ impl BackupReader {
                 Err(e) => callback(Err(e))?,
             }
         }
-        if not_found.len() > 0 {
+        if !not_found.is_empty() {
             if recursive {
                 if let Some(mut bw) = self.get_previous()? {
                     return bw.restore(not_found, path_transform, callback, overwrite, recursive);
@@ -669,7 +662,7 @@ impl BackupMerger {
             .expect("The config should already be read!");
         let quality = config.quality;
         let threads = config.threads;
-        let config = config.to_yaml()?;
+        let config = config.as_yaml()?;
 
         let mut decoders = self
             .readers
@@ -680,7 +673,7 @@ impl BackupMerger {
             .iter_mut()
             .map(|d| {
                 Ok(d.entries()
-                    .map_err(|e| BackupError::ArchiveError(e))?
+                    .map_err(BackupError::ArchiveError)?
                     .skip(2)
                     .peekable())
             })
@@ -697,28 +690,25 @@ impl BackupMerger {
         for (_, file) in self.files.iter_mut() {
             let file = file.get_string();
             'outer: for p in entries.iter_mut() {
-                loop {
-                    match p.peek_mut() {
-                        Some(e) => match e {
-                            Err(_) => {
-                                p.next().unwrap()?;
+                while let Some(e) = p.peek_mut() {
+                    match e {
+                        Err(_) => {
+                            p.next().unwrap()?;
+                        }
+                        Ok((fi, _)) => match fi.get_string().cmp(file) {
+                            std::cmp::Ordering::Less => {
+                                p.next();
                             }
-                            Ok((fi, _)) => match fi.get_string().cmp(file) {
-                                std::cmp::Ordering::Less => {
-                                    p.next();
-                                }
-                                std::cmp::Ordering::Equal => {
-                                    let (mut fi, entry) = p.next().unwrap()?;
-                                    on_added(
-                                        &mut fi,
-                                        encoder.append_entry(entry).map_err(BackupError::IOError),
-                                    )?;
-                                    break 'outer;
-                                }
-                                std::cmp::Ordering::Greater => break,
-                            },
+                            std::cmp::Ordering::Equal => {
+                                let (mut fi, entry) = p.next().unwrap()?;
+                                on_added(
+                                    &mut fi,
+                                    encoder.append_entry(entry).map_err(BackupError::IOError),
+                                )?;
+                                break 'outer;
+                            }
+                            std::cmp::Ordering::Greater => break,
                         },
-                        None => break,
                     }
                 }
             }
