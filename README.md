@@ -13,7 +13,7 @@ A minimal application for doing backups.
 <!--></!-->
 - [X] Command line interface (declare includes, excludes, and regex-filters).
 - [X] Configurations can be saved for easy reuse (e.g. for incremental backups).
-- [x] Graphical user interface.
+- [X] Graphical user interface.
 
 ## Usage
 

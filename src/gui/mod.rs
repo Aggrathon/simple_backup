@@ -42,6 +42,7 @@ pub(crate) enum Message {
     EditConfig,
     BackupView,
     RestoreView,
+    MergeView,
     Incremental(bool),
     ThreadCount(u32),
     CompressionQuality(i32),
@@ -179,6 +180,10 @@ impl Application for ApplicationState {
                 *self = ApplicationState::Main(MainState::new());
                 Command::none()
             }
+            Message::MergeView => {
+                //TODO merge view
+                todo!()
+            }
             _ => match self {
                 ApplicationState::Main(_) => Command::none(),
                 ApplicationState::Config(state) => state.update(message),
@@ -222,7 +227,7 @@ impl MainState {
             presets::button_main("Create", false, Message::CreateConfig).into(),
             presets::button_main("Edit", false, Message::EditConfig).into(),
             presets::button_main("Backup", false, Message::BackupView).into(),
-            presets::button_main("Merge", false, Message::None).into(),
+            presets::button_main("Merge", false, Message::None).into(), // TODO merge message
             presets::button_main("Restore", true, Message::RestoreView).into(),
             Space::with_height(Length::Fill).into(),
         ])

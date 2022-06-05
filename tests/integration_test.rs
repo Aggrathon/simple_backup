@@ -418,3 +418,6 @@ fn longname_test() -> Result<(), Box<dyn std::error::Error>> {
     assert!(f1.exists());
     Ok(())
 }
+
+
+// TODO test merging
