@@ -411,13 +411,13 @@ impl BackupReader {
     }
 
     /// Is this an incemental backup
-    pub fn is_incremental(&mut self) -> Result<bool, BackupError> {
+    pub fn check_incremental(&mut self) -> Result<bool, BackupError> {
         Ok(self.get_config()?.incremental)
     }
 
     /// Try to find the previous backup
     pub fn get_previous(&mut self) -> Result<Option<Self>, BackupError> {
-        if !self.is_incremental()? {
+        if !self.check_incremental()? {
             return Ok(None);
         }
         match self
@@ -581,7 +581,7 @@ impl BackupMerger {
             None => readers.first().unwrap().path.to_path_buf(),
         };
 
-        let mut files = FileListVec::new();
+        let mut files = FileListVec::default();
         if all {
             let mut lists = readers
                 .iter()

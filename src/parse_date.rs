@@ -56,7 +56,7 @@ pub fn system_to_naive(time: SystemTime) -> NaiveDateTime {
 }
 
 /// Try parsing a string into a NaiveDateTime
-pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &str> {
+pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &'static str> {
     if input.is_empty() {
         return Ok(None);
     }

@@ -54,10 +54,10 @@ fn cli_test() {
     reader.get_list().unwrap();
     let _ = reader.get_meta().unwrap();
     reader.export_list(dir.path().join("files.txt")).unwrap();
-    restore(
+    restore::<PathBuf>(
         reader,
         None,
-        vec![&f1.to_string_lossy()],
+        vec![f1.to_string_lossy().to_string()],
         vec![],
         false,
         false,
@@ -73,11 +73,11 @@ fn cli_test() {
     assert!(!f4.exists());
 
     let conf = Config::from_yaml(&mut bw1.config.as_yaml().unwrap()).unwrap();
-    restore(
+    restore::<PathBuf>(
         BackupReader::from_config(conf).unwrap(),
         None,
         vec![],
-        vec![&f2.to_string_lossy().replace('\\', "/")],
+        vec![f2.to_string_lossy().replace('\\', "/")],
         false,
         true,
         true,
@@ -94,7 +94,7 @@ fn cli_test() {
     let conf = Config::from_yaml(&mut bw1.config.as_yaml().unwrap()).unwrap();
     restore(
         BackupReader::from_config(conf).unwrap(),
-        Some(&dir2.to_string_lossy()),
+        Some(&dir2),
         vec![],
         vec![],
         true,
@@ -202,7 +202,7 @@ fn local_test() -> Result<(), Box<dyn std::error::Error>> {
     let reader = BackupReader::from_config(config)?;
     restore(
         reader,
-        Some(&dir.path().to_string_lossy()),
+        Some(dir.path()),
         vec![],
         vec![],
         false,
@@ -247,7 +247,7 @@ fn flatten_test() -> Result<(), Box<dyn std::error::Error>> {
     let reader = BackupReader::from_config(config)?;
     restore(
         reader,
-        Some(&dir.path().to_string_lossy()),
+        Some(&dir.path()),
         vec![],
         vec![],
         true,
@@ -291,7 +291,7 @@ fn extract_test() -> Result<(), Box<dyn std::error::Error>> {
     let reader = BackupReader::from_config(config)?;
     restore(
         reader,
-        Some(&dir.path().to_string_lossy()),
+        Some(&dir.path()),
         vec![],
         vec![],
         false,
@@ -356,7 +356,7 @@ fn time_test() -> Result<(), Box<dyn std::error::Error>> {
         origin: PathBuf::new(),
     };
 
-    restore(
+    restore::<PathBuf>(
         BackupReader::from_config(config)?,
         None,
         vec![],
@@ -402,7 +402,7 @@ fn longname_test() -> Result<(), Box<dyn std::error::Error>> {
     remove_file(&f1)?;
 
     let reader = BackupReader::from_config(config)?;
-    restore(
+    restore::<PathBuf>(
         reader,
         None,
         vec![],

@@ -1,9 +1,6 @@
 /// This is the main module that handles parsing the commandline arguments
 
 #[macro_use]
-extern crate clap;
-
-#[macro_use]
 mod utils;
 mod backup;
 mod cli;
@@ -17,369 +14,274 @@ mod parse_date;
 
 use std::path::PathBuf;
 
-use clap::{App, Arg, SubCommand};
+use chrono::NaiveDateTime;
+use clap::{Args, Parser, Subcommand};
 use config::Config;
 use utils::{get_backup_from_path, get_config_from_path};
 
-enum Purpose {
-    Backup,
-    Restore,
-    Merge
+#[derive(Parser)]
+#[clap(version, about, long_about = None, propagate_version = true, term_width = 0)]
+struct Cli {
+    #[clap(subcommand)]
+    command: Option<Commands>,
 }
 
-fn arg_include<'a>(restore: bool) -> Arg<'a, 'a> {
-    let arg = Arg::with_name("include")
-        .short("i")
-        .long("include")
-        .value_name("PATH")
-        .takes_value(true)
-        .multiple(true);
-    if restore {
-        arg.help("Files to restore (if given then only these are restored)")
+#[derive(Subcommand)]
+enum Commands {
+    /// Create a config file (the options are added to the config file)
+    Config {
+        /// The path for the new config file
+        #[clap(value_parser = parse_config_path, value_name = "CONFIG")]
+        path: PathBuf,
+        #[clap(flatten)]
+        config: ArgConfig,
+        /// Only display the output, don't write anything to disk
+        #[clap(short, long)]
+        dry: bool,
+    },
+    /// Backup using an existing config file
+    Backup {
+        /// The path to the config file, previous backup, or directory with previous backups
+        #[clap(value_parser = parse_config, value_name = "PATH")]
+        config: Config,
+        /// If doing an incremental backup, set the previous time to this
+        #[clap(short, long, value_parser = parse_time, value_name = "TIME")]
+        time: Option<NaiveDateTime>,
+        /// Increase verbosity
+        #[clap(short, long)]
+        verbose: bool,
+        /// Overwrite existing files
+        #[clap(short, long)]
+        force: bool,
+        /// Only display the output, don't write anything to disk
+        #[clap(short, long)]
+        dry: bool,
+    },
+    /// Restore from a backup
+    Restore {
+        /// Path to the backup, backup directory, or config file
+        #[clap(value_parser, value_name = "PATH")]
+        source: PathBuf,
+        /// The directory to restore to (if not original)
+        #[clap(short, long, value_parser, value_name = "PATH")]
+        output: Option<PathBuf>,
+        /// Files to restore (if given then only these are restored)
+        #[clap(short, long, value_parser, value_name = "PATH")]
+        include: Vec<String>,
+        /// Use regex to specify which files to restore
+        #[clap(short, long, value_parser, value_name = "REGEX")]
+        regex: Vec<String>,
+        /// Remove the paths and restore all files to the same directory (if an output path is given)
+        #[clap(short = 'F', long, value_parser, requires = "output")]
+        flatten: bool,
+        /// Only restore from the selected / latest backup even if it is incremental
+        #[clap(short, long)]
+        this: bool,
+        /// Increase verbosity
+        #[clap(short, long)]
+        verbose: bool,
+        /// Overwrite existing files
+        #[clap(short, long)]
+        force: bool,
+        /// Only display the output, don't write anything to disk
+        #[clap(short, long)]
+        dry: bool,
+    },
+    /// Backup using command line arguments directly
+    Direct {
+        #[clap(flatten)]
+        config: ArgConfig,
+        /// If doing an incremental backup, use this as the previous time
+        #[clap(short, long, value_parser = parse_time, value_name = "TIME", requires = "incremental")]
+        time: Option<NaiveDateTime>,
+        /// Increase verbosity
+        #[clap(short, long)]
+        verbose: bool,
+        /// Overwrite existing files
+        #[clap(short, long)]
+        force: bool,
+        /// Only display the output, don't write anything to disk
+        #[clap(short, long)]
+        dry: bool,
+    },
+    /// Merge two backup archives
+    Merge {
+        /// The path to write the merged backup to
+        #[clap(short, long, value_parser, value_name = "PATH")]
+        output: Option<PathBuf>,
+        /// Increase verbosity
+        #[clap(short, long)]
+        verbose: bool,
+        /// Overwrite existing files
+        #[clap(short, long)]
+        force: bool,
+        /// Only display the output, don't write anything to disk
+        #[clap(short, long)]
+        dry: bool,
+        // TODO more args
+    },
+    #[cfg(feature = "gui")]
+    /// Start a graphical user interface
+    Gui,
+}
+
+#[derive(Args)]
+struct ArgConfig {
+    /// Paths (file or directory) to include in the backup
+    #[clap(short, long, value_parser, value_name = "PATH", required = true)]
+    include: Vec<String>,
+    /// Paths (file or directory) to exclude from the backup
+    #[clap(short, long, value_parser, value_name = "PATH")]
+    exclude: Vec<String>,
+    /// Use regex to specify exclusion filters
+    #[clap(short, long, value_parser, value_name = "REGEX")]
+    regex: Vec<String>,
+    /// Where should the backup be stored (either a direcory or a file ending in `.tar.zst`)
+    #[clap(short, long, value_parser, value_name = "PATH", default_value = ".")]
+    output: PathBuf,
+    /// Do an incremental backup (only backup files that have been modified)
+    #[clap(short = 'I', long)]
+    incremental: bool,
+    /// Preserve relative (local) paths instead of converting to absolute paths
+    #[clap(short, long)]
+    local: bool,
+    /// Number of worker threads (using threads requires more memory)
+    #[clap(short='n', long, value_parser = parse_cpu, default_value_t = 1, value_name = "NUM")]
+    threads: u32,
+    /// Compression quality (1-22)
+    #[clap(short, long, value_parser = parse_quality, default_value_t = 20, value_name = "NUM")]
+    quality: i32,
+}
+
+impl ArgConfig {
+    fn into_config(self, time: Option<NaiveDateTime>) -> Config {
+        Config {
+            include: self.include,
+            exclude: self.exclude,
+            regex: self.regex,
+            output: self.output,
+            incremental: self.incremental,
+            quality: self.quality,
+            local: self.local,
+            threads: self.threads,
+            time,
+            origin: PathBuf::new(),
+        }
+    }
+}
+
+fn parse_cpu(s: &str) -> Result<u32, String> {
+    let cpus = num_cpus::get() as u32;
+    if let Ok(i) = s.parse::<u32>() {
+        if (1..=cpus).contains(&i) {
+            return Ok(i);
+        }
+    }
+    Err(format!("Must be a number between 1-{}!", cpus))
+}
+
+fn parse_quality(s: &str) -> Result<i32, &'static str> {
+    if let Ok(i) = s.parse::<i32>() {
+        if (1..=22).contains(&i) {
+            return Ok(i);
+        }
+    }
+    Err("Must be a number between 1-22!")
+}
+
+fn parse_time(s: &str) -> Result<NaiveDateTime, &'static str> {
+    parse_date::try_parse(s)?.ok_or("Missing time")
+}
+
+fn parse_config(s: &str) -> Result<Config, String> {
+    get_config_from_path(s).map_err(|e| e.to_string())
+}
+
+fn parse_config_path(s: &str) -> Result<PathBuf, &'static str> {
+    if s.ends_with(".yml") {
+        Ok(PathBuf::from(s))
     } else {
-        arg.help("Paths (file or directory) to include in the backup")
-            .min_values(1)
-            .required(true)
+        Err("The config file must end with .yml")
     }
-}
-
-fn arg_exclude<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("exclude")
-        .short("e")
-        .long("exclude")
-        .value_name("PATH")
-        .help("Paths (file or directory) to exclude from the backup")
-        .takes_value(true)
-        .multiple(true)
-}
-
-fn arg_output<'a>(purpose: Purpose) -> Arg<'a, 'a> {
-    let arg = Arg::with_name("output")
-        .short("o")
-        .long("output")
-        .value_name("PATH")
-        .takes_value(true);
-    match purpose {
-        Purpose::Backup => arg.help("The directory to restore to (if not original)"),
-        Purpose::Restore => arg.help(
-            "Where should the backup be stored (either a direcory or a file ending in `.tar.zst`)"
-        )
-        .default_value("."),
-        Purpose::Merge => arg.help("The path to write the merged backup to"),
-    }
-}
-
-fn arg_force<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("force")
-        .short("f")
-        .long("force")
-        .help("Overwrite existing files")
-}
-
-fn arg_verbose<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("verbose")
-        .short("v")
-        .long("verbose")
-        .help("Increase verbosity")
-}
-
-fn arg_regex<'a>(restore: bool) -> Arg<'a, 'a> {
-    let arg = Arg::with_name("regex")
-        .short("r")
-        .long("regex")
-        .value_name("REGEX")
-        .takes_value(true)
-        .multiple(true);
-    if restore {
-        arg.help("Use regex to specify which files to restore")
-    } else {
-        arg.help("Use regex to specify exclusion filters")
-    }
-}
-
-fn arg_dry<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("dry")
-        .short("d")
-        .long("dry")
-        .help("Only display the output, don't write anything to disk")
-}
-
-fn arg_conf_file<'a>(new: bool) -> Arg<'a, 'a> {
-    let arg = Arg::with_name("file")
-        .value_name("CONFIG")
-        .help("The path to the config file, previous backup, or directory with previous backups")
-        .takes_value(true)
-        .required(true);
-    if new {
-        arg.validator(|v| {
-            if v.ends_with(".yml") {
-                Ok(())
-            } else {
-                Err("The config file must end with .yml".to_string())
-            }
-        })
-    } else {
-        arg.validator(|v| {
-            let path = PathBuf::from(&v);
-            if path.exists() {
-                if path.is_dir() {
-                    Ok(())
-                } else if path.is_file() {
-                    if v.ends_with(".yml") || v.ends_with(".tar.zst"){
-                        Ok(())
-                    } else {
-                        Err("The file must be either a config file (ends with '.yml') or a previous backup (ends with `.tar.zst`)".to_string())
-                    }
-                } else {
-                    Err("The path to the config file is broken".to_string())
-                }
-            } else {
-                Err("File does not exist".to_string())
-            }
-        })
-    }
-}
-
-fn arg_source<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("source")
-        .value_name("PATH")
-        .help("Path to the backup, backup directory, or config file")
-        .takes_value(true)
-        .required(true)
-}
-
-fn arg_flatten<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("flatten")
-        .short("F")
-        .long("flatten")
-        .help("Remove the paths and restore all files to the same directory (if an output path is given)")
-        .requires("output")
-}
-
-fn arg_incremental<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("incremental")
-        .short("I")
-        .long("incremental")
-        .help("Do an incremental backup (only backup files that have been modified)")
-}
-
-fn arg_time<'a>(req: bool) -> Arg<'a, 'a> {
-    let arg = Arg::with_name("time")
-        .long("time")
-        .takes_value(true)
-        .help("If doing an incremental backup, set the previous time to this")
-        .validator(|v| parse_date::try_parse(&v).map_err(String::from).map(|_| ()));
-    if req {
-        arg.requires("incremental")
-    } else {
-        arg
-    }
-}
-
-fn arg_quality<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("quality")
-        .short("q")
-        .long("quality")
-        .value_name("NUM")
-        .help("Compression quality (1-22)")
-        .takes_value(true)
-        .default_value("21")
-        .validator(|v: String| match v.parse::<u32>() {
-            Ok(v) => {
-                if (1..=22).contains(&v) {
-                    Ok(())
-                } else {
-                    Err(String::from("Must be a number between 1-22!"))
-                }
-            }
-            Err(_) => Err(String::from("Must be a number between 1-22!")),
-        })
-}
-
-fn arg_threads<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("threads")
-        .short("n")
-        .long("threads")
-        .value_name("NUM")
-        .help("Number of worker threads (using threads requires more memory)")
-        .takes_value(true)
-        .default_value("1")
-        .validator(|v: String| match v.parse::<u32>() {
-            Ok(i) => {
-                let cpus = num_cpus::get() as u32;
-                if i < 1 || i > cpus {
-                    Err(format!("Must be a number between 1-{}!", cpus))
-                } else {
-                    Ok(())
-                }
-            }
-            Err(_) => Err(String::from("Must be a number equal or greater than one!")),
-        })
-}
-
-fn arg_local<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("local")
-        .short("l")
-        .long("local")
-        .help("Preserve relative (local) paths instead of converting to absolute paths")
-}
-
-fn arg_this<'a>() -> Arg<'a, 'a> {
-    Arg::with_name("this")
-        .short("t")
-        .long("this")
-        .help("Only restore from the selected / latest backup even if it is incremental")
 }
 
 fn main() {
-    let app = App::new(crate_name!())
-        .setting(clap::AppSettings::SubcommandsNegateReqs)
-        // .author(crate_authors!())
-        .version(crate_version!())
-        .about(crate_description!())
-        .subcommand(
-            SubCommand::with_name("backup")
-                .version(crate_version!())
-                .about("Backup using a config file")
-                .arg(arg_conf_file(false))
-                .arg(arg_verbose())
-                .arg(arg_force())
-                .arg(arg_time(false))
-                .arg(arg_dry()),
-        )
-        .subcommand(
-            SubCommand::with_name("restore")
-                .version(crate_version!())
-                .about("Restore from a backup")
-                .arg(arg_source())
-                .arg(arg_output(Purpose::Restore))
-                .arg(arg_include(true))
-                .arg(arg_regex(true))
-                .arg(arg_flatten())
-                .arg(arg_this())
-                .arg(arg_verbose())
-                .arg(arg_force())
-                .arg(arg_dry()),
-        )
-        .subcommand(SubCommand::with_name("gui").about(
-            if cfg!(feature = "gui") {
-                "Start a graphical user interface"
-            } else {
-                "Start a graphical user interface (disabled)"
-            }
-        ))
-        .subcommand(
-            SubCommand::with_name("config")
-                .version(crate_version!())
-                .about("Create a config file. The flags and options are added to the config file")
-                .arg(arg_conf_file(true))
-                .arg(arg_include(false))
-                .arg(arg_exclude())
-                .arg(arg_regex(false))
-                .arg(arg_output(Purpose::Backup))
-                .arg(arg_incremental())
-                .arg(arg_local())
-                .arg(arg_threads())
-                .arg(arg_quality())
-                .arg(arg_dry()),
-        )
-        .subcommand(
-            SubCommand::with_name("direct")
-                .version(crate_version!())
-                .about("Backup using command line arguments directly")
-                .arg(arg_include(false))
-                .arg(arg_exclude())
-                .arg(arg_regex(false))
-                .arg(arg_output(Purpose::Backup))
-                .arg(arg_incremental())
-                .arg(arg_time(true))
-                .arg(arg_local())
-                .arg(arg_verbose())
-                .arg(arg_force())
-                .arg(arg_threads())
-                .arg(arg_quality())
-                .arg(arg_dry())
-        )
-        .subcommand(
-            SubCommand::with_name("merge")
-                .version(crate_version!())
-                .about("Merge two backup archives")
-                .arg(arg_output(Purpose::Merge))
-                .arg(arg_verbose())
-                .arg(arg_force())
-                .arg(arg_dry())
-                // TODO more args
-        );
-    #[cfg(not(feature = "gui"))]
-    let app = app.setting(clap::AppSettings::SubcommandRequiredElseHelp);
-    let matches = app.get_matches();
+    let cli = Cli::parse();
 
-    if let Some(matches) = matches.subcommand_matches("restore") {
-        // Restore backed up files
-        cli::restore(
-            get_backup_from_path(matches.value_of("source").unwrap())
-                .expect("Could not find backup:"),
-            matches.value_of("output"),
-            matches.values_of("include").unwrap_or_default().collect(),
-            matches.values_of("regex").unwrap_or_default().collect(),
-            matches.is_present("flatten"),
-            matches.is_present("this"),
-            matches.is_present("force"),
-            matches.is_present("verbose"),
-            matches.is_present("dry"),
-            false,
-        );
-    } else if matches.subcommand_matches("gui").is_some() {
-        // Start a graphical user interface
+    if cli.command.is_none() {
+        #[cfg(feature = "gui")]
+        gui::gui();
         #[cfg(not(feature = "gui"))]
-        println!("The GUI is disabled (in this executable)!");
-        #[cfg(feature = "gui")]
-        gui::gui();
-    } else if let Some(matches) = matches.subcommand_matches("backup") {
-        // Backup using an existing config
-        let path = matches.value_of("file").unwrap();
-        let config = get_config_from_path(path).expect("Could not load config:");
-        cli::backup(
-            config,
-            matches.is_present("verbose"),
-            matches.is_present("force"),
-            matches.is_present("dry"),
-            false,
-        );
-    } else if let Some(matches) = matches.subcommand_matches("config") {
-        // Create a config file
-        let mut config = Config::from_args(matches);
-        if matches.is_present("dry") {
-            println!("{}", config.as_yaml().expect("Could not serialise config:"));
-        } else {
-            config
-                .write_yaml(matches.value_of("file").unwrap())
-                .expect("Could not serialise config:");
+        Cli::command().print_help().unwrap();
+        return;
+    }
+
+    match cli.command.unwrap() {
+        Commands::Backup {
+            mut config,
+            time,
+            verbose,
+            force,
+            dry,
+        } => {
+            if time.is_some() {
+                config.time = time;
+            }
+            cli::backup(config, verbose, force, dry, false);
         }
-    } else if let Some(matches) = matches.subcommand_matches("direct") {
-        // Backup using arguments
-        let config = Config::from_args(matches);
-        cli::backup(
-            config,
-            matches.is_present("verbose"),
-            matches.is_present("force"),
-            matches.is_present("dry"),
-            false,
-        );
-    } else if let Some(matches) = matches.subcommand_matches("merge") {
-        // TODO merge options
-        cli::merge::<&str>(
-            vec![],
-            matches.value_of("output"),
-            true,
-            false,
-            matches.is_present("verbose"),
-            matches.is_present("force"),
-            matches.is_present("dry"),
-            false,
-        )
-    } else {
         #[cfg(feature = "gui")]
-        gui::gui();
+        Commands::Gui => {
+            gui::gui();
+        }
+        Commands::Restore {
+            source,
+            output,
+            include,
+            regex,
+            flatten,
+            this,
+            verbose,
+            force,
+            dry,
+        } => {
+            cli::restore(
+                get_backup_from_path(source).expect("Could not find backup:"),
+                output,
+                include,
+                regex,
+                flatten,
+                this,
+                force,
+                verbose,
+                dry,
+                false,
+            );
+        }
+        Commands::Config { path, config, dry } => {
+            let mut config = config.into_config(None);
+            if dry {
+                println!("{}", config.as_yaml().expect("Could not serialise config:"));
+            } else {
+                config
+                    .write_yaml(path)
+                    .expect("Could not serialise config:");
+            }
+        }
+        Commands::Direct {
+            config,
+            time,
+            verbose,
+            force,
+            dry,
+        } => {
+            let config = config.into_config(time);
+            cli::backup(config, verbose, force, dry, false);
+        }
+        Commands::Merge {
+            output,
+            verbose,
+            force,
+            dry,
+        } => cli::merge(vec![], output, true, false, verbose, force, dry, false),
     }
 }

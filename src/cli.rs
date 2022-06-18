@@ -1,6 +1,6 @@
 /// This module contains the logic for running the program from a command line
 use core::panic;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use indicatif::{ProgressBar, ProgressStyle};
 use number_prefix::NumberPrefix;
@@ -120,11 +120,12 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
 }
 
 /// Restore files from a backup
-pub fn restore(
+#[allow(clippy::too_many_arguments)]
+pub fn restore<P: AsRef<Path>>(
     mut source: BackupReader,
-    output: Option<&str>,
-    include: Vec<&str>,
-    regex: Vec<&str>,
+    output: Option<P>,
+    mut include: Vec<String>,
+    regex: Vec<String>,
     flatten: bool,
     only_this: bool,
     force: bool,
@@ -145,7 +146,6 @@ pub fn restore(
         }
     };
     let tmp1: FileListString;
-    let tmp2: Vec<String>;
     let inc_iter = if include.is_empty() {
         tmp1 = source
             .move_list()
@@ -157,15 +157,8 @@ pub fn restore(
         }
     } else {
         #[cfg(target_os = "windows")]
-        {
-            tmp2 = include
-                .into_iter()
-                .map(|s| s.replace('\\', "/"))
-                .collect::<Vec<_>>();
-            Box::new(tmp2.iter().map(String::as_str))
-        }
-        #[cfg(not(target_os = "windows"))]
-        Box::new(include.into_iter())
+        include.iter_mut().for_each(|s| *s = s.replace('\\', "/"));
+        Box::new(include.iter().map(|s| s.as_str()))
     };
     let include: Vec<&str> = if regex.is_empty() {
         inc_iter.collect()
@@ -216,20 +209,20 @@ pub fn restore(
         };
 
         if flatten {
-            let output = PathBuf::from(output.expect("Output directory required for flattening!"));
+            let output = output.expect("Output directory required for flattening!");
+            let output = output.as_ref();
             let path_transform = |mut fi: FileInfo| {
                 bar.set_message(fi.move_string());
                 FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
             };
             source.restore(include, path_transform, callback, force, !only_this)
         } else {
-            let output = output.map(PathBuf::from);
             let path_transform = |mut fi: FileInfo| {
                 if let Some(o) = &output {
                     let s = fi.move_string();
                     let path = strip_absolute_from_path(&s);
                     bar.set_message(s);
-                    FileInfo::from(o.join(path))
+                    FileInfo::from(o.as_ref().join(path))
                 } else {
                     bar.set_message(fi.move_string());
                     fi
@@ -245,6 +238,7 @@ pub fn restore(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn merge<P: AsRef<Path>>(
     backups: Vec<P>,
     path: Option<P>,

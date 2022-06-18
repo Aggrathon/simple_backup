@@ -145,57 +145,42 @@ enum ConfigPathType<P: AsRef<Path>> {
 
 impl<P: AsRef<Path>> ConfigPathType<P> {
     /// Parse a path to get how the config should be extracted
-    pub fn parse<S: AsRef<str>>(path: P, string: S) -> Result<Self, BackupError> {
+    pub fn parse(path: P) -> Result<Self, BackupError> {
         let p = path.as_ref();
         let md = p.metadata().map_err(BackupError::FileError)?;
         if md.is_dir() {
             return Ok(Self::Dir(path));
         } else if md.is_file() {
-            if string.as_ref().ends_with(".yml") {
+            let s = p.to_string_lossy();
+            if s.ends_with(".yml") {
                 return Ok(Self::Config(path));
-            } else if string.as_ref().ends_with(".tar.zst") {
+            } else if s.ends_with(".tar.zst") {
                 return Ok(Self::Backup(path));
             }
         }
-        Err(BackupError::InvalidPath(
-            path.as_ref().to_string_lossy().to_string(),
-        ))
+        Err(BackupError::InvalidPath(p.to_string_lossy().to_string()))
     }
 }
 
 /// Get a config based upon the path
-pub fn get_config_from_path<S: AsRef<str>>(path: S) -> Result<Config, BackupError> {
-    match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
+pub fn get_config_from_path<P: AsRef<Path>>(path: P) -> Result<Config, BackupError> {
+    match ConfigPathType::parse(path)? {
         ConfigPathType::Config(path) => Config::read_yaml(path).map_err(BackupError::FileError),
         ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
         ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
-            None => Err(BackupError::NoBackup(path.to_path_buf())),
-            Some(path) => BackupReader::read_config_only(path),
-        },
-    }
-}
-
-/// Get a config based upon the path
-pub fn get_config_from_pathbuf(path: PathBuf) -> Result<Config, BackupError> {
-    match ConfigPathType::parse(path.as_path(), path.to_string_lossy())? {
-        ConfigPathType::Config(path) => Config::read_yaml(path).map_err(BackupError::FileError),
-        ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
-        ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
-            None => Err(BackupError::NoBackup(path.to_path_buf())),
+            None => Err(BackupError::NoBackup(path.as_ref().to_path_buf())),
             Some(path) => BackupReader::read_config_only(path),
         },
     }
 }
 
 /// Get a BackupReader based upon the path
-pub fn get_backup_from_path<S: AsRef<str>>(
-    path: S,
-) -> Result<BackupReader, Box<dyn std::error::Error>> {
-    match ConfigPathType::parse(Path::new(path.as_ref()), &path)? {
+pub fn get_backup_from_path<P: AsRef<Path>>(path: P) -> Result<BackupReader, BackupError> {
+    match ConfigPathType::parse(path)? {
         ConfigPathType::Config(path) => Ok(BackupReader::from_config(Config::read_yaml(path)?)?),
         ConfigPathType::Backup(path) => Ok(BackupReader::new(path)),
         ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
-            None => Err(Box::new(BackupError::NoBackup(path.to_path_buf()))),
+            None => Err(BackupError::NoBackup(path.as_ref().to_path_buf())),
             Some(path) => Ok(BackupReader::new(path)),
         },
     }
@@ -282,17 +267,9 @@ mod tests {
         let mut conf = Config::new();
         conf.output = PathBuf::from("test");
         conf.write_yaml(&f3)?;
-        assert_eq!(
-            get_config_from_path(f3.to_string_lossy()).unwrap().output,
-            conf.output
-        );
-        assert_eq!(
-            get_backup_from_path(dir.path().to_string_lossy())
-                .unwrap()
-                .path,
-            f2
-        );
-        assert_eq!(get_backup_from_path(f1.to_string_lossy()).unwrap().path, f1);
+        assert_eq!(get_config_from_path(f3).unwrap().output, conf.output);
+        assert_eq!(get_backup_from_path(dir.path()).unwrap().path, f2);
+        assert_eq!(get_backup_from_path(f1.as_path()).unwrap().path, f1);
         Ok(())
     }
 

@@ -9,7 +9,7 @@ keywords = ["backup", "compression", "application"]
 
 [dependencies]
 tar = "0.4.38"
-clap = "2.33"
+clap = { version = "3.2.5", features = ["derive"] }
 serde = { version = "1.0.137", features = ["derive"] }
 serde_yaml = "0.8.24"
 yaml-rust = "0.4.5"

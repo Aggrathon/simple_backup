@@ -4,7 +4,6 @@ use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
-use clap::ArgMatches;
 use path_absolutize::Absolutize;
 use serde::{Deserialize, Serialize};
 
@@ -43,54 +42,6 @@ impl Config {
             time: None,
             origin: PathBuf::new(),
         }
-    }
-
-    /// Create a config from commandline arguments
-    pub fn from_args(args: &ArgMatches) -> Self {
-        let mut c = Config {
-            include: args
-                .values_of("include")
-                .unwrap_or_default()
-                .map(|x| x.to_string())
-                .collect(),
-            exclude: args
-                .values_of("exclude")
-                .unwrap_or_default()
-                .map(|x| x.to_string())
-                .collect(),
-            regex: args
-                .values_of("regex")
-                .unwrap_or_default()
-                .map(|x| x.to_string())
-                .collect(),
-            output: args
-                .value_of("output")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from(".")),
-            incremental: args.is_present("incremental"),
-            quality: args
-                .value_of("quality")
-                .map(|v| clamp(v.parse::<i32>().expect("Could not parse number:"), 1, 22))
-                .unwrap_or(21),
-            threads: args
-                .value_of("threads")
-                .map(|v| v.parse::<u32>().expect("Could not parse number:"))
-                .map(|i| clamp(i, 1, num_cpus::get() as u32))
-                .unwrap_or(1),
-            local: args.is_present("local"),
-            time: args
-                .value_of("time")
-                .map(|v| parse_date::try_parse(v).expect("Could not parse time:"))
-                .unwrap_or(None),
-            origin: PathBuf::new(),
-        };
-        if !c.local && !c.output.is_absolute() {
-            c.output = match c.output.absolutize() {
-                Ok(p) => p.to_path_buf(),
-                Err(_) => c.output,
-            };
-        }
-        c
     }
 
     pub fn set_quality(&mut self, quality: i32) {

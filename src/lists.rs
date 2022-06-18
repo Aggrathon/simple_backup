@@ -5,13 +5,10 @@ use chrono::NaiveDateTime;
 use crate::backup::BackupError;
 use crate::files::{FileAccessError, FileCrawler, FileInfo};
 
+#[derive(Default)]
 pub struct FileListVec(Vec<(bool, FileInfo)>);
 
 impl FileListVec {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
     pub fn push(&mut self, included: bool, file: FileInfo) {
         self.0.push((included, file))
     }
@@ -72,6 +69,7 @@ impl FileListVec {
         self.0.iter_mut()
     }
 
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.0.len()
     }

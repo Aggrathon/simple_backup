@@ -10,7 +10,7 @@ use self::config::ConfigState;
 use self::restore::RestoreState;
 use crate::backup::BackupReader;
 use crate::config::Config;
-use crate::utils::get_config_from_pathbuf;
+use crate::utils::get_config_from_path;
 
 mod backup;
 mod config;
@@ -34,6 +34,7 @@ pub fn gui() {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub(crate) enum Message {
     PaneResized(pane_grid::ResizeEvent),
     PaneDragged(pane_grid::DragEvent),
@@ -90,7 +91,7 @@ fn open_config() -> Option<Config> {
         .add_filter("Config files", &["yml"])
         .add_filter("Backup files", &["tar.zst"])
         .pick_file()
-        .and_then(|file| match get_config_from_pathbuf(file) {
+        .and_then(|file| match get_config_from_path(file) {
             Ok(config) => Some(config),
             Err(e) => {
                 MessageDialog::new()
