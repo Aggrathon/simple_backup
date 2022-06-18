@@ -21,6 +21,12 @@ use clap::{App, Arg, SubCommand};
 use config::Config;
 use utils::{get_backup_from_path, get_config_from_path};
 
+enum Purpose {
+    Backup,
+    Restore,
+    Merge
+}
+
 fn arg_include<'a>(restore: bool) -> Arg<'a, 'a> {
     let arg = Arg::with_name("include")
         .short("i")
@@ -47,19 +53,19 @@ fn arg_exclude<'a>() -> Arg<'a, 'a> {
         .multiple(true)
 }
 
-fn arg_output<'a>(restore: bool) -> Arg<'a, 'a> {
+fn arg_output<'a>(purpose: Purpose) -> Arg<'a, 'a> {
     let arg = Arg::with_name("output")
         .short("o")
         .long("output")
         .value_name("PATH")
         .takes_value(true);
-    if restore {
-        arg.help("The directory to restore to (if not original)")
-    } else {
-        arg.help(
-            "Where should the backup be stored (either a direcory or a file ending in `.tar.zst`)",
+    match purpose {
+        Purpose::Backup => arg.help("The directory to restore to (if not original)"),
+        Purpose::Restore => arg.help(
+            "Where should the backup be stored (either a direcory or a file ending in `.tar.zst`)"
         )
-        .default_value(".")
+        .default_value("."),
+        Purpose::Merge => arg.help("The path to write the merged backup to"),
     }
 }
 
@@ -246,7 +252,7 @@ fn main() {
                 .version(crate_version!())
                 .about("Restore from a backup")
                 .arg(arg_source())
-                .arg(arg_output(true))
+                .arg(arg_output(Purpose::Restore))
                 .arg(arg_include(true))
                 .arg(arg_regex(true))
                 .arg(arg_flatten())
@@ -270,7 +276,7 @@ fn main() {
                 .arg(arg_include(false))
                 .arg(arg_exclude())
                 .arg(arg_regex(false))
-                .arg(arg_output(false))
+                .arg(arg_output(Purpose::Backup))
                 .arg(arg_incremental())
                 .arg(arg_local())
                 .arg(arg_threads())
@@ -284,7 +290,7 @@ fn main() {
                 .arg(arg_include(false))
                 .arg(arg_exclude())
                 .arg(arg_regex(false))
-                .arg(arg_output(false))
+                .arg(arg_output(Purpose::Backup))
                 .arg(arg_incremental())
                 .arg(arg_time(true))
                 .arg(arg_local())
@@ -298,6 +304,7 @@ fn main() {
             SubCommand::with_name("merge")
                 .version(crate_version!())
                 .about("Merge two backup archives")
+                .arg(arg_output(Purpose::Merge))
                 .arg(arg_verbose())
                 .arg(arg_force())
                 .arg(arg_dry())
@@ -363,7 +370,7 @@ fn main() {
         // TODO merge options
         cli::merge::<&str>(
             vec![],
-            None,
+            matches.value_of("output"),
             true,
             false,
             matches.is_present("verbose"),

@@ -419,5 +419,4 @@ fn longname_test() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
 // TODO test merging
