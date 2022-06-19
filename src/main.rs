@@ -254,7 +254,7 @@ fn main() {
             dry,
         } => {
             cli::restore(
-                get_backup_from_path(source).expect("Could not find backup:"),
+                get_backup_from_path(source).expect("Could not find backup"),
                 output,
                 include,
                 regex,
@@ -269,11 +269,9 @@ fn main() {
         Commands::Config { path, config, dry } => {
             let mut config = config.into_config(None);
             if dry {
-                println!("{}", config.as_yaml().expect("Could not serialise config:"));
+                println!("{}", config.as_yaml().expect("Could not serialise config"));
             } else {
-                config
-                    .write_yaml(path)
-                    .expect("Could not serialise config:");
+                config.write_yaml(path).expect("Could not serialise config");
             }
         }
         Commands::Direct {

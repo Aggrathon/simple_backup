@@ -55,7 +55,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
             }
             Ok(())
         })
-        .expect("Could not crawl for files:");
+        .expect("Could not crawl for files");
     } else {
         if !quiet {
             println!("Crawling for files...");
@@ -70,7 +70,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
             }
             Ok(())
         })
-        .expect("Could not crawl for files:");
+        .expect("Could not crawl for files");
     }
 
     if num_files == 0 {
@@ -112,7 +112,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
             },
             || bar.set_message("Waiting for the compression to complete..."),
         )
-        .expect("Could not create backup file:");
+        .expect("Could not create backup file");
         bar.disable_steady_tick();
         bar.set_message("Backup completed!");
         bar.finish();
@@ -133,9 +133,9 @@ pub fn restore<P: AsRef<Path>>(
     dry: bool,
     quiet: bool,
 ) {
-    source.get_meta().expect("Could not read the backup:");
+    source.get_meta().expect("Could not read the backup");
     let only_this = {
-        let mut conf = source.get_config().expect("Could not read the backup:");
+        let mut conf = source.get_config().expect("Could not read the backup");
         if conf.incremental {
             if only_this {
                 conf.incremental = false;
@@ -149,7 +149,7 @@ pub fn restore<P: AsRef<Path>>(
     let inc_iter = if include.is_empty() {
         tmp1 = source
             .move_list()
-            .expect("Could not get list of files from backup:");
+            .expect("Could not get list of files from backup");
         if only_this {
             tmp1.iter_included()
         } else {
@@ -163,7 +163,7 @@ pub fn restore<P: AsRef<Path>>(
     let include: Vec<&str> = if regex.is_empty() {
         inc_iter.collect()
     } else {
-        let regex = RegexSet::new(regex).expect("Could not parse regex:");
+        let regex = RegexSet::new(regex).expect("Could not parse regex");
         inc_iter.filter(|f| regex.is_match(f)).collect()
     };
 
@@ -230,7 +230,7 @@ pub fn restore<P: AsRef<Path>>(
             };
             source.restore(include, path_transform, callback, force, !only_this)
         }
-        .expect("Could not restore from backup:");
+        .expect("Could not restore from backup");
 
         bar.disable_steady_tick();
         bar.set_message("Restoration Completed!");
@@ -251,10 +251,10 @@ pub fn merge(
 ) {
     let backups = backups
         .into_iter()
-        .flat_map(|p| BackupIterator::path(p).expect("Could not find backup:"))
+        .flat_map(|p| BackupIterator::path(p).expect("Could not find backup"))
         .map(|r| r.map(BackupReader::new))
         .collect::<std::io::Result<Vec<BackupReader>>>()
-        .expect("Could not find backup:");
+        .expect("Could not find backup");
     let mut merger = BackupMerger::new(path, backups, all).expect("Could not read the backups");
     let count;
     if verbose {
@@ -303,12 +303,12 @@ pub fn merge(
             },
             || bar.set_message("Waiting for the compression to complete..."),
         )
-        .expect("Could not merge the backups:");
+        .expect("Could not merge the backups");
     bar.disable_steady_tick();
     bar.set_message("Merge complete!");
     bar.finish();
 
     merger
         .cleanup(Some(path), delete, force)
-        .expect("Could not cleanup backup files:");
+        .expect("Could not cleanup backup files");
 }
