@@ -14,6 +14,10 @@ use crate::lists::{FileListString, FileListVec};
 use crate::parse_date::naive_now;
 use crate::utils::extend_pathbuf;
 
+pub(crate) const BACKUP_FILE_EXTENSION: &str = ".tar.zst";
+pub(crate) const CONFIG_DEFAULT_NAME: &str = "config.yml";
+pub(crate) const CONFIG_FILE_EXTENSION: &str = ".yml";
+
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum BackupError {
@@ -66,7 +70,7 @@ impl Display for BackupError {
                 write!(f, "Could not parse the config: {}", e)
             }
             BackupError::InvalidPath(path) => {
-                write!(f, "The path must be either a config (.yml), a backup (.tar.zst), or a directory containing backups: {}", path)
+                write!(f, "The path must be either a config ({}), a backup ({}), or a directory containing backups: {}", CONFIG_FILE_EXTENSION, BACKUP_FILE_EXTENSION, path)
             }
             BackupError::Cancel => {
                 write!(f, "The operation has been cancelled")
@@ -209,7 +213,7 @@ impl BackupWriter {
         let mut encoder =
             CompressionEncoder::create(&self.path, self.config.quality, self.config.threads)?;
         self.config.time = Some(self.time);
-        encoder.append_data("config.yml", self.config.as_yaml()?)?;
+        encoder.append_data(CONFIG_DEFAULT_NAME, self.config.as_yaml()?)?;
         encoder.append_data(list_string.filename(), list_string)?;
 
         let list = self.list.as_mut().unwrap();
@@ -272,7 +276,7 @@ impl BackupReader {
     /// Read a backup
     pub fn new(path: PathBuf) -> Self {
         BackupReader {
-            path: path,
+            path,
             list: None,
             config: None,
         }
@@ -315,7 +319,7 @@ impl BackupReader {
     }
 
     fn parse_config(&mut self, mut entry: CompressionDecoderEntry) -> Result<(), BackupError> {
-        if entry.0.get_string() != "config.yml" {
+        if entry.0.get_string() != CONFIG_DEFAULT_NAME {
             return Err(BackupError::NoConfig(self.path.to_path_buf()));
         }
         let mut s = String::new();
@@ -545,6 +549,14 @@ impl BackupReader {
     }
 }
 
+impl std::fmt::Debug for BackupReader {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BackupReader")
+            .field("path", &self.path)
+            .finish()
+    }
+}
+
 pub struct BackupMerger {
     path: PathBuf,
     readers: Vec<BackupReader>,
@@ -582,17 +594,23 @@ impl BackupMerger {
         };
 
         let mut files = FileListVec::default();
-        if all {
+        {
             let mut lists = readers
                 .iter()
                 .map(|r| Box::new(r.list.as_ref().unwrap().iter().peekable()))
                 .collect::<Vec<_>>();
             loop {
-                let s = {
+                let s = if all {
                     lists
                         .iter_mut()
                         .filter_map(|p| p.peek())
                         .min()
+                        .map(|(_, s)| String::from(*s))
+                } else {
+                    lists
+                        .first_mut()
+                        .unwrap()
+                        .peek()
                         .map(|(_, s)| String::from(*s))
                 };
                 let mut inc = false;
@@ -611,16 +629,7 @@ impl BackupMerger {
                     }
                 };
             }
-        } else {
-            readers
-                .first()
-                .unwrap()
-                .list
-                .as_ref()
-                .unwrap()
-                .iter()
-                .for_each(|(b, f)| files.push(b, FileInfo::from(f)));
-        };
+        }
         Ok(Self {
             path,
             readers,
@@ -684,7 +693,7 @@ impl BackupMerger {
         }
         let list = FileListString::from(&mut self.files);
         let mut encoder = CompressionEncoder::create(&path, quality, threads)?;
-        encoder.append_data("config.yml", config)?;
+        encoder.append_data(CONFIG_DEFAULT_NAME, config)?;
         encoder.append_data(list.filename(), list)?;
 
         for (_, file) in self.files.iter_mut() {

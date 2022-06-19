@@ -7,6 +7,7 @@ use chrono::NaiveDateTime;
 use path_absolutize::Absolutize;
 use serde::{Deserialize, Serialize};
 
+use crate::backup::BACKUP_FILE_EXTENSION;
 use crate::parse_date;
 use crate::parse_date::{create_backup_file_name, naive_now};
 use crate::utils::{clamp, BackupIterator};
@@ -107,9 +108,16 @@ impl Config {
         self.regex.retain(|s| !s.is_empty());
     }
 
+    fn is_output_file(&self) -> bool {
+        if let Some(n) = self.output.file_name() {
+            return n.to_string_lossy().ends_with(BACKUP_FILE_EXTENSION);
+        }
+        false
+    }
+
     /// Get the path for a new backup
     pub fn get_new_output(&self) -> PathBuf {
-        if self.output.ends_with(".tar.zst") {
+        if self.is_output_file() {
             self.output.clone()
         } else {
             self.get_dir().join(create_backup_file_name(naive_now()))
@@ -136,7 +144,7 @@ impl Config {
 
     /// Iterate over old backups
     pub fn get_backups(&self) -> BackupIterator {
-        if self.output.ends_with(".tar.zst") {
+        if self.is_output_file() {
             BackupIterator::file(self.output.clone())
         } else {
             BackupIterator::dir(self.get_dir())

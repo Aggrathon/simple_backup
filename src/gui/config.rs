@@ -9,6 +9,7 @@ use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
 
 use super::{presets, Message};
+use crate::backup::{CONFIG_DEFAULT_NAME, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
 use crate::files::{FileCrawler, FileInfo};
 
@@ -246,8 +247,8 @@ impl ConfigState {
                 if let Some(file) = FileDialog::new()
                     .set_directory(self.config.get_output())
                     .set_title("Save config file")
-                    .set_file_name("config.yml")
-                    .add_filter("Config file", &["yml"])
+                    .set_file_name(CONFIG_DEFAULT_NAME)
+                    .add_filter("Config file", &[&CONFIG_FILE_EXTENSION[1..]])
                     .save_file()
                 {
                     match self.config.write_yaml(file) {

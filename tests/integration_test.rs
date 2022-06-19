@@ -6,10 +6,10 @@ use std::path::PathBuf;
 use path_absolutize::Absolutize;
 use simple_backup;
 use simple_backup::backup::{BackupReader, BackupWriter};
-use simple_backup::cli::{backup, restore};
+use simple_backup::cli::{backup, merge, restore};
 use simple_backup::config::Config;
 use simple_backup::parse_date::naive_now;
-use simple_backup::utils::strip_absolute_from_path;
+use simple_backup::utils::{extend_pathbuf, strip_absolute_from_path};
 use tempfile::tempdir;
 
 #[test]
@@ -419,4 +419,118 @@ fn longname_test() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// TODO test merging
+#[test]
+fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempdir()?;
+    let dir2 = tempdir()?;
+    let f1 = dir.path().join("a.txt");
+    let f2 = dir.path().join("b.txt");
+    let f3 = dir.path().join("c.txt");
+    let b1 = dir2.path().join("b1_2020-20-20_20-20-20.tar.zst");
+    let b2 = dir2.path().join("b2_2020-20-20_20-20-20.tar.zst");
+    let b3 = dir2.path().join("b3_2020-20-20_20-20-20.tar.zst");
+    let b4 = dir2.path().join("b4_2020-20-20_20-20-20.tar.zst");
+
+    let mut config = Config {
+        include: vec![dir.path().to_string_lossy().to_string()],
+        exclude: vec![],
+        regex: vec![],
+        output: b1.clone(),
+        incremental: true,
+        quality: 11,
+        threads: 1,
+        local: false,
+        time: None,
+        origin: PathBuf::new(),
+    };
+
+    File::create(&f1)?;
+
+    backup(config.clone(), false, false, false, true);
+    assert!(b1.exists());
+    config.output = b2.clone();
+    config.time = Some(naive_now());
+
+    remove_file(&f1)?;
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    File::create(&f2)?;
+
+    backup(config.clone(), false, false, false, true);
+    assert!(b2.exists());
+    config.output = b3.clone();
+    config.time = Some(naive_now());
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    File::create(&f3)?;
+
+    backup(config.clone(), false, false, false, true);
+    assert!(b3.exists());
+
+    remove_file(&f2)?;
+    remove_file(&f3)?;
+
+    merge(
+        vec![b1.clone(), b2.clone()],
+        None,
+        true,
+        true,
+        false,
+        true,
+        false,
+        true,
+    );
+
+    merge(
+        vec![dir2.path().to_path_buf()],
+        Some(b4.clone()),
+        false,
+        false,
+        true,
+        false,
+        false,
+        true,
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert!(!b1.exists());
+    assert!(!b2.exists());
+    assert!(!b3.exists());
+    assert!(b4.exists());
+    let b2 = extend_pathbuf(b2, ".old");
+    let b3 = extend_pathbuf(b3, ".old");
+    assert!(b2.exists());
+    assert!(b3.exists());
+
+    restore::<PathBuf>(
+        BackupReader::new(b4),
+        None,
+        vec![],
+        vec![],
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+    );
+    assert!(!f1.exists());
+    assert!(f2.exists());
+    assert!(f3.exists());
+
+    restore::<PathBuf>(
+        BackupReader::new(b2),
+        None,
+        vec![],
+        vec![],
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+    );
+    assert!(f1.exists());
+    assert!(f2.exists());
+    assert!(f3.exists());
+    Ok(())
+}

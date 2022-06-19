@@ -1,14 +1,15 @@
 /// This module contains utility functions (such as getting backups and configs)
-use std::cmp::{Ordering, PartialOrd};
+use std::cmp::PartialOrd;
 use std::ffi::{OsStr, OsString};
 use std::fs::ReadDir;
 use std::path::{Path, PathBuf};
 
+use chrono::NaiveDateTime;
 use number_prefix::NumberPrefix;
 
-use crate::backup::{BackupError, BackupReader};
+use crate::backup::{BackupError, BackupReader, BACKUP_FILE_EXTENSION, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
-use crate::parse_date::parse_backup_file_name;
+use crate::parse_date::{parse_backup_file_name, system_to_naive};
 
 macro_rules! try_some {
     ($value:expr) => {
@@ -45,28 +46,18 @@ pub fn format_size(size: u64) -> String {
     }
 }
 
-const PATTERN_LENGTH: usize = "2020-20-20_20-20-20.tar.zst".len();
-
-fn compare_backup_paths<P: AsRef<Path>>(p1: &P, p2: &P) -> Ordering {
-    let f1 = match p1.as_ref().file_name() {
-        None => return Ordering::Less,
-        Some(f) => match f.to_str() {
-            None => return Ordering::Less,
-            Some(s) => s,
-        },
-    };
-    let f2 = match p2.as_ref().file_name() {
-        None => return Ordering::Greater,
-        Some(f) => match f.to_str() {
-            None => return Ordering::Greater,
-            Some(s) => s,
-        },
-    };
-    if f1.len() <= PATTERN_LENGTH || f2.len() <= PATTERN_LENGTH {
-        return f1.cmp(f2);
+fn get_probable_time<P: AsRef<Path>>(path: P) -> Option<NaiveDateTime> {
+    let path = path.as_ref();
+    let s = path.file_name()?;
+    if let Ok(ndt) = parse_backup_file_name(s.to_string_lossy()) {
+        return Some(ndt);
     }
-    f1[(f1.len() - PATTERN_LENGTH)..(f1.len() - 8)]
-        .cmp(&f2[(f2.len() - PATTERN_LENGTH)..(f2.len() - 8)])
+    let md = path.metadata().ok()?;
+    if let Ok(st) = md.created() {
+        return Some(system_to_naive(st));
+    }
+    let br = BackupReader::read_config_only(path.to_path_buf()).ok()?;
+    br.time
 }
 
 pub struct BackupIterator {
@@ -115,14 +106,24 @@ impl BackupIterator {
 
     /// Get the latest backup based on the timestamp in the file name
     pub fn get_latest(&mut self) -> Option<PathBuf> {
-        self.filter_map(|res| res.ok()).max_by(compare_backup_paths)
+        self.filter_map(|res| res.ok())
+            .max_by_key(|p| get_probable_time(&p))
     }
 
     /// Get the previous backup based on a file name
     pub fn get_previous(&mut self, path: &PathBuf) -> Option<PathBuf> {
+        let time = get_probable_time(path);
         self.filter_map(|res| res.ok())
-            .filter(|p| compare_backup_paths(path, p) == Ordering::Greater)
-            .max_by(compare_backup_paths)
+            .filter_map(|p| {
+                let t2 = get_probable_time(&p);
+                if t2 < time {
+                    Some((p, t2))
+                } else {
+                    None
+                }
+            })
+            .max_by_key(|(_, t)| *t)
+            .map(|(p, _)| p)
     }
 }
 
@@ -139,10 +140,9 @@ impl Iterator for BackupIterator {
                     continue;
                 }
                 if let Some(p) = path.file_name() {
-                    if let Some(s) = p.to_str() {
-                        if parse_backup_file_name(s).is_ok() {
-                            return Some(Ok(path));
-                        }
+                    let s = p.to_string_lossy();
+                    if s.ends_with(BACKUP_FILE_EXTENSION) {
+                        return Some(Ok(path));
                     }
                 }
             }
@@ -168,9 +168,9 @@ impl<P: AsRef<Path>> ConfigPathType<P> {
             return Ok(Self::Dir(path));
         } else if md.is_file() {
             let s = p.to_string_lossy();
-            if s.ends_with(".yml") {
+            if s.ends_with(CONFIG_FILE_EXTENSION) {
                 return Ok(Self::Config(path));
-            } else if s.ends_with(".tar.zst") {
+            } else if s.ends_with(BACKUP_FILE_EXTENSION) {
                 return Ok(Self::Backup(path));
             }
         }
@@ -233,7 +233,7 @@ mod tests {
     use super::{
         get_backup_from_path, get_config_from_path, strip_absolute_from_path, BackupIterator,
     };
-    use crate::Config;
+    use crate::{backup::BackupError, Config};
 
     #[test]
     fn try_macros() {
@@ -244,39 +244,45 @@ mod tests {
     }
 
     #[test]
-    fn backup_iterator() -> std::io::Result<()> {
+    fn backup_iterator() -> Result<(), BackupError> {
         let dir = tempdir()?;
-        let f1 = dir.path().join("asd.tar.zst");
+        let dir2 = tempdir()?;
         let f2 = dir.path().join("backup_2020-02-20_20-20-20.tar.zst");
         let f3 = dir.path().join("backup_2020-04-24_21-20-20.tar.zst");
         let f4 = dir.path().join("backup_2020-04-24_22-20-20.tar.zst");
-        File::create(&f1)?;
+        let f5 = dir2.path().join("a.tar.zst");
+        let f6 = dir2.path().join("b.tar.zst");
         File::create(&f2)?;
         File::create(&f3)?;
         File::create(&f4)?;
+        File::create(&f5)?;
         let bi = BackupIterator::dir(dir.path());
         let bis = bi.collect::<std::io::Result<Vec<PathBuf>>>()?;
-        assert_eq!(bis.len(), 3);
-        assert!(bis.contains(&f2));
-        assert!(bis.contains(&f3));
-        assert!(bis.contains(&f4));
+        assert_eq!(bis, vec![f2.clone(), f3.clone(), f4.clone()]);
         let mut bi = BackupIterator::dir(dir.path());
         assert_eq!(bi.get_latest().unwrap(), f4);
         let mut bi = BackupIterator::dir(dir.path());
         assert_eq!(bi.get_previous(&f4.to_path_buf()).unwrap(), f3);
-        let mut bi = BackupIterator::file(f1.clone());
-        assert_eq!(bi.next().unwrap()?, f1);
+        let mut bi = BackupIterator::file(f2.clone());
+        assert_eq!(bi.next().unwrap()?, f2);
         assert!(bi.next().is_none());
-        let mut bi = BackupIterator::file(f1.clone());
-        assert_eq!(bi.get_latest().unwrap(), f1);
+        let mut bi = BackupIterator::file(f2.clone());
+        assert_eq!(bi.get_latest().unwrap(), f2);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        File::create(&f6)?;
+        let bi = BackupIterator::path(dir2.path().to_path_buf())?;
+        let bis = bi.collect::<std::io::Result<Vec<PathBuf>>>()?;
+        assert_eq!(bis, vec![f5.clone(), f6.clone()]);
+        let mut bi = BackupIterator::dir(dir2.path());
+        assert_eq!(bi.get_latest().unwrap(), f6);
         Ok(())
     }
 
     #[test]
     fn from_path() -> std::io::Result<()> {
         let dir = tempdir()?;
-        let f1 = dir.path().join("asd.tar.zst");
-        let f2 = dir.path().join("backup_2020-02-20_20-20-20.tar.zst");
+        let f1 = dir.path().join("backup_2020-02-20_20-20-20.tar.zst");
+        let f2 = dir.path().join("backup_2020-02-20_20-20-22.tar.zst");
         let f3 = dir.path().join("config.yml");
         File::create(&f1)?;
         File::create(&f2)?;

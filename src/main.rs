@@ -14,10 +14,11 @@ mod parse_date;
 
 use std::path::PathBuf;
 
+use backup::CONFIG_FILE_EXTENSION;
 use chrono::NaiveDateTime;
 use clap::{Args, Parser, Subcommand};
 use config::Config;
-use utils::{get_backup_from_path, get_config_from_path, BackupIterator};
+use utils::{get_backup_from_path, get_config_from_path};
 
 #[derive(Parser)]
 #[clap(version, about, long_about = None, propagate_version = true, term_width = 0)]
@@ -205,11 +206,11 @@ fn parse_config(s: &str) -> Result<Config, String> {
     get_config_from_path(PathBuf::from(s)).map_err(|e| e.to_string())
 }
 
-fn parse_config_path(s: &str) -> Result<PathBuf, &'static str> {
-    if s.ends_with(".yml") {
+fn parse_config_path(s: &str) -> Result<PathBuf, String> {
+    if s.ends_with(CONFIG_FILE_EXTENSION) {
         Ok(PathBuf::from(s))
     } else {
-        Err("The config file must end with .yml")
+        Err("The config file must end with".to_string() + CONFIG_FILE_EXTENSION)
     }
 }
 
