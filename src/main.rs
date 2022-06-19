@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use chrono::NaiveDateTime;
 use clap::{Args, Parser, Subcommand};
 use config::Config;
-use utils::{get_backup_from_path, get_config_from_path};
+use utils::{get_backup_from_path, get_config_from_path, BackupIterator};
 
 #[derive(Parser)]
 #[clap(version, about, long_about = None, propagate_version = true, term_width = 0)]
@@ -106,9 +106,18 @@ enum Commands {
     },
     /// Merge two backup archives
     Merge {
-        /// The path to write the merged backup to
+        /// Backups to merge (as paths to the backups or a directory containing backups)
+        #[clap(short, long, value_parser, value_name = "BACKUPS", required = true)]
+        backups: Vec<PathBuf>,
+        /// The path to write the merged backup to (otherwise replace the newer backup)
         #[clap(short, long, value_parser, value_name = "PATH")]
         output: Option<PathBuf>,
+        /// Keep all files (not just those mentioned in the newest backup)
+        #[clap(short, long)]
+        all: bool,
+        /// Delete the old backups after the merge (instead of renaming them)
+        #[clap(short, long)]
+        delete: bool,
         /// Increase verbosity
         #[clap(short, long)]
         verbose: bool,
@@ -118,7 +127,6 @@ enum Commands {
         /// Only display the output, don't write anything to disk
         #[clap(short, long)]
         dry: bool,
-        // TODO more args
     },
     #[cfg(feature = "gui")]
     /// Start a graphical user interface
@@ -194,7 +202,7 @@ fn parse_time(s: &str) -> Result<NaiveDateTime, &'static str> {
 }
 
 fn parse_config(s: &str) -> Result<Config, String> {
-    get_config_from_path(s).map_err(|e| e.to_string())
+    get_config_from_path(PathBuf::from(s)).map_err(|e| e.to_string())
 }
 
 fn parse_config_path(s: &str) -> Result<PathBuf, &'static str> {
@@ -282,6 +290,9 @@ fn main() {
             verbose,
             force,
             dry,
-        } => cli::merge(vec![], output, true, false, verbose, force, dry, false),
+            backups,
+            all,
+            delete,
+        } => cli::merge(backups, output, all, delete, verbose, force, dry, false),
     }
 }

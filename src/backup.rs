@@ -270,9 +270,9 @@ pub struct BackupReader {
 
 impl BackupReader {
     /// Read a backup
-    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+    pub fn new(path: PathBuf) -> Self {
         BackupReader {
-            path: path.as_ref().to_path_buf(),
+            path: path,
             list: None,
             config: None,
         }
@@ -295,7 +295,7 @@ impl BackupReader {
     }
 
     /// Read a backup, but only return the embedded config
-    pub fn read_config_only<P: AsRef<Path>>(path: P) -> Result<Config, BackupError> {
+    pub fn read_config_only(path: PathBuf) -> Result<Config, BackupError> {
         let mut br = BackupReader::new(path);
         br.read_config()?;
         Ok(br.config.unwrap())
@@ -554,8 +554,8 @@ pub struct BackupMerger {
 impl BackupMerger {
     /// Create a new backup merger.
     /// The merged backup can either contain only files mentioned in the latest backup, or all files from all backups.
-    pub fn new<P: AsRef<Path>>(
-        path: Option<P>,
+    pub fn new(
+        path: Option<PathBuf>,
         mut readers: Vec<BackupReader>,
         all: bool,
     ) -> Result<Self, BackupError> {
@@ -577,7 +577,7 @@ impl BackupMerger {
         readers.reverse();
 
         let path = match path {
-            Some(path) => path.as_ref().to_path_buf(),
+            Some(path) => path,
             None => readers.first().unwrap().path.to_path_buf(),
         };
 

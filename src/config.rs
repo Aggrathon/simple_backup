@@ -74,11 +74,11 @@ impl Config {
     }
 
     /// Read a config from a yaml file
-    pub fn read_yaml<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+    pub fn read_yaml(path: PathBuf) -> std::io::Result<Self> {
         let reader = File::open(&path)?;
         let mut conf: Config =
             serde_yaml::from_reader(reader).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
-        conf.origin = path.as_ref().to_path_buf();
+        conf.origin = path;
         Ok(conf)
     }
 
@@ -137,9 +137,9 @@ impl Config {
     /// Iterate over old backups
     pub fn get_backups(&self) -> BackupIterator {
         if self.output.ends_with(".tar.zst") {
-            BackupIterator::exact(self.output.clone())
+            BackupIterator::file(self.output.clone())
         } else {
-            BackupIterator::timestamp(self.get_dir())
+            BackupIterator::dir(self.get_dir())
         }
     }
 }

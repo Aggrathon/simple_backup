@@ -76,7 +76,7 @@ pub struct BackupIterator {
 
 impl BackupIterator {
     /// Create an iterator over backups based on ONE specific backup
-    pub fn exact(path: PathBuf) -> Self {
+    pub fn file(path: PathBuf) -> Self {
         BackupIterator {
             constant: Some(path.metadata().map(|_| path)),
             dir: None,
@@ -84,7 +84,7 @@ impl BackupIterator {
     }
 
     /// Create an iterator over backups based on timestamps
-    pub fn timestamp<P: AsRef<Path>>(dir: P) -> Self {
+    pub fn dir<P: AsRef<Path>>(dir: P) -> Self {
         match dir.as_ref().read_dir() {
             Err(e) => BackupIterator {
                 constant: Some(Err(e)),
@@ -94,6 +94,22 @@ impl BackupIterator {
                 constant: None,
                 dir: Some(d),
             },
+        }
+    }
+
+    /// Construct a BackupIterator from a path.
+    /// This involves parsing a config if necessary.
+    /// Files are treated as BackupIterator::file and directories as BackupIterator::dir
+    pub fn path(path: PathBuf) -> Result<Self, BackupError> {
+        let iter = match ConfigPathType::parse(path)? {
+            ConfigPathType::Dir(path) => BackupIterator::dir(path),
+            ConfigPathType::Backup(path) => BackupIterator::file(path),
+            ConfigPathType::Config(path) => BackupIterator::path(Config::read_yaml(path)?.output)?,
+        };
+        if let Some(Err(e)) = iter.constant {
+            Err(BackupError::IOError(e))
+        } else {
+            Ok(iter)
         }
     }
 
@@ -163,24 +179,24 @@ impl<P: AsRef<Path>> ConfigPathType<P> {
 }
 
 /// Get a config based upon the path
-pub fn get_config_from_path<P: AsRef<Path>>(path: P) -> Result<Config, BackupError> {
+pub fn get_config_from_path(path: PathBuf) -> Result<Config, BackupError> {
     match ConfigPathType::parse(path)? {
         ConfigPathType::Config(path) => Config::read_yaml(path).map_err(BackupError::FileError),
         ConfigPathType::Backup(path) => BackupReader::read_config_only(path),
-        ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
-            None => Err(BackupError::NoBackup(path.as_ref().to_path_buf())),
+        ConfigPathType::Dir(path) => match BackupIterator::dir(&path).get_latest() {
+            None => Err(BackupError::NoBackup(path)),
             Some(path) => BackupReader::read_config_only(path),
         },
     }
 }
 
 /// Get a BackupReader based upon the path
-pub fn get_backup_from_path<P: AsRef<Path>>(path: P) -> Result<BackupReader, BackupError> {
+pub fn get_backup_from_path(path: PathBuf) -> Result<BackupReader, BackupError> {
     match ConfigPathType::parse(path)? {
         ConfigPathType::Config(path) => Ok(BackupReader::from_config(Config::read_yaml(path)?)?),
         ConfigPathType::Backup(path) => Ok(BackupReader::new(path)),
-        ConfigPathType::Dir(path) => match BackupIterator::timestamp(&path).get_latest() {
-            None => Err(BackupError::NoBackup(path.as_ref().to_path_buf())),
+        ConfigPathType::Dir(path) => match BackupIterator::dir(&path).get_latest() {
+            None => Err(BackupError::NoBackup(path)),
             Some(path) => Ok(BackupReader::new(path)),
         },
     }
@@ -238,20 +254,20 @@ mod tests {
         File::create(&f2)?;
         File::create(&f3)?;
         File::create(&f4)?;
-        let bi = BackupIterator::timestamp(dir.path());
+        let bi = BackupIterator::dir(dir.path());
         let bis = bi.collect::<std::io::Result<Vec<PathBuf>>>()?;
         assert_eq!(bis.len(), 3);
         assert!(bis.contains(&f2));
         assert!(bis.contains(&f3));
         assert!(bis.contains(&f4));
-        let mut bi = BackupIterator::timestamp(dir.path());
+        let mut bi = BackupIterator::dir(dir.path());
         assert_eq!(bi.get_latest().unwrap(), f4);
-        let mut bi = BackupIterator::timestamp(dir.path());
+        let mut bi = BackupIterator::dir(dir.path());
         assert_eq!(bi.get_previous(&f4.to_path_buf()).unwrap(), f3);
-        let mut bi = BackupIterator::exact(f1.clone());
+        let mut bi = BackupIterator::file(f1.clone());
         assert_eq!(bi.next().unwrap()?, f1);
         assert!(bi.next().is_none());
-        let mut bi = BackupIterator::exact(f1.clone());
+        let mut bi = BackupIterator::file(f1.clone());
         assert_eq!(bi.get_latest().unwrap(), f1);
         Ok(())
     }
@@ -268,8 +284,11 @@ mod tests {
         conf.output = PathBuf::from("test");
         conf.write_yaml(&f3)?;
         assert_eq!(get_config_from_path(f3).unwrap().output, conf.output);
-        assert_eq!(get_backup_from_path(dir.path()).unwrap().path, f2);
-        assert_eq!(get_backup_from_path(f1.as_path()).unwrap().path, f1);
+        assert_eq!(
+            get_backup_from_path(dir.path().to_path_buf()).unwrap().path,
+            f2
+        );
+        assert_eq!(get_backup_from_path(f1.clone()).unwrap().path, f1);
         Ok(())
     }
 

@@ -1,6 +1,6 @@
 /// This module contains the logic for running the program from a command line
 use core::panic;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use number_prefix::NumberPrefix;
@@ -10,7 +10,7 @@ use crate::backup::{BackupMerger, BackupReader, BackupWriter};
 use crate::config::Config;
 use crate::files::{FileAccessError, FileInfo};
 use crate::lists::FileListString;
-use crate::utils::strip_absolute_from_path;
+use crate::utils::{strip_absolute_from_path, BackupIterator};
 
 /// Backup files
 pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool) {
@@ -239,9 +239,9 @@ pub fn restore<P: AsRef<Path>>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn merge<P: AsRef<Path>>(
-    backups: Vec<P>,
-    path: Option<P>,
+pub fn merge(
+    backups: Vec<PathBuf>,
+    path: Option<PathBuf>,
     all: bool,
     delete: bool,
     verbose: bool,
@@ -249,14 +249,13 @@ pub fn merge<P: AsRef<Path>>(
     dry: bool,
     quiet: bool,
 ) {
-    let path = path.as_ref();
-
-    let mut merger = BackupMerger::new(
-        path,
-        backups.into_iter().map(BackupReader::new).collect(),
-        all,
-    )
-    .expect("Could not read the backups:");
+    let backups = backups
+        .into_iter()
+        .flat_map(|p| BackupIterator::path(p).expect("Could not find backup:"))
+        .map(|r| r.map(BackupReader::new))
+        .collect::<std::io::Result<Vec<BackupReader>>>()
+        .expect("Could not find backup:");
+    let mut merger = BackupMerger::new(path, backups, all).expect("Could not read the backups:");
     let count;
     if verbose {
         eprintln!("Files in the merged backup:");
