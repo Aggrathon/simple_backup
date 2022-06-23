@@ -558,7 +558,8 @@ impl std::fmt::Debug for BackupReader {
 }
 
 pub struct BackupMerger {
-    path: PathBuf,
+    pub path: PathBuf,
+    tmp_path: PathBuf,
     readers: Vec<BackupReader>,
     pub files: FileListVec,
 }
@@ -632,6 +633,7 @@ impl BackupMerger {
         }
         Ok(Self {
             path,
+            tmp_path: PathBuf::new(),
             readers,
             files,
         })
@@ -642,23 +644,21 @@ impl BackupMerger {
         &mut self,
         on_added: impl FnMut(&mut FileInfo, Result<(), BackupError>) -> Result<(), BackupError>,
         on_final: impl FnOnce(),
-    ) -> Result<PathBuf, BackupError> {
-        let path = self.get_tmp_output();
-        self.write_internal(&path, on_added, on_final)
-            .map_err(|e| {
-                // Clean up failed merge (allowed to fail without checking)
-                #[allow(unused_must_use)]
-                {
-                    std::fs::remove_file(&path);
-                }
-                e
-            })
-            .map(|_| path)
+    ) -> Result<(), BackupError> {
+        self.tmp_path = self.get_tmp_output();
+        self.write_internal(on_added, on_final).map_err(|e| {
+            // Clean up failed merge (allowed to fail without checking)
+            #[allow(unused_must_use)]
+            {
+                std::fs::remove_file(&self.tmp_path);
+                self.tmp_path.clear();
+            }
+            e
+        })
     }
 
     fn write_internal(
         &mut self,
-        path: &Path,
         mut on_added: impl FnMut(&mut FileInfo, Result<(), BackupError>) -> Result<(), BackupError>,
         on_final: impl FnOnce(),
     ) -> Result<(), BackupError> {
@@ -688,11 +688,11 @@ impl BackupMerger {
             })
             .collect::<Result<Vec<_>, BackupError>>()?;
 
-        if let Some(p) = path.parent() {
+        if let Some(p) = self.tmp_path.parent() {
             std::fs::create_dir_all(p)?;
         }
         let list = FileListString::from(&mut self.files);
-        let mut encoder = CompressionEncoder::create(&path, quality, threads)?;
+        let mut encoder = CompressionEncoder::create(&self.tmp_path, quality, threads)?;
         encoder.append_data(CONFIG_DEFAULT_NAME, config)?;
         encoder.append_data(list.filename(), list)?;
 
@@ -735,12 +735,7 @@ impl BackupMerger {
         path
     }
 
-    pub fn cleanup(
-        &mut self,
-        output: Option<PathBuf>,
-        delete: bool,
-        overwrite: bool,
-    ) -> Result<(), BackupError> {
+    pub fn cleanup(&mut self, delete: bool, overwrite: bool) -> Result<(), BackupError> {
         if delete {
             for r in self.readers.iter_mut() {
                 std::fs::remove_file(&r.path)?;
@@ -756,21 +751,31 @@ impl BackupMerger {
                 r.path = path;
             }
         }
-        if let Some(path) = output {
-            if self.path != path {
-                if self.path.exists() {
-                    if overwrite {
-                        std::fs::remove_file(&self.path)?;
-                    } else {
-                        return Err(BackupError::FileExists(self.path.to_path_buf()));
-                    }
+        if self.path != self.tmp_path {
+            if self.path.exists() {
+                if overwrite {
+                    std::fs::remove_file(&self.path)?;
+                } else {
+                    return Err(BackupError::FileExists(self.path.to_path_buf()));
                 }
-                if let Some(p) = self.path.parent() {
-                    std::fs::create_dir_all(p)?;
-                }
-                std::fs::rename(&path, &self.path)?;
             }
+            if let Some(p) = self.path.parent() {
+                std::fs::create_dir_all(p)?;
+            }
+            std::fs::rename(&self.tmp_path, &self.path)?;
         }
+        self.tmp_path.clear();
         Ok(())
+    }
+}
+
+impl Drop for BackupMerger {
+    /// DO NOT CALL THIS DIRECTLY, use `self.cleanup` instead!
+    fn drop(&mut self) {
+        if !self.tmp_path.as_os_str().is_empty() {
+            self.cleanup(false, false)
+                .expect("Could not finalise the merged backup");
+            panic!("The BackupMerger was not disposed of correctly!")
+        }
     }
 }

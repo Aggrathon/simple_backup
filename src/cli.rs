@@ -268,6 +268,10 @@ pub fn merge(
             })
             .count();
         eprintln!();
+        eprintln!(
+            "Storing the merged backup in: {}",
+            merger.path.to_string_lossy()
+        );
     } else {
         count = merger.files.iter().filter(|(b, _)| *b).count();
     }
@@ -287,7 +291,7 @@ pub fn merge(
     bar.tick();
     bar.enable_steady_tick(1000);
 
-    let path = merger
+    merger
         .write(
             |fi: &mut FileInfo, err| {
                 bar.set_message(fi.move_string());
@@ -309,6 +313,6 @@ pub fn merge(
     bar.finish();
 
     merger
-        .cleanup(Some(path), delete, force)
+        .cleanup(delete, force)
         .expect("Could not cleanup backup files");
 }
