@@ -108,7 +108,7 @@ enum Commands {
     /// Merge two backup archives
     Merge {
         /// Backups to merge (as paths to the backups or a directory containing backups)
-        #[clap(short, long, value_parser, value_name = "BACKUPS", required = true)]
+        #[clap(value_parser, value_name = "BACKUPS", required = true)]
         backups: Vec<PathBuf>,
         /// The path to write the merged backup to (otherwise replace the newer backup)
         #[clap(short, long, value_parser, value_name = "PATH")]
@@ -117,7 +117,7 @@ enum Commands {
         #[clap(short, long)]
         all: bool,
         /// Delete the old backups after the merge (instead of renaming them)
-        #[clap(short, long)]
+        #[clap(short = 'r', long)]
         delete: bool,
         /// Increase verbosity
         #[clap(short, long)]
