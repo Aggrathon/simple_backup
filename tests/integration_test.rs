@@ -501,8 +501,22 @@ fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
     assert!(b2.exists());
     assert!(b3.exists());
 
+    let mut reader = BackupReader::new(b4);
+    #[cfg(target_os = "windows")]
+    assert_eq!(
+        reader.get_list()?.iter_included().collect::<Vec<_>>(),
+        vec![
+            f2.to_string_lossy().replace('\\', "/"),
+            f3.to_string_lossy().replace('\\', "/")
+        ]
+    );
+    #[cfg(not(target_os = "windows"))]
+    assert_eq!(
+        reader.get_list()?.iter_included().collect::<Vec<_>>(),
+        vec![f2.to_string_lossy(), f3.to_string_lossy()]
+    );
     restore::<PathBuf>(
-        BackupReader::new(b4),
+        reader,
         None,
         vec![],
         vec![],

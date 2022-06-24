@@ -117,7 +117,7 @@ enum Commands {
         #[clap(short, long)]
         all: bool,
         /// Delete the old backups after the merge (instead of renaming them)
-        #[clap(short = 'r', long)]
+        #[clap(short = 'D', long)]
         delete: bool,
         /// Increase verbosity
         #[clap(short, long)]
