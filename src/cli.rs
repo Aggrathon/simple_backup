@@ -263,7 +263,7 @@ pub fn merge(
             .files
             .iter()
             .filter(|(b, f)| {
-                println!("{}", f);
+                println!("{}", f.copy_string());
                 *b
             })
             .count();
