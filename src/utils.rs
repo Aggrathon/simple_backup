@@ -233,7 +233,8 @@ mod tests {
     use super::{
         get_backup_from_path, get_config_from_path, strip_absolute_from_path, BackupIterator,
     };
-    use crate::{backup::BackupError, Config};
+    use crate::backup::BackupError;
+    use crate::Config;
 
     #[test]
     fn try_macros() {
