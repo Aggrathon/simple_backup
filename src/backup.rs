@@ -32,6 +32,8 @@ pub enum BackupError {
     Cancel,
     FileAccessError(FileAccessError),
     IOError(std::io::Error),
+    DeleteError(std::io::Error),
+    RenameError(String, String, std::io::Error),
     GenericError(&'static str),
     Unspecified,
     FileExists(PathBuf),
@@ -65,6 +67,12 @@ impl Display for BackupError {
             }
             BackupError::WriteError(e) => {
                 write!(f, "Could not write the file: {}", e)
+            }
+            BackupError::DeleteError(e) => {
+                write!(f, "Could not delete the file: {}", e)
+            }
+            BackupError::RenameError(b, a, e) => {
+                write!(f, "Could not rename '{}' to '{}': {}", b, a, e)
             }
             BackupError::YamlError(e) => {
                 write!(f, "Could not parse the config: {}", e)
@@ -267,7 +275,7 @@ impl BackupWriter {
 }
 
 pub struct BackupReader {
-    pub path: PathBuf,
+    pub path: FileInfo,
     pub config: Option<Config>,
     list: Option<FileListString>,
 }
@@ -276,7 +284,7 @@ impl BackupReader {
     /// Read a backup
     pub fn new(path: PathBuf) -> Self {
         BackupReader {
-            path,
+            path: path.into(),
             list: None,
             config: None,
         }
@@ -287,7 +295,7 @@ impl BackupReader {
         match config.get_backups().get_latest() {
             None => Err(BackupError::NoBackup(config.output)),
             Some(prev) => Ok(BackupReader {
-                path: prev,
+                path: prev.into(),
                 config: Some(config),
                 list: None,
             }),
@@ -295,7 +303,8 @@ impl BackupReader {
     }
 
     fn get_decoder<'a>(&self) -> Result<CompressionDecoder<'a>, BackupError> {
-        CompressionDecoder::read(&self.path.as_path()).map_err(BackupError::ArchiveError)
+        CompressionDecoder::read(&self.path.copy_path().as_path())
+            .map_err(BackupError::ArchiveError)
     }
 
     /// Read a backup, but only return the embedded config
@@ -312,7 +321,7 @@ impl BackupReader {
         let entry = match entry {
             Some(Ok(e)) => e,
             Some(Err(e)) => return Err(BackupError::ArchiveError(e)),
-            None => return Err(BackupError::NoConfig(self.path.to_path_buf())),
+            None => return Err(BackupError::NoConfig(self.path.clone_path())),
         };
         self.parse_config(entry)?;
         Ok(self.config.as_mut().unwrap())
@@ -320,7 +329,7 @@ impl BackupReader {
 
     fn parse_config(&mut self, mut entry: CompressionDecoderEntry) -> Result<(), BackupError> {
         if entry.0.get_string() != CONFIG_DEFAULT_NAME {
-            return Err(BackupError::NoConfig(self.path.to_path_buf()));
+            return Err(BackupError::NoConfig(self.path.clone_path()));
         }
         let mut s = String::new();
         entry
@@ -328,7 +337,7 @@ impl BackupReader {
             .read_to_string(&mut s)
             .map_err(BackupError::ArchiveError)?;
         let mut conf: Config = Config::from_yaml(&s).map_err(BackupError::YamlError)?;
-        conf.origin = self.path.to_path_buf();
+        conf.origin = self.path.clone_path();
         self.config = Some(conf);
         Ok(())
     }
@@ -351,7 +360,7 @@ impl BackupReader {
             .skip(1);
         match entries.next() {
             Some(entry) => self.parse_list(entry.map_err(BackupError::ArchiveError)?),
-            None => Err(BackupError::NoList(self.path.to_path_buf())),
+            None => Err(BackupError::NoList(self.path.clone_path())),
         }?;
         Ok(self.list.as_ref().unwrap())
     }
@@ -365,7 +374,7 @@ impl BackupReader {
             .map_err(BackupError::ArchiveError)?;
         self.list = Some(
             FileListString::new(filename, content)
-                .map_err(|_| BackupError::NoList(self.path.to_path_buf()))?,
+                .map_err(|_| BackupError::NoList(self.path.clone_path()))?,
         );
         Ok(())
     }
@@ -394,12 +403,12 @@ impl BackupReader {
         // Read Config
         match entries.next() {
             Some(entry) => self.parse_config(entry.map_err(BackupError::ArchiveError)?),
-            None => Err(BackupError::NoConfig(self.path.to_path_buf())),
+            None => Err(BackupError::NoConfig(self.path.clone_path())),
         }?;
         // Read File List
         match entries.next() {
             Some(entry) => self.parse_list(entry.map_err(BackupError::ArchiveError)?),
-            None => Err(BackupError::NoList(self.path.to_path_buf())),
+            None => Err(BackupError::NoList(self.path.clone_path())),
         }?;
         // Rest
         Ok((self.config.as_ref().unwrap(), self.list.as_ref().unwrap()))
@@ -429,7 +438,7 @@ impl BackupReader {
             .as_ref()
             .unwrap()
             .get_backups()
-            .get_previous(&self.path)
+            .get_previous(self.path.get_path())
         {
             None => Ok(None),
             Some(path) => Ok(Some(BackupReader::new(path))),
@@ -540,7 +549,7 @@ impl BackupReader {
                     format!(
                         "Could not find '{}' in backup '{}'.",
                         f,
-                        self.path.to_string_lossy()
+                        self.path.get_string()
                     ),
                 )))?;
             }
@@ -562,6 +571,8 @@ pub struct BackupMerger {
     tmp_path: PathBuf,
     readers: Vec<BackupReader>,
     pub files: FileListVec,
+    delete: bool,
+    overwrite: bool,
 }
 
 impl BackupMerger {
@@ -571,12 +582,17 @@ impl BackupMerger {
         path: Option<PathBuf>,
         mut readers: Vec<BackupReader>,
         all: bool,
+        delete: bool,
+        overwrite: bool,
     ) -> Result<Self, BackupError> {
+        // TODO: quality and threads as arguments
         if readers.len() < 2 {
             return Err(BackupError::GenericError(
                 "At least two backups are needed for merging",
             ));
         }
+        readers.sort_by(|a, b| a.path.cmp(&b.path));
+        readers.dedup_by(|a, b| b.path == a.path);
         for r in readers.iter_mut() {
             r.get_meta()?;
         }
@@ -591,7 +607,7 @@ impl BackupMerger {
 
         let path = match path {
             Some(path) => path,
-            None => readers.first().unwrap().path.to_path_buf(),
+            None => readers.first().unwrap().path.clone_path(),
         };
 
         let mut files = FileListVec::default();
@@ -636,7 +652,13 @@ impl BackupMerger {
             tmp_path: PathBuf::new(),
             readers,
             files,
+            delete,
+            overwrite,
         })
+    }
+
+    pub fn deconstruct(self) -> Vec<BackupReader> {
+        self.readers
     }
 
     /// Write (and compress) the backup to disk
@@ -654,7 +676,8 @@ impl BackupMerger {
                 self.tmp_path.clear();
             }
             e
-        })
+        })?;
+        self.cleanup()
     }
 
     fn write_internal(
@@ -692,9 +715,14 @@ impl BackupMerger {
             std::fs::create_dir_all(p)?;
         }
         let list = FileListString::from(&mut self.files);
-        let mut encoder = CompressionEncoder::create(&self.tmp_path, quality, threads)?;
-        encoder.append_data(CONFIG_DEFAULT_NAME, config)?;
-        encoder.append_data(list.filename(), list)?;
+        let mut encoder = CompressionEncoder::create(&self.tmp_path, quality, threads)
+            .map_err(BackupError::WriteError)?;
+        encoder
+            .append_data(CONFIG_DEFAULT_NAME, config)
+            .map_err(BackupError::WriteError)?;
+        encoder
+            .append_data(list.filename(), list)
+            .map_err(BackupError::WriteError)?;
 
         for (_, file) in self.files.iter_mut() {
             let file = file.get_string();
@@ -712,7 +740,7 @@ impl BackupMerger {
                                 let (mut fi, entry) = p.next().unwrap()?;
                                 on_added(
                                     &mut fi,
-                                    encoder.append_entry(entry).map_err(BackupError::IOError),
+                                    encoder.append_entry(entry).map_err(BackupError::WriteError),
                                 )?;
                                 break 'outer;
                             }
@@ -735,26 +763,32 @@ impl BackupMerger {
         path
     }
 
-    pub fn cleanup(&mut self, delete: bool, overwrite: bool) -> Result<(), BackupError> {
-        if delete {
+    fn cleanup(&mut self) -> Result<(), BackupError> {
+        if self.delete {
             for r in self.readers.iter_mut() {
-                std::fs::remove_file(&r.path)?;
+                std::fs::remove_file(&r.path.get_path()).map_err(BackupError::DeleteError)?;
             }
         } else {
             for r in self.readers.iter_mut() {
-                let mut path = r.path.to_path_buf();
+                let mut path = r.path.clone_path();
                 path = extend_pathbuf(path, ".old");
                 while path.exists() {
                     path = extend_pathbuf(path, ".old");
                 }
-                std::fs::rename(&r.path, &path)?;
-                r.path = path;
+                std::fs::rename(&r.path.get_path(), &path).map_err(|e| {
+                    BackupError::RenameError(
+                        r.path.get_string().to_string(),
+                        path.to_string_lossy().to_string(),
+                        e,
+                    )
+                })?;
+                r.path = path.into();
             }
         }
         if self.path != self.tmp_path {
             if self.path.exists() {
-                if overwrite {
-                    std::fs::remove_file(&self.path)?;
+                if self.overwrite {
+                    std::fs::remove_file(&self.path).map_err(BackupError::DeleteError)?;
                 } else {
                     return Err(BackupError::FileExists(self.path.to_path_buf()));
                 }
@@ -762,20 +796,15 @@ impl BackupMerger {
             if let Some(p) = self.path.parent() {
                 std::fs::create_dir_all(p)?;
             }
-            std::fs::rename(&self.tmp_path, &self.path)?;
+            std::fs::rename(&self.tmp_path, &self.path).map_err(|e| {
+                BackupError::RenameError(
+                    self.tmp_path.to_string_lossy().to_string(),
+                    self.path.to_string_lossy().to_string(),
+                    e,
+                )
+            })?;
         }
         self.tmp_path.clear();
         Ok(())
-    }
-}
-
-impl Drop for BackupMerger {
-    /// DO NOT CALL THIS DIRECTLY, use `self.cleanup` instead!
-    fn drop(&mut self) {
-        if !self.tmp_path.as_os_str().is_empty() {
-            self.cleanup(false, false)
-                .expect("Could not finalise the merged backup");
-            panic!("The BackupMerger was not disposed of correctly!")
-        }
     }
 }

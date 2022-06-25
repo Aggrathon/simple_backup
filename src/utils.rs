@@ -292,9 +292,9 @@ mod tests {
         assert_eq!(get_config_from_path(f3).unwrap().output, conf.output);
         assert_eq!(
             get_backup_from_path(dir.path().to_path_buf()).unwrap().path,
-            f2
+            f2.into()
         );
-        assert_eq!(get_backup_from_path(f1.clone()).unwrap().path, f1);
+        assert_eq!(get_backup_from_path(f1.clone()).unwrap().path, f1.into());
         Ok(())
     }
 

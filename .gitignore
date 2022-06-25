@@ -2,3 +2,5 @@
 *.tar.br
 *.tar.zst
 /.vscode
+*.tmp
+*.old

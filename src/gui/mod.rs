@@ -7,13 +7,15 @@ use rfd::{FileDialog, MessageDialog};
 
 use self::backup::BackupState;
 use self::config::ConfigState;
+use self::merge::MergeState;
 use self::restore::RestoreState;
-use crate::backup::BackupReader;
+use crate::backup::{BackupReader, BACKUP_FILE_EXTENSION, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
 use crate::utils::get_config_from_path;
 
 mod backup;
 mod config;
+mod merge;
 mod paginated;
 mod presets;
 mod restore;
@@ -72,7 +74,10 @@ pub(crate) enum Message {
     ToggleAll,
     Restore,
     Extract,
+    Merge,
     Flat(bool),
+    All(bool),
+    Delete(bool),
     None,
 }
 
@@ -80,6 +85,7 @@ enum ApplicationState {
     Main(MainState),
     Config(ConfigState),
     Backup(BackupState),
+    Merge(MergeState),
     Restore(RestoreState),
 }
 
@@ -87,9 +93,12 @@ fn open_config() -> Option<Config> {
     FileDialog::new()
         .set_directory(dirs::home_dir().unwrap_or_default())
         .set_title("Open existing config or backup file")
-        .add_filter("Config and backup files", &["yml", "tar.zst"])
-        .add_filter("Config files", &["yml"])
-        .add_filter("Backup files", &["tar.zst"])
+        .add_filter(
+            "Config and backup files",
+            &[&CONFIG_FILE_EXTENSION[1..], &BACKUP_FILE_EXTENSION[1..]],
+        )
+        .add_filter("Config files", &[&CONFIG_FILE_EXTENSION[1..]])
+        .add_filter("Backup files", &[&BACKUP_FILE_EXTENSION[1..]])
         .pick_file()
         .and_then(|file| match get_config_from_path(file) {
             Ok(config) => Some(config),
@@ -108,7 +117,7 @@ fn open_backup() -> Option<BackupReader> {
     FileDialog::new()
         .set_directory(dirs::home_dir().unwrap_or_default())
         .set_title("Open backup file")
-        .add_filter("Backup files", &["tar.zst"])
+        .add_filter("Backup files", &[&BACKUP_FILE_EXTENSION[1..]])
         .pick_file()
         .map(BackupReader::new)
 }
@@ -127,6 +136,7 @@ impl Application for ApplicationState {
             ApplicationState::Main(_) => String::from("simple_backup"),
             ApplicationState::Config(_) => String::from("simple_backup - Config"),
             ApplicationState::Backup(_) => String::from("simple_backup - Backup"),
+            ApplicationState::Merge(_) => String::from("simple_backup - Merge"),
             ApplicationState::Restore(_) => String::from("simple_backup - Restore"),
         }
     }
@@ -182,16 +192,16 @@ impl Application for ApplicationState {
                 Command::none()
             }
             Message::MergeView => {
-                //TODO merge view
-                todo!()
+                *self = ApplicationState::Merge(MergeState::new());
+                Command::none()
             }
             _ => match self {
                 ApplicationState::Main(_) => Command::none(),
                 ApplicationState::Config(state) => state.update(message),
                 ApplicationState::Backup(state) => state.update(message),
+                ApplicationState::Merge(state) => state.update(message),
                 ApplicationState::Restore(state) => state.update(message),
             },
-            // TODO: Merge backups
         }
     }
 
@@ -200,6 +210,7 @@ impl Application for ApplicationState {
             ApplicationState::Main(state) => state.view(),
             ApplicationState::Config(state) => state.view(),
             ApplicationState::Backup(state) => state.view(),
+            ApplicationState::Merge(state) => state.view(),
             ApplicationState::Restore(state) => state.view(),
         }
     }
@@ -207,6 +218,7 @@ impl Application for ApplicationState {
     fn subscription(&self) -> iced::Subscription<Self::Message> {
         match self {
             ApplicationState::Backup(state) => state.subscription(),
+            ApplicationState::Merge(state) => state.subscription(),
             ApplicationState::Restore(state) => state.subscription(),
             _ => Subscription::none(),
         }
@@ -228,7 +240,7 @@ impl MainState {
             presets::button_main("Create", false, Message::CreateConfig).into(),
             presets::button_main("Edit", false, Message::EditConfig).into(),
             presets::button_main("Backup", false, Message::BackupView).into(),
-            presets::button_main("Merge", false, Message::None).into(), // TODO merge message
+            presets::button_main("Merge", false, Message::MergeView).into(),
             presets::button_main("Restore", true, Message::RestoreView).into(),
             Space::with_height(Length::Fill).into(),
         ])

@@ -106,6 +106,10 @@ pub(crate) fn space_large() -> Space {
     Space::with_height(Length::Units(LARGE_SPACING))
 }
 
+pub(crate) fn space_hfill() -> Space {
+    Space::with_width(Length::Fill)
+}
+
 pub(crate) fn button_main(text: &str, alt: bool, action: Message) -> Button<Message> {
     let label = Text::new(text)
         .horizontal_alignment(Horizontal::Center)

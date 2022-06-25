@@ -12,7 +12,7 @@ use crate::files::FileInfo;
 
 pub(crate) enum RestoreStage {
     Error,
-    Viewing(BackupReader, Vec<(bool, String)>),
+    Viewing(Box<BackupReader>, Vec<(bool, String)>),
     Performing(
         ThreadWrapper<Result<FileInfo, BackupError>, BackupReader>,
         bool,
@@ -59,7 +59,7 @@ impl RestoreState {
                 let list: Vec<_> = list.iter().map(|(_, s)| (true, String::from(s))).collect();
                 self.pagination.set_total(list.len());
                 self.all = true;
-                self.stage = RestoreStage::Viewing(reader, list);
+                self.stage = RestoreStage::Viewing(Box::new(reader), list);
             }
         }
     }
@@ -182,7 +182,7 @@ impl RestoreState {
                             std::mem::replace(&mut self.stage, RestoreStage::Error)
                         {
                             self.stage = match ThreadWrapper::restore_files(
-                                reader,
+                                *reader,
                                 list.into_iter()
                                     .filter_map(|(b, s)| if b { Some(s) } else { None })
                                     .collect(),
@@ -207,7 +207,7 @@ impl RestoreState {
                     {
                         self.pagination.set_total(list.len());
                         self.stage = match ThreadWrapper::restore_files(
-                            reader,
+                            *reader,
                             list.into_iter()
                                 .filter_map(|(b, s)| if b { Some(s) } else { None })
                                 .collect(),
@@ -245,7 +245,7 @@ impl RestoreState {
             Message::Export => {
                 if let RestoreStage::Viewing(reader, _) = &mut self.stage {
                     if let Some(file) = FileDialog::new()
-                        .set_directory(&reader.path)
+                        .set_directory(&reader.path.get_path())
                         .set_title("Save the list of files in the backup")
                         .set_file_name("files.txt")
                         .add_filter("Text file", &["txt"])

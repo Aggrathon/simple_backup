@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::thread::JoinHandle;
 
-use crate::backup::{BackupError, BackupReader, BackupWriter};
+use crate::backup::{BackupError, BackupMerger, BackupReader, BackupWriter};
 use crate::config::Config;
 use crate::files::FileInfo;
 use crate::utils::strip_absolute_from_path;
@@ -75,6 +75,32 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
             }
             std::mem::drop(send);
             writer
+        });
+        Self { queue, handle }
+    }
+}
+
+impl ThreadWrapper<Result<FileInfo, BackupError>, BackupMerger> {
+    pub fn merge_backups(merger: BackupMerger) -> Self {
+        let (send, queue) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let mut merger = merger;
+            let error = merger.write(
+                #[allow(unused_must_use)]
+                |fi, res| {
+                    if let Err(e) = res {
+                        send.send(Err(e));
+                    }
+                    send.send(Ok(fi.clone())).map_err(|_| BackupError::Cancel)
+                },
+                || {},
+            );
+            #[allow(unused_must_use)]
+            if let Err(e) = error {
+                send.send(Err(e));
+            }
+            std::mem::drop(send);
+            merger
         });
         Self { queue, handle }
     }

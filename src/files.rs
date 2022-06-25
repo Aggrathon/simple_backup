@@ -149,6 +149,22 @@ impl FileInfo {
         self.path.as_ref().unwrap()
     }
 
+    /// Returns the Pathbuf version (with lazy conversion) without mutation
+    pub fn copy_path(&self) -> Cow<PathBuf> {
+        match self.path.as_ref() {
+            Some(s) => Cow::Borrowed(s),
+            None => Cow::Owned(PathBuf::from(self.string.as_ref().unwrap())),
+        }
+    }
+
+    /// Clones the Pathbuf verison (with lazy conversion) without mutation
+    pub fn clone_path(&self) -> PathBuf {
+        match self.path.as_ref() {
+            Some(s) => s.to_path_buf(),
+            None => PathBuf::from(self.string.as_ref().unwrap()),
+        }
+    }
+
     /// Convert the FileInfo into a PathBuf
     pub fn consume_path(self) -> PathBuf {
         match self.path {
