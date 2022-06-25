@@ -573,6 +573,8 @@ pub struct BackupMerger {
     pub files: FileListVec,
     delete: bool,
     overwrite: bool,
+    quality: Option<i32>,
+    threads: Option<u32>,
 }
 
 impl BackupMerger {
@@ -584,8 +586,9 @@ impl BackupMerger {
         all: bool,
         delete: bool,
         overwrite: bool,
+        quality: Option<i32>,
+        threads: Option<u32>,
     ) -> Result<Self, BackupError> {
-        // TODO: quality and threads as arguments
         if readers.len() < 2 {
             return Err(BackupError::GenericError(
                 "At least two backups are needed for merging",
@@ -654,6 +657,8 @@ impl BackupMerger {
             files,
             delete,
             overwrite,
+            quality,
+            threads,
         })
     }
 
@@ -692,8 +697,8 @@ impl BackupMerger {
             .config
             .as_mut()
             .expect("The config should already be read!");
-        let quality = config.quality;
-        let threads = config.threads;
+        let quality = self.quality.unwrap_or(config.quality);
+        let threads = self.threads.unwrap_or(config.threads);
         let config = config.as_yaml()?;
 
         let mut decoders = self

@@ -52,8 +52,8 @@ impl ConfigState {
         let mut state = Self {
             config: Config::new(),
             panes,
-            thread_alt: (1u32..num_cpus::get() as u32 + 1).collect(),
-            compression_alt: (1..23).collect(),
+            thread_alt: (1..=num_cpus::get() as u32).collect(),
+            compression_alt: (1..=22).collect(),
             files,
             includes,
             excludes,
@@ -83,19 +83,19 @@ impl ConfigState {
         let bar = presets::row_bar(vec![
             presets::button_nav("Back", Message::MainView, false).into(),
             Space::with_width(Length::Fill).into(),
+            presets::text("Compression:").into(),
+            presets::pick_list(
+                &self.compression_alt,
+                Some(self.config.quality),
+                Message::CompressionQuality,
+            )
+            .into(),
+            presets::space_large().into(),
             presets::text("Threads:").into(),
             presets::pick_list(
                 &self.thread_alt,
                 Some(self.config.threads),
                 Message::ThreadCount,
-            )
-            .into(),
-            presets::space_large().into(),
-            presets::text("Compression quality:").into(),
-            presets::pick_list(
-                &self.compression_alt,
-                Some(self.config.quality),
-                Message::CompressionQuality,
             )
             .into(),
             presets::space_large().into(),

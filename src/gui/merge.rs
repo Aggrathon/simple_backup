@@ -51,6 +51,10 @@ pub(crate) struct MergeState {
     current_count: usize,
     all: bool,
     delete: bool,
+    quality: Option<i32>,
+    threads: Option<u32>,
+    thread_alt: Vec<u32>,
+    compression_alt: Vec<i32>,
     stage: MergeStage,
 }
 
@@ -62,6 +66,10 @@ impl MergeState {
             current_count: 0,
             all: false,
             delete: false,
+            quality: None,
+            threads: None,
+            thread_alt: (1..=num_cpus::get() as u32).collect(),
+            compression_alt: (1..=22).collect(),
             stage: MergeStage::Selecting(Vec::new()),
         }
     }
@@ -126,7 +134,15 @@ impl MergeState {
                     if let MergeStage::Selecting(list) =
                         std::mem::replace(&mut self.stage, MergeStage::Selecting(Vec::new()))
                     {
-                        match BackupMerger::new(None, list, self.all, self.delete, true) {
+                        match BackupMerger::new(
+                            None,
+                            list,
+                            self.all,
+                            self.delete,
+                            true,
+                            self.quality,
+                            self.threads,
+                        ) {
                             Ok(mut merger) => {
                                 if let Some(path) = select_output(&merger.path) {
                                     merger.path = path;
@@ -184,6 +200,12 @@ impl MergeState {
             Message::Delete(b) => {
                 self.delete = b;
             }
+            Message::CompressionQuality(q) => {
+                self.quality = Some(q);
+            }
+            Message::ThreadCount(n) => {
+                self.threads = Some(n);
+            }
             _ => eprintln!("Unexpected GUI message"),
         }
         Command::none()
@@ -231,8 +253,21 @@ impl MergeState {
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Back", Message::MainView, false).into(),
                     Space::with_width(Length::Fill).into(),
-                    presets::toggler(self.all, "Include removed files", Message::All).into(),
-                    presets::toggler(self.delete, "Delete merged backups", Message::Delete).into(),
+                    presets::text("Compression:").into(),
+                    presets::pick_list(
+                        &self.compression_alt,
+                        self.quality,
+                        Message::CompressionQuality,
+                    )
+                    .into(),
+                    presets::space_large().into(),
+                    presets::text("Threads:").into(),
+                    presets::pick_list(&self.thread_alt, self.threads, Message::ThreadCount).into(),
+                    presets::space_large().into(),
+                    presets::toggler(self.all, "Deleted files", Message::All).into(),
+                    presets::space_large().into(),
+                    presets::toggler(self.delete, "Remove merged", Message::Delete).into(),
+                    presets::space_large().into(),
                     presets::button_nav("Merge", mess, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());

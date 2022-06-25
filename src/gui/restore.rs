@@ -325,7 +325,9 @@ impl RestoreState {
                     })
                     .into(),
                     presets::button_color("Export list", Message::Export).into(),
+                    presets::space_large().into(),
                     presets::toggler(self.flat, "Flat", Message::Flat).into(),
+                    presets::space_large().into(),
                     presets::button_color("Extract", Message::Extract).into(),
                     presets::button_color("Restore", Message::Restore).into(),
                 ]);

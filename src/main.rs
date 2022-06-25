@@ -110,7 +110,7 @@ enum Commands {
         /// Backups to merge (as paths to the backups or a directory containing backups)
         #[clap(value_parser, value_name = "BACKUPS", required = true)]
         backups: Vec<PathBuf>,
-        /// The path to write the merged backup to (otherwise replace the newer backup)
+        /// The path to write the merged backup to (otherwise replace the most recent backup)
         #[clap(short, long, value_parser, value_name = "PATH")]
         output: Option<PathBuf>,
         /// Keep all files (not just those mentioned in the newest backup)
@@ -119,6 +119,12 @@ enum Commands {
         /// Delete the old backups after the merge (instead of renaming them)
         #[clap(short = 'D', long)]
         delete: bool,
+        /// Compression quality (1-22)
+        #[clap(short, long, value_parser = parse_quality, value_name = "NUM")]
+        quality: Option<i32>,
+        /// Number of worker threads (using threads requires more memory)
+        #[clap(short='n', long, value_parser = parse_cpu, value_name = "NUM")]
+        threads: Option<u32>,
         /// Increase verbosity
         #[clap(short, long)]
         verbose: bool,
@@ -154,12 +160,12 @@ struct ArgConfig {
     /// Preserve relative (local) paths instead of converting to absolute paths
     #[clap(short, long)]
     local: bool,
-    /// Number of worker threads (using threads requires more memory)
-    #[clap(short='n', long, value_parser = parse_cpu, default_value_t = 1, value_name = "NUM")]
-    threads: u32,
     /// Compression quality (1-22)
     #[clap(short, long, value_parser = parse_quality, default_value_t = 20, value_name = "NUM")]
     quality: i32,
+    /// Number of worker threads (using threads requires more memory)
+    #[clap(short='n', long, value_parser = parse_cpu, default_value_t = 1, value_name = "NUM")]
+    threads: u32,
 }
 
 impl ArgConfig {
@@ -292,6 +298,10 @@ fn main() {
             backups,
             all,
             delete,
-        } => cli::merge(backups, output, all, delete, verbose, force, dry, false),
+            quality,
+            threads,
+        } => cli::merge(
+            backups, output, all, delete, quality, threads, verbose, force, dry, false,
+        ),
     }
 }

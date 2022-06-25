@@ -244,6 +244,8 @@ pub fn merge(
     path: Option<PathBuf>,
     all: bool,
     delete: bool,
+    quality: Option<i32>,
+    threads: Option<u32>,
     verbose: bool,
     force: bool,
     dry: bool,
@@ -255,8 +257,8 @@ pub fn merge(
         .map(|r| r.map(BackupReader::new))
         .collect::<std::io::Result<Vec<BackupReader>>>()
         .expect("Could not find backup");
-    let mut merger =
-        BackupMerger::new(path, backups, all, delete, force).expect("Could not read the backups");
+    let mut merger = BackupMerger::new(path, backups, all, delete, force, quality, threads)
+        .expect("Could not read the backups");
     let count;
     if verbose {
         eprintln!("Files in the merged backup:");
