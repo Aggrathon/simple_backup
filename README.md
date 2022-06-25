@@ -22,6 +22,8 @@ A minimal application for doing backups.
 
 Just run the program and select what to do (assuming it has been compiled without disabling the GUI).
 
+<!-- TODO: Add screenshots -->
+
 ### Command line
 
 For doing backups from command line run `simple_backup direct [PARAMS]`. To create a config file run `simple_backup config <CONFIG> [PARAMS]` and then `simple_backup backup <CONFIG>` to do a backup based on the config. Finally, to restore from a backup run `simple_backup restore <PATH> [PARAMS]`. More detailed instructions is available with the help parameter: `simple_backup --help` (also works for sub commands such as `simple_backup restore --help`).
