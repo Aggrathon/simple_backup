@@ -8,8 +8,9 @@ A minimal application for doing backups.
 - [X] Modern, state-of-the-art compression using [zstd](https://www.zstd.net).
 - [X] Optional multithreading for increased performance.
 <!--></!-->
-- [X] Incremental backups (using last modified from the file metadata).
+- [X] Incremental backups (using metadata from the files).
 - [X] Selective restores (only deleted files, only selected files, or all files).
+- [X] Merge old backups to save sapace.
 <!--></!-->
 - [X] Command line interface (declare includes, excludes, and regex-filters).
 - [X] Configurations can be saved for easy reuse (e.g. for incremental backups).
