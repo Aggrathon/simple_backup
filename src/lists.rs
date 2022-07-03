@@ -86,7 +86,7 @@ impl FileListVec {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileListString {
     list: String,
     version: u8,

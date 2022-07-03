@@ -41,7 +41,7 @@ pub(crate) struct BackupState {
 
 impl BackupState {
     pub fn new(config: Config) -> Self {
-        let crawler = ThreadWrapper::crawl_for_files(config.clone());
+        let crawler = ThreadWrapper::crawl_for_files(config.clone(), 1000);
         Self {
             config,
             list_sort: ListSort::Name,
@@ -59,8 +59,8 @@ impl BackupState {
         match message {
             Message::Tick => match &mut self.stage {
                 BackupStage::Scanning(crawler) => {
-                    for _ in 0..1000 {
-                        match crawler.try_recv() {
+                    for recv in crawler {
+                        match recv {
                             Ok(res) => match res {
                                 Ok(fi) => {
                                     self.total_count += 1;
@@ -112,8 +112,8 @@ impl BackupState {
                     }
                 }
                 BackupStage::Performing(wrapper) => {
-                    for _ in 0..1000 {
-                        match wrapper.try_recv() {
+                    for recv in wrapper {
+                        match recv {
                             Ok(res) => match res {
                                 Ok(fi) => {
                                     self.current_count += 1;
@@ -196,7 +196,8 @@ impl BackupState {
                         std::mem::replace(&mut self.stage, BackupStage::Failure)
                     {
                         writer.list.as_mut().unwrap().sort_unstable();
-                        self.stage = BackupStage::Performing(ThreadWrapper::backup_files(writer));
+                        self.stage =
+                            BackupStage::Performing(ThreadWrapper::backup_files(writer, 1000));
                         self.current_count = 0;
                         self.current_size = 0;
                     }
@@ -323,12 +324,22 @@ impl BackupState {
                 );
                 let diff = writer.list.as_ref().unwrap().len() - self.total_count as usize;
                 let status = if diff > 0 {
-                    format!(
-                        "{} files with total size {} ({} files have not changed)",
-                        self.total_count,
-                        format_size(self.total_size),
-                        diff
-                    )
+                    if let Some(time) = writer.prev_time {
+                        format!(
+                            "{} files with total size {} ({} files have not changed since {})",
+                            self.total_count,
+                            format_size(self.total_size),
+                            diff,
+                            time
+                        )
+                    } else {
+                        format!(
+                            "{} files with total size {} ({} files have not changed)",
+                            self.total_count,
+                            format_size(self.total_size),
+                            diff
+                        )
+                    }
                 } else {
                     format!(
                         "{} files with total size {}",
@@ -352,7 +363,7 @@ impl BackupState {
                     presets::text_center("Waiting for the compression to complete...")
                 } else {
                     presets::text_center(&format!(
-                        "Backing up file {} of {}, {} of {}",
+                        "Backing up file {} of {} ({} of {})",
                         self.current_count,
                         self.total_count,
                         format_size(self.current_size),
@@ -361,7 +372,7 @@ impl BackupState {
                 };
                 let max = (self.total_size / 1024 + self.total_count as u64) as f32;
                 let current = (self.current_size / 1024 + self.current_count as u64) as f32;
-                let bar = presets::progress_bar(current + max * 0.005, max * 1.01);
+                let bar = presets::progress_bar(current + max * 0.01, max * 1.03);
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::None, false).into(),
                     status.into(),

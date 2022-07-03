@@ -251,7 +251,7 @@ impl ConfigState {
                     .add_filter("Config file", &[&CONFIG_FILE_EXTENSION[1..]])
                     .save_file()
                 {
-                    match self.config.write_yaml(file) {
+                    match self.config.write_yaml(file, false) {
                         Ok(_) => {}
                         Err(e) => {
                             MessageDialog::new()

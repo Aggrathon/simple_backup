@@ -135,6 +135,18 @@ enum Commands {
         #[clap(short, long)]
         dry: bool,
     },
+    /// Inspect the metadata of a backup
+    Inspect {
+        /// Path to the backup, backup directory, or config file
+        #[clap(value_parser, value_name = "PATH")]
+        source: PathBuf,
+        /// Output the config
+        #[clap(short, long)]
+        config: bool,
+        /// Output the list of files
+        #[clap(short, long)]
+        list: bool,
+    },
     #[cfg(feature = "gui")]
     /// Start a graphical user interface
     Gui,
@@ -277,7 +289,9 @@ fn main() {
             if dry {
                 println!("{}", config.as_yaml().expect("Could not serialise config"));
             } else {
-                config.write_yaml(path).expect("Could not serialise config");
+                config
+                    .write_yaml(path, true)
+                    .expect("Could not serialise config");
             }
         }
         Commands::Direct {
@@ -303,5 +317,17 @@ fn main() {
         } => cli::merge(
             backups, output, all, delete, quality, threads, verbose, force, dry, false,
         ),
+        Commands::Inspect {
+            source,
+            config,
+            list,
+        } => {
+            cli::inspect(
+                get_backup_from_path(source).expect("Could not find backup"),
+                config,
+                list,
+                false,
+            );
+        }
     }
 }

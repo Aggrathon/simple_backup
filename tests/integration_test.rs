@@ -4,12 +4,11 @@ use std::fs::{remove_file, File};
 use std::path::PathBuf;
 
 use path_absolutize::Absolutize;
-use simple_backup;
 use simple_backup::backup::{BackupReader, BackupWriter};
-use simple_backup::cli::{backup, merge, restore};
+use simple_backup::cli::{backup, inspect, merge, restore};
 use simple_backup::config::Config;
 use simple_backup::parse_date::naive_now;
-use simple_backup::utils::{extend_pathbuf, strip_absolute_from_path};
+use simple_backup::utils::{extend_pathbuf, get_backup_from_path, strip_absolute_from_path};
 use tempfile::tempdir;
 
 #[test]
@@ -289,6 +288,10 @@ fn extract_test() -> Result<(), Box<dyn std::error::Error>> {
     backup(config.clone(), false, false, false, true);
 
     let reader = BackupReader::from_config(config)?;
+    inspect(reader.clone(), false, false, true);
+    inspect(reader.clone(), false, true, true);
+    inspect(reader.clone(), true, false, true);
+    inspect(reader.clone(), true, true, true);
     restore(
         reader,
         Some(&dir.path()),
@@ -463,7 +466,7 @@ fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
     std::thread::sleep(std::time::Duration::from_millis(100));
     File::create(&f3)?;
 
-    backup(config.clone(), false, false, false, true);
+    backup(config, false, false, false, true);
     assert!(b3.exists());
 
     remove_file(&f2)?;
@@ -480,6 +483,13 @@ fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
         true,
         false,
         true,
+    );
+
+    assert_eq!(
+        b3,
+        *get_backup_from_path(dir2.path().to_path_buf())?
+            .path
+            .get_path()
     );
 
     merge(
@@ -519,6 +529,7 @@ fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
         reader.get_list()?.iter_included().collect::<Vec<_>>(),
         vec![f2.to_string_lossy(), f3.to_string_lossy()]
     );
+
     restore::<PathBuf>(
         reader,
         None,

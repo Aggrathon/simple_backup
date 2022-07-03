@@ -274,6 +274,7 @@ impl BackupWriter {
     }
 }
 
+#[derive(Clone)]
 pub struct BackupReader {
     pub path: FileInfo,
     pub config: Option<Config>,
@@ -302,7 +303,7 @@ impl BackupReader {
         }
     }
 
-    fn get_decoder<'a>(&self) -> Result<CompressionDecoder<'a>, BackupError> {
+    pub fn get_decoder<'a>(&self) -> Result<CompressionDecoder<'a>, BackupError> {
         CompressionDecoder::read(&self.path.copy_path().as_path())
             .map_err(BackupError::ArchiveError)
     }

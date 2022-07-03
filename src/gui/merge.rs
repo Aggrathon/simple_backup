@@ -78,8 +78,8 @@ impl MergeState {
         match message {
             Message::Tick => match &mut self.stage {
                 MergeStage::Performing(wrapper) => {
-                    for _ in 0..1000 {
-                        match wrapper.try_recv() {
+                    for recv in wrapper {
+                        match recv {
                             Ok(res) => match res {
                                 Ok(_) => {
                                     self.current_count += 1;
@@ -148,7 +148,7 @@ impl MergeState {
                                     merger.path = path;
                                     self.current_count = merger.files.len();
                                     self.stage = MergeStage::Performing(
-                                        ThreadWrapper::merge_backups(merger),
+                                        ThreadWrapper::merge_backups(merger, 1000),
                                     );
                                 } else {
                                     self.stage = MergeStage::Selecting(merger.deconstruct());
@@ -286,7 +286,7 @@ impl MergeState {
                 };
                 let max = self.total_count as f32;
                 let current = self.current_count as f32;
-                let bar = presets::progress_bar(current + max * 0.005, max * 1.01);
+                let bar = presets::progress_bar(current + max * 0.01, max * 1.03);
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Back", Message::None, false).into(),
                     status.into(),

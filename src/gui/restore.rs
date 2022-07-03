@@ -113,10 +113,10 @@ impl RestoreState {
 
     pub fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::Tick => match &self.stage {
+            Message::Tick => match &mut self.stage {
                 RestoreStage::Performing(wrapper, _) => {
-                    for _ in 0..1000 {
-                        match wrapper.try_recv() {
+                    for recv in wrapper {
+                        match recv {
                             Ok(res) => match res {
                                 Ok(_) => {
                                     self.pagination.index += 1;
@@ -188,6 +188,7 @@ impl RestoreState {
                                     .collect(),
                                 self.flat,
                                 Some(output),
+                                1000,
                             ) {
                                 Ok(w) => RestoreStage::Performing(w, false),
                                 Err(e) => {
@@ -213,6 +214,7 @@ impl RestoreState {
                                 .collect(),
                             false,
                             None,
+                            1000,
                         ) {
                             Ok(w) => RestoreStage::Performing(w, true),
                             Err(e) => {

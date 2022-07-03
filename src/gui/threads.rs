@@ -10,6 +10,9 @@ use crate::files::FileInfo;
 use crate::utils::strip_absolute_from_path;
 
 pub(crate) struct ThreadWrapper<T1, T2> {
+    batch_size: usize,
+    batch_mult: usize,
+    index: usize,
     queue: Receiver<T1>,
     handle: JoinHandle<T2>,
 }
@@ -30,7 +33,7 @@ impl<T1, T2> ThreadWrapper<T1, T2> {
 }
 
 impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
-    pub fn crawl_for_files(config: Config) -> Self {
+    pub fn crawl_for_files(config: Config, batch_size: usize) -> Self {
         let (send, queue) = std::sync::mpsc::channel();
         let handle = std::thread::spawn(move || {
             let (mut writer, error) = BackupWriter::new(config);
@@ -52,10 +55,16 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
             std::mem::drop(send);
             writer
         });
-        Self { queue, handle }
+        Self {
+            batch_size,
+            batch_mult: 1,
+            index: 0,
+            queue,
+            handle,
+        }
     }
 
-    pub fn backup_files(writer: BackupWriter) -> Self {
+    pub fn backup_files(writer: BackupWriter, batch_size: usize) -> Self {
         let (send, queue) = std::sync::mpsc::channel();
         let handle = std::thread::spawn(move || {
             let mut writer = writer;
@@ -76,12 +85,18 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
             std::mem::drop(send);
             writer
         });
-        Self { queue, handle }
+        Self {
+            batch_size,
+            batch_mult: 1,
+            index: 0,
+            queue,
+            handle,
+        }
     }
 }
 
 impl ThreadWrapper<Result<FileInfo, BackupError>, BackupMerger> {
-    pub fn merge_backups(merger: BackupMerger) -> Self {
+    pub fn merge_backups(merger: BackupMerger, batch_size: usize) -> Self {
         let (send, queue) = std::sync::mpsc::channel();
         let handle = std::thread::spawn(move || {
             let mut merger = merger;
@@ -102,7 +117,13 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupMerger> {
             std::mem::drop(send);
             merger
         });
-        Self { queue, handle }
+        Self {
+            batch_size,
+            batch_mult: 1,
+            index: 0,
+            queue,
+            handle,
+        }
     }
 }
 
@@ -112,6 +133,7 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader> {
         selection: Vec<String>,
         flatten: bool,
         output: Option<PathBuf>,
+        batch_size: usize,
     ) -> Result<Self, BackupError> {
         if flatten && output.is_none() {
             return Err(BackupError::GenericError(
@@ -154,6 +176,42 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader> {
             std::mem::drop(send);
             reader
         });
-        Ok(Self { queue, handle })
+        Ok(Self {
+            batch_size,
+            batch_mult: 1,
+            index: 0,
+            queue,
+            handle,
+        })
+    }
+}
+
+/// Iterator over batches that tries to scale the batch size to match the queue size
+impl<T1, T2> Iterator for ThreadWrapper<T1, T2> {
+    type Item = Result<T1, TryRecvError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.batch_size * self.batch_mult {
+            self.batch_mult *= 2;
+            self.index = 0;
+            None
+        } else {
+            self.index += 1;
+            match self.try_recv() {
+                Ok(v) => Some(Ok(v)),
+                Err(e) => match e {
+                    TryRecvError::Empty => {
+                        self.batch_mult = self.batch_mult / 2 + 1;
+                        self.index = 0;
+                        None
+                    }
+                    TryRecvError::Disconnected => Some(Err(e)),
+                },
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(self.batch_size))
     }
 }

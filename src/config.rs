@@ -84,11 +84,19 @@ impl Config {
     }
 
     /// Write the config to a yaml file
-    pub fn write_yaml<P: AsRef<Path>>(&mut self, path: P) -> std::io::Result<()> {
+    pub fn write_yaml<P: AsRef<Path>>(&mut self, path: P, time: bool) -> std::io::Result<()> {
         self.sort();
+        let t = self.time;
+        if !time {
+            self.time = None;
+        }
         let writer = File::create(path)?;
-        serde_yaml::to_writer(writer, &self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+        let res = serde_yaml::to_writer(writer, &self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e));
+        if !time {
+            self.time = t;
+        }
+        res
     }
 
     /// Parse a yaml string to a config

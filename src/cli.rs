@@ -1,5 +1,6 @@
 /// This module contains the logic for running the program from a command line
 use core::panic;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use indicatif::{ProgressBar, ProgressStyle};
@@ -33,7 +34,10 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
     let mut total_size = 0;
     if verbose {
         if bw.config.time.is_some() {
-            eprintln!("Updated files to backup:");
+            eprintln!(
+                "Updated files to backup (since {}):",
+                bw.config.time.unwrap()
+            );
         } else {
             eprintln!("Files to backup:");
         }
@@ -235,6 +239,50 @@ pub fn restore<P: AsRef<Path>>(
         bar.disable_steady_tick();
         bar.set_message("Restoration Completed!");
         bar.finish();
+    }
+}
+
+/// Inspect backup metadata
+pub fn inspect(mut source: BackupReader, config: bool, list: bool, quiet: bool) {
+    let backup = source.path.move_string();
+    let mut decoder = source.get_decoder().expect("Could not open the backup");
+    let mut entries = decoder.entries().expect("Could not read the backup");
+    if config {
+        let (mut fi, mut entry) = entries
+            .next()
+            .expect("No config found")
+            .expect("Could not read the backup");
+        if !quiet {
+            eprintln!("{} > {}:", backup, fi.move_string());
+        }
+        let mut conf = String::new();
+        entry
+            .read_to_string(&mut conf)
+            .expect("Could not read the backup");
+        if !quiet {
+            print!("{}", conf);
+        }
+    } else {
+        entries.next();
+    }
+    if list {
+        let (mut fi, mut entry) = entries
+            .next()
+            .expect("No file list found")
+            .expect("Could not read the backup");
+        if config && !quiet {
+            eprint!("{} > {}:", backup, fi.move_string());
+            println!();
+        } else if !quiet {
+            eprintln!("{} > {}:", backup, fi.move_string());
+        }
+        let mut conf = String::new();
+        entry
+            .read_to_string(&mut conf)
+            .expect("Could not read the backup");
+        if !quiet {
+            println!("{}", conf);
+        }
     }
 }
 

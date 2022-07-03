@@ -263,7 +263,7 @@ mod tests {
         let mut bi = BackupIterator::dir(dir.path());
         assert_eq!(bi.get_latest().unwrap(), f4);
         let mut bi = BackupIterator::dir(dir.path());
-        assert_eq!(bi.get_previous(&f4.to_path_buf()).unwrap(), f3);
+        assert_eq!(bi.get_previous(&f4).unwrap(), f3);
         let mut bi = BackupIterator::file(f2.clone());
         assert_eq!(bi.next().unwrap()?, f2);
         assert!(bi.next().is_none());
@@ -273,7 +273,7 @@ mod tests {
         File::create(&f6)?;
         let bi = BackupIterator::path(dir2.path().to_path_buf())?;
         let bis = bi.collect::<std::io::Result<Vec<PathBuf>>>()?;
-        assert_eq!(bis, vec![f5.clone(), f6.clone()]);
+        assert_eq!(bis, vec![f5, f6.clone()]);
         let mut bi = BackupIterator::dir(dir2.path());
         assert_eq!(bi.get_latest().unwrap(), f6);
         Ok(())
@@ -289,7 +289,7 @@ mod tests {
         File::create(&f2)?;
         let mut conf = Config::new();
         conf.output = PathBuf::from("test");
-        conf.write_yaml(&f3)?;
+        conf.write_yaml(&f3, true)?;
         assert_eq!(get_config_from_path(f3).unwrap().output, conf.output);
         assert_eq!(
             get_backup_from_path(dir.path().to_path_buf()).unwrap().path,
