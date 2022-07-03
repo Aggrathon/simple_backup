@@ -2,6 +2,7 @@
 /// This module contains the logic for running the program through a GUI
 use iced::pure::widget::{pane_grid, Column, Row, Space};
 use iced::pure::{Application, Element};
+use iced::window::Icon;
 use iced::{executor, Alignment, Command, Length, Settings, Subscription};
 use rfd::{FileDialog, MessageDialog};
 
@@ -30,9 +31,16 @@ extern "system" {
 pub fn gui() {
     #[cfg(all(target_os = "windows", not(debug_assertions)))]
     unsafe {
+        // Safety: Windows syscall to hide the console
         FreeConsole()
-    }; // Safety: Windows syscall to hide console
-    ApplicationState::run(Settings::default()).unwrap();
+    };
+    let mut settings = Settings::default();
+    #[cfg(windows)]
+    let bytes = include_bytes!("..\\..\\target\\icon.dump").to_vec();
+    #[cfg(not(windows))]
+    let bytes = include_bytes!("../../target/icon.dump").to_vec();
+    settings.window.icon = Some(Icon::from_rgba(bytes, 64, 64).expect("Could not load icon"));
+    ApplicationState::run(settings).unwrap();
 }
 
 #[derive(Debug, Clone)]

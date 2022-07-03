@@ -28,6 +28,15 @@ dirs = { version = "4.0.0", optional = true }
 [dev-dependencies]
 tempfile = "3.3.0"
 
+[build-dependencies]
+resvg = "0.23"
+usvg = {version = "0.23", features = ["text"]}
+tiny-skia = "0.6.5"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+ico = "0.1"
+
 [features]
 default = ["gui"]
 gui = ["iced", "rfd", "dirs"]
