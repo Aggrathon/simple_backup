@@ -304,8 +304,7 @@ impl BackupReader {
     }
 
     pub fn get_decoder<'a>(&self) -> Result<CompressionDecoder<'a>, BackupError> {
-        CompressionDecoder::read(&self.path.copy_path().as_path())
-            .map_err(BackupError::ArchiveError)
+        CompressionDecoder::read(self.path.copy_path().as_path()).map_err(BackupError::ArchiveError)
     }
 
     /// Read a backup, but only return the embedded config
@@ -809,7 +808,7 @@ impl BackupMerger {
     fn cleanup(&mut self) -> Result<(), BackupError> {
         if self.delete {
             for r in self.readers.iter_mut() {
-                std::fs::remove_file(&r.path.get_path()).map_err(BackupError::DeleteError)?;
+                std::fs::remove_file(r.path.get_path()).map_err(BackupError::DeleteError)?;
             }
         } else {
             for r in self.readers.iter_mut() {
@@ -818,7 +817,7 @@ impl BackupMerger {
                 while path.exists() {
                     path = extend_pathbuf(path, ".old");
                 }
-                std::fs::rename(&r.path.get_path(), &path).map_err(|e| {
+                std::fs::rename(r.path.get_path(), &path).map_err(|e| {
                     BackupError::RenameError(
                         r.path.get_string().to_string(),
                         path.to_string_lossy().to_string(),

@@ -107,7 +107,7 @@ impl BackupIterator {
     /// Get the latest backup based on the timestamp in the file name
     pub fn get_latest(&mut self) -> Option<PathBuf> {
         self.filter_map(|res| res.ok())
-            .max_by_key(|p| get_probable_time(&p))
+            .max_by_key(|p| get_probable_time(p))
     }
 
     /// Get the previous backup based on a file name

@@ -10,8 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::backup::BACKUP_FILE_EXTENSION;
 use crate::parse_date;
 use crate::parse_date::{create_backup_file_name, naive_now};
-use crate::utils::default_dir;
-use crate::utils::{clamp, BackupIterator};
+use crate::utils::{clamp, default_dir, BackupIterator};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Config {

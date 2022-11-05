@@ -1,4 +1,5 @@
-use std::{fs, path::Path};
+use std::fs;
+use std::path::Path;
 
 use tiny_skia::{Pixmap, Transform};
 use usvg::{FitTo, Options, Tree};

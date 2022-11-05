@@ -1,6 +1,6 @@
 [package]
 name = "simple_backup"
-version = "2.0.0"
+version = "2.0.1"
 authors = ["Aggrathon <antonbjo@gmail.com>"]
 edition = "2021"
 description = "A minimal application for doing backups."
@@ -9,33 +9,33 @@ keywords = ["backup", "compression", "application", "software"]
 
 [dependencies]
 tar = "0.4.38"
-clap = { version = "3.2.6", features = ["derive"] }
-serde = { version = "1.0.137", features = ["derive"] }
-serde_yaml = "0.8.24"
+clap = { version = "4.0.19", features = ["derive"] }
+serde = { version = "1.0.147", features = ["derive"] }
+serde_yaml = "0.9.14"
 yaml-rust = "0.4.5"
-chrono = "0.4.19"
-regex = "1.5.6"
+chrono = "0.4.22"
+regex = "1.6.0"
 path-clean = "0.1.0"
-path-absolutize = "3.0.13"
-indicatif = { version = "0.16.2", features = ["improved_unicode"] }
+path-absolutize = "3.0.14"
+indicatif = { version = "0.17.1", features = ["improved_unicode"] }
 zstd = { version = "0.11.2", features = ["zstdmt"] }
 number_prefix = "0.4.0"
-num_cpus = "1.13.1"
+num_cpus = "1.14.0"
 iced = { version = "0.4.2", features = ["smol", "pure"], optional = true }
-rfd = { version = "0.9.1", optional = true }
+rfd = { version = "0.10.0", optional = true }
 dirs = { version = "4.0.0", optional = true }
 
 [dev-dependencies]
 tempfile = "3.3.0"
 
 [build-dependencies]
-resvg = "0.23"
-usvg = {version = "0.23", features = ["text"]}
-tiny-skia = "0.6.5"
+resvg = "0.25.0"
+usvg = { version = "0.25.0", features = ["text"] }
+tiny-skia = "0.8.2"
 
 [target.'cfg(windows)'.build-dependencies]
-winres = "0.1"
-ico = "0.1"
+winres = "0.1.12"
+ico = "0.1.0"
 
 [features]
 default = ["gui", "dirs"]

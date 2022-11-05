@@ -61,12 +61,12 @@ pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &'static str> {
         return Ok(None);
     }
     for f in FORMATS_DT.iter() {
-        if let Ok(t) = NaiveDateTime::parse_from_str(input, *f) {
+        if let Ok(t) = NaiveDateTime::parse_from_str(input, f) {
             return Ok(Some(t));
         }
     }
     for f in FORMATS_D.iter() {
-        if let Ok(t) = NaiveDate::parse_from_str(input, *f) {
+        if let Ok(t) = NaiveDate::parse_from_str(input, f) {
             return Ok(Some(t.and_hms(0, 0, 0)));
         }
     }

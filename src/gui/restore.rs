@@ -247,7 +247,7 @@ impl RestoreState {
             Message::Export => {
                 if let RestoreStage::Viewing(reader, _) = &mut self.stage {
                     if let Some(file) = FileDialog::new()
-                        .set_directory(&reader.path.get_path())
+                        .set_directory(reader.path.get_path())
                         .set_title("Save the list of files in the backup")
                         .set_file_name("files.txt")
                         .add_filter("Text file", &["txt"])

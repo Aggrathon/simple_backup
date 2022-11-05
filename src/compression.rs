@@ -38,7 +38,7 @@ impl<'a> CompressionEncoder<'a> {
     /// Add a file to the compressed archive
     pub fn append_file(&mut self, file: &PathBuf) -> std::io::Result<()> {
         let name = path_to_archive(file);
-        self.0.append_path_with_name(&file, name)
+        self.0.append_path_with_name(file, name)
     }
 
     /// Add raw data as a file to the compressed archive

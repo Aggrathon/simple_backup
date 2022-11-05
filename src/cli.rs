@@ -2,6 +2,7 @@
 use core::panic;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
 use number_prefix::NumberPrefix;
@@ -97,10 +98,10 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
         };
         bar.set_style(ProgressStyle::default_bar().template(
             "{wide_msg} {bytes:>8} / {total_bytes:<8}\n{wide_bar} {elapsed_precise:>8} / {duration_precise:<8}",
-        ));
+        ).expect("The progressbar template is wrong!"));
         bar.set_message("Compressing file list");
         bar.tick();
-        bar.enable_steady_tick(1000);
+        bar.enable_steady_tick(Duration::from_secs(1));
         bw.write(
             |fi: &mut FileInfo, err| {
                 bar.set_message(fi.move_string());
@@ -204,14 +205,12 @@ pub fn restore<P: AsRef<Path>>(
         } else {
             ProgressBar::new(list.len() as u64)
         };
-        bar.set_style(
-            ProgressStyle::default_bar().template(
-                "{wide_msg} {pos:>8} / {len:<8}\n{wide_bar} {elapsed_precise:>8} / {duration_precise:<8}",
-            ),
-        );
+        bar.set_style(ProgressStyle::default_bar().template(
+            "{wide_msg} {pos:>8} / {len:<8}\n{wide_bar} {elapsed_precise:>8} / {duration_precise:<8}"
+        ).expect("The progressbar template is wrong!"));
         bar.set_message("Restoring files");
         bar.tick();
-        bar.enable_steady_tick(1000);
+        bar.enable_steady_tick(Duration::from_secs(1));
 
         let callback = |res| {
             match res {
@@ -350,10 +349,10 @@ pub fn merge(
     };
     bar.set_style(ProgressStyle::default_bar().template(
         "{wide_msg} {pos:>8} / {len:<8}\n{wide_bar} {elapsed_precise:>8} / {duration_precise:<8}",
-    ));
+    ).expect("The progressbar template is wrong!"));
     bar.set_message("Merging backups...");
     bar.tick();
-    bar.enable_steady_tick(1000);
+    bar.enable_steady_tick(Duration::from_secs(1));
 
     merger
         .write(

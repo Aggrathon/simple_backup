@@ -19,6 +19,7 @@ enum ListSort {
     Time,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum BackupStage {
     Scanning(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
     Viewing(BackupWriter),
