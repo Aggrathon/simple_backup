@@ -149,38 +149,50 @@ pub fn restore<P: AsRef<Path>>(
             true
         }
     };
+
     let tmp1: FileListString;
-    let inc_iter = if include.is_empty() {
+    let mut list: Vec<&str> = if !regex.is_empty() {
+        let regex = RegexSet::new(regex).expect("Could not parse regex");
         tmp1 = source
             .move_list()
             .expect("Could not get list of files from backup");
         if only_this {
-            tmp1.iter_included()
+            tmp1.iter_included().filter(|f| regex.is_match(f)).collect()
         } else {
-            Box::new(tmp1.iter().map(|v| v.1))
+            tmp1.iter()
+                .map(|v| v.1)
+                .filter(|f| regex.is_match(f))
+                .collect()
+        }
+    } else if include.is_empty() {
+        tmp1 = source
+            .move_list()
+            .expect("Could not get list of files from backup");
+        if only_this {
+            tmp1.iter_included().collect()
+        } else {
+            tmp1.iter().map(|v| v.1).collect()
         }
     } else {
+        vec![]
+    };
+    if !include.is_empty() {
+        list.reserve(include.len());
         #[cfg(target_os = "windows")]
         include.iter_mut().for_each(|s| *s = s.replace('\\', "/"));
-        Box::new(include.iter().map(|s| s.as_str()))
-    };
-    let include: Vec<&str> = if regex.is_empty() {
-        inc_iter.collect()
-    } else {
-        let regex = RegexSet::new(regex).expect("Could not parse regex");
-        inc_iter.filter(|f| regex.is_match(f)).collect()
-    };
+        list.extend(include.iter().map(|s| s.as_str()));
+        list.sort_unstable();
+    }
 
-    if include.is_empty() {
+    if list.is_empty() {
         if !quiet {
             eprintln!("No files to backup");
         }
         return;
     }
-
     if verbose {
         eprintln!("Files to restore:");
-        for f in include.iter() {
+        for f in list.iter() {
             println!("{}", f);
         }
         eprintln!();
@@ -190,7 +202,7 @@ pub fn restore<P: AsRef<Path>>(
         let bar = if quiet {
             ProgressBar::hidden()
         } else {
-            ProgressBar::new(include.len() as u64)
+            ProgressBar::new(list.len() as u64)
         };
         bar.set_style(
             ProgressStyle::default_bar().template(
@@ -219,20 +231,21 @@ pub fn restore<P: AsRef<Path>>(
                 bar.set_message(fi.move_string());
                 FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
             };
-            source.restore(include, path_transform, callback, force, !only_this)
+            source.restore(list, path_transform, callback, force, !only_this)
+        } else if let Some(o) = &output {
+            let path_transform = |mut fi: FileInfo| {
+                let s = fi.move_string();
+                let path = strip_absolute_from_path(&s);
+                bar.set_message(s);
+                FileInfo::from(o.as_ref().join(path))
+            };
+            source.restore(list, path_transform, callback, force, !only_this)
         } else {
             let path_transform = |mut fi: FileInfo| {
-                if let Some(o) = &output {
-                    let s = fi.move_string();
-                    let path = strip_absolute_from_path(&s);
-                    bar.set_message(s);
-                    FileInfo::from(o.as_ref().join(path))
-                } else {
-                    bar.set_message(fi.move_string());
-                    fi
-                }
+                bar.set_message(fi.move_string());
+                fi
             };
-            source.restore(include, path_transform, callback, force, !only_this)
+            source.restore(list, path_transform, callback, force, !only_this)
         }
         .expect("Could not restore from backup");
 
