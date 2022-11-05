@@ -460,13 +460,11 @@ impl BackupReader {
         callback: impl FnMut(std::io::Result<FileInfo>) -> Result<(), BackupError>,
         overwrite: bool,
     ) -> Result<(), BackupError> {
-        self.restore(
-            Vec::<&str>::new(),
-            path_transform,
-            callback,
-            overwrite,
-            false,
-        )
+        let list = self.move_list()?;
+        let selection = list.iter().map(|v| v.1).collect();
+        let res = self.restore(selection, path_transform, callback, overwrite, false);
+        self.list = Some(list);
+        res
     }
 
     #[allow(unused)]
@@ -492,19 +490,39 @@ impl BackupReader {
         overwrite: bool,
         recursive: bool,
     ) -> Result<(), BackupError> {
+        if selection.is_empty() {
+            return Ok(());
+        }
         let mut not_found: Vec<&str> = vec![];
-        let all = selection.is_empty();
+        let mut decoder = self.get_decoder()?;
+        let mut entries = decoder.entries().map_err(BackupError::ArchiveError)?;
+        let unsorted = match entries.nth(1) {
+            Some(r) => r?.0.get_string() == "files.csv",
+            None => return Err(BackupError::NoList(self.path.clone_path())),
+        };
         let mut list = selection.iter().map(|v| v.as_ref());
-        let mut current = list.next().unwrap_or("");
-        'decoder: for res in self
-            .get_decoder()?
-            .entries()
-            .map_err(BackupError::ArchiveError)?
-            .skip(2)
-        {
+        let mut current = if unsorted {
+            not_found.extend(selection.iter().map(|v| v.as_ref()));
+            not_found.sort_unstable();
+            ""
+        } else {
+            list.next().unwrap_or("")
+        };
+        'decoder: for res in entries {
             match res {
                 Ok((mut fi, mut entry)) => {
-                    if !all {
+                    let restore = if unsorted {
+                        // Unsorted is needed to be able to extract files from some old
+                        // simple_backup backups, where the files were not properly sorted.
+                        let fis = fi.get_string().as_str();
+                        if let Ok(i) = not_found.binary_search(&fis) {
+                            not_found.remove(i);
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        // Otherwise assume that everything is sorted
                         let fis = fi.get_string().as_str();
                         while fis > current {
                             if recursive {
@@ -513,9 +531,10 @@ impl BackupReader {
                                 callback(Err(std::io::Error::new(
                                     std::io::ErrorKind::NotFound,
                                     format!(
-                                        "Could not find '{}' in backup '{}'.",
+                                        "Could not find '{}' in backup '{}' ({}).",
                                         current,
-                                        self.path.get_string()
+                                        self.path.get_string(),
+                                        &fis
                                     ),
                                 )))?;
                             }
@@ -524,8 +543,9 @@ impl BackupReader {
                                 None => break 'decoder,
                             };
                         }
-                    }
-                    if all || fi.get_string() == current {
+                        fi.get_string() == current
+                    };
+                    if restore {
                         let mut path = path_transform(fi);
                         if !overwrite && path.get_path().exists() {
                             callback(Err(std::io::Error::new(
@@ -540,7 +560,11 @@ impl BackupReader {
                         } else {
                             callback(entry.unpack(path.get_path()).and(Ok(path)))?;
                         }
-                        if !all {
+                        if unsorted {
+                            if not_found.is_empty() {
+                                break 'decoder;
+                            }
+                        } else {
                             current = match list.next() {
                                 Some(s) => s,
                                 None => break 'decoder,
