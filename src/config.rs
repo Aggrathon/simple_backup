@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::backup::BACKUP_FILE_EXTENSION;
 use crate::parse_date;
 use crate::parse_date::{create_backup_file_name, naive_now};
+use crate::utils::default_dir;
 use crate::utils::{clamp, BackupIterator};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -53,24 +54,15 @@ impl Config {
         self.threads = clamp(threads, 1, num_cpus::get() as u32);
     }
 
-    pub fn get_output(&self) -> PathBuf {
+    pub fn get_output(&self, home: bool) -> PathBuf {
         if !self.output.as_os_str().is_empty() {
             self.output.clone()
         } else if !self.origin.as_os_str().is_empty() {
             self.origin.clone()
+        } else if home {
+            default_dir()
         } else {
             PathBuf::from(".")
-        }
-    }
-
-    #[cfg(feature = "dirs")]
-    pub fn get_output_home(&self) -> PathBuf {
-        if !self.output.as_os_str().is_empty() {
-            self.output.clone()
-        } else if !self.origin.as_os_str().is_empty() {
-            self.origin.clone()
-        } else {
-            dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
         }
     }
 
@@ -133,7 +125,7 @@ impl Config {
     }
 
     pub fn get_dir(&self) -> PathBuf {
-        let mut path = self.get_output();
+        let mut path = self.get_output(false);
         if path.is_file() {
             path = match path.parent() {
                 Some(p) => p.to_path_buf(),

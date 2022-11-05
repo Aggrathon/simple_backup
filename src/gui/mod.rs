@@ -12,7 +12,7 @@ use self::merge::MergeState;
 use self::restore::RestoreState;
 use crate::backup::{BackupReader, BACKUP_FILE_EXTENSION, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
-use crate::utils::get_config_from_path;
+use crate::utils::{default_dir, get_config_from_path};
 
 mod backup;
 mod config;
@@ -99,7 +99,7 @@ enum ApplicationState {
 
 fn open_config() -> Option<Config> {
     FileDialog::new()
-        .set_directory(dirs::home_dir().unwrap_or_default())
+        .set_directory(default_dir())
         .set_title("Open existing config or backup file")
         .add_filter(
             "Config and backup files",
@@ -123,7 +123,7 @@ fn open_config() -> Option<Config> {
 }
 fn open_backup() -> Option<BackupReader> {
     FileDialog::new()
-        .set_directory(dirs::home_dir().unwrap_or_default())
+        .set_directory(default_dir())
         .set_title("Open backup file")
         .add_filter("Backup files", &[&BACKUP_FILE_EXTENSION[1..]])
         .pick_file()
@@ -169,7 +169,7 @@ impl Application for ApplicationState {
                 if let ApplicationState::Config(state) = self {
                     let mut config = std::mem::take(&mut state.config);
                     if let Some(path) = FileDialog::new()
-                        .set_directory(config.get_output_home())
+                        .set_directory(config.get_output(true))
                         .set_title("Where should the backups be stored")
                         .pick_folder()
                     {

@@ -38,5 +38,5 @@ winres = "0.1"
 ico = "0.1"
 
 [features]
-default = ["gui"]
-gui = ["iced", "rfd", "dirs"]
+default = ["gui", "dirs"]
+gui = ["iced", "rfd"]

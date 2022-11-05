@@ -215,7 +215,7 @@ impl BackupState {
             Message::Export => {
                 if let BackupStage::Viewing(writer) = &mut self.stage {
                     if let Some(file) = FileDialog::new()
-                        .set_directory(self.config.get_output())
+                        .set_directory(self.config.get_output(true))
                         .set_title("Save list of files to backup")
                         .set_file_name("files.txt")
                         .add_filter("Text file", &["txt"])

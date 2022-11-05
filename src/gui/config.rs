@@ -12,6 +12,7 @@ use super::{presets, Message};
 use crate::backup::{CONFIG_DEFAULT_NAME, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
 use crate::files::{FileCrawler, FileInfo};
+use crate::utils::default_dir;
 
 pub(crate) struct ConfigState {
     pub config: Config,
@@ -58,7 +59,7 @@ impl ConfigState {
             includes,
             excludes,
             filters,
-            current_dir: FileInfo::from(dirs::home_dir().unwrap_or_default()),
+            current_dir: FileInfo::from(default_dir()),
         };
         if open_home {
             state.refresh_files();
@@ -245,7 +246,7 @@ impl ConfigState {
             }
             Message::Save => {
                 if let Some(file) = FileDialog::new()
-                    .set_directory(self.config.get_output())
+                    .set_directory(self.config.get_output(true))
                     .set_title("Save config file")
                     .set_file_name(CONFIG_DEFAULT_NAME)
                     .add_filter("Config file", &[&CONFIG_FILE_EXTENSION[1..]])

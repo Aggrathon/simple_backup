@@ -11,6 +11,7 @@ use super::threads::ThreadWrapper;
 use super::{presets, Message};
 use crate::backup::{BackupError, BackupMerger, BackupReader, BACKUP_FILE_EXTENSION};
 use crate::files::FileInfo;
+use crate::utils::{default_dir, default_dir_opt};
 
 fn open_backups<P: AsRef<Path>>(dir: Option<P>) -> Option<Vec<PathBuf>> {
     if let Some(dir) = dir {
@@ -20,7 +21,7 @@ fn open_backups<P: AsRef<Path>>(dir: Option<P>) -> Option<Vec<PathBuf>> {
             .add_filter("Backup files", &[&BACKUP_FILE_EXTENSION[1..]])
             .pick_files()
     } else {
-        open_backups(Some(dirs::home_dir().unwrap_or_default()))
+        open_backups(Some(default_dir()))
     }
 }
 
@@ -28,7 +29,7 @@ fn select_output<P: AsRef<Path>>(path: P) -> Option<PathBuf> {
     let mut fd = FileDialog::new();
     if let Some(parent) = path.as_ref().parent() {
         fd = fd.set_directory(parent);
-    } else if let Some(parent) = dirs::home_dir() {
+    } else if let Some(parent) = default_dir_opt() {
         fd = fd.set_directory(parent);
     }
     if let Some(name) = path.as_ref().file_name() {

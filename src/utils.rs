@@ -223,6 +223,29 @@ pub fn extend_pathbuf<S: AsRef<OsStr>>(mut path: PathBuf, extension: S) -> PathB
     path
 }
 
+#[cfg(feature = "dirs")]
+pub fn default_dir() -> PathBuf {
+    std::env::current_dir()
+        .unwrap_or_else(|_| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
+}
+
+#[cfg(not(feature = "dirs"))]
+pub fn default_dir() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+#[cfg(feature = "dirs")]
+pub fn default_dir_opt() -> Option<PathBuf> {
+    std::env::current_dir()
+        .map(Some)
+        .unwrap_or_else(|_| dirs::home_dir())
+}
+
+#[cfg(not(feature = "dirs"))]
+pub fn default_dir_opt() -> Option<PathBuf> {
+    std::env::current_dir().map(Some).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
