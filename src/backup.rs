@@ -460,11 +460,13 @@ impl BackupReader {
         callback: impl FnMut(std::io::Result<FileInfo>) -> Result<(), BackupError>,
         overwrite: bool,
     ) -> Result<(), BackupError> {
-        let list = self.move_list()?;
-        let selection = list.iter_included().collect();
-        let res = self.restore(selection, path_transform, callback, overwrite, false);
-        self.list = Some(list);
-        res
+        self.restore(
+            Vec::<&str>::new(),
+            path_transform,
+            callback,
+            overwrite,
+            false,
+        )
     }
 
     #[allow(unused)]
@@ -491,12 +493,10 @@ impl BackupReader {
         recursive: bool,
     ) -> Result<(), BackupError> {
         let mut not_found: Vec<&str> = vec![];
+        let all = selection.is_empty();
         let mut list = selection.iter().map(|v| v.as_ref());
-        let mut current = match list.next() {
-            Some(f) => f,
-            None => return Ok(()),
-        };
-        for res in self
+        let mut current = list.next().unwrap_or("");
+        'decoder: for res in self
             .get_decoder()?
             .entries()
             .map_err(BackupError::ArchiveError)?
@@ -504,17 +504,28 @@ impl BackupReader {
         {
             match res {
                 Ok((mut fi, mut entry)) => {
-                    {
+                    if !all {
                         let fis = fi.get_string().as_str();
                         while fis > current {
-                            not_found.push(current);
+                            if recursive {
+                                not_found.push(current);
+                            } else {
+                                callback(Err(std::io::Error::new(
+                                    std::io::ErrorKind::NotFound,
+                                    format!(
+                                        "Could not find '{}' in backup '{}'.",
+                                        current,
+                                        self.path.get_string()
+                                    ),
+                                )))?;
+                            }
                             current = match list.next() {
                                 Some(f) => f,
-                                None => break,
+                                None => break 'decoder,
                             };
                         }
                     }
-                    if fi.get_string() == current {
+                    if all || fi.get_string() == current {
                         let mut path = path_transform(fi);
                         if !overwrite && path.get_path().exists() {
                             callback(Err(std::io::Error::new(
@@ -529,10 +540,12 @@ impl BackupReader {
                         } else {
                             callback(entry.unpack(path.get_path()).and(Ok(path)))?;
                         }
-                        current = match list.next() {
-                            Some(s) => s,
-                            None => break,
-                        };
+                        if !all {
+                            current = match list.next() {
+                                Some(s) => s,
+                                None => break 'decoder,
+                            };
+                        }
                     }
                 }
                 Err(e) => callback(Err(e))?,

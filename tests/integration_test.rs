@@ -125,7 +125,7 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let config = Config {
         include: vec![dir.path().to_string_lossy().to_string()],
         exclude: vec![],
-        regex: vec![],
+        regex: vec!["zst$".to_string()],
         output: dir.path().to_path_buf(),
         incremental: true,
         quality: 11,
@@ -137,13 +137,14 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut bw1 = BackupWriter::new(config).0;
     bw1.write(|_, _| Ok(()), || ())?;
 
+    std::thread::sleep(std::time::Duration::from_millis(10));
     let f5 = dir.path().join("e.txt");
     let f6 = dir.path().join("f.txt");
     File::create(&f5)?;
     File::create(&f6)?;
 
-    std::thread::sleep(std::time::Duration::from_secs(1));
     let mut bw2 = BackupWriter::new(bw1.config).0;
+    bw2.path = dir.path().join("b2.tar.zst");
     bw2.write(|_, _| Ok(()), || ())?;
 
     remove_file(&f2)?;
@@ -151,28 +152,28 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
     assert!(!f2.exists());
     assert!(!f5.exists());
 
-    let mut br1 = BackupReader::from_config(bw2.config)?;
-    let mut br2 = br1.get_previous()?.unwrap();
+    let mut br2 = BackupReader::from_config(bw2.config)?;
+    let mut br1 = br2.get_previous()?.unwrap();
 
-    br1.restore_this(|fi| fi, |_| Ok(()), false)?;
+    br2.restore_this(|fi| fi, |_| Ok(()), false)?;
     assert!(!f2.exists());
     assert!(f5.exists());
 
     remove_file(&f5)?;
     assert!(!f5.exists());
 
-    br2.restore_this(|fi| fi, |_| Ok(()), false)?;
+    br1.restore_this(|fi| fi, |_| Ok(()), false)?;
     assert!(f2.exists());
     assert!(!f5.exists());
 
     remove_file(&f2)?;
     assert!(!f2.exists());
 
-    br1.restore_this(|fi| fi, |_| Ok(()), true)?;
+    br2.restore_this(|fi| fi, |_| Ok(()), true)?;
     assert!(!f2.exists());
     assert!(f5.exists());
 
-    br1.restore_all(|fi| fi, |_| Ok(()), false)?;
+    br2.restore_all(|fi| fi, |_| Ok(()), false)?;
     assert!(f2.exists());
 
     Ok(())
@@ -273,7 +274,7 @@ fn extract_test() -> Result<(), Box<dyn std::error::Error>> {
             .to_string_lossy()
             .to_string(),
     ];
-    let config = Config {
+    let mut config = Config {
         include: inc.clone(),
         exclude: vec![],
         regex: vec![],
@@ -287,13 +288,13 @@ fn extract_test() -> Result<(), Box<dyn std::error::Error>> {
     };
     backup(config.clone(), false, false, false, true);
 
-    let reader = BackupReader::from_config(config)?;
+    let reader = BackupReader::from_config(config.clone())?;
     inspect(reader.clone(), false, false, true);
     inspect(reader.clone(), false, true, true);
     inspect(reader.clone(), true, false, true);
     inspect(reader.clone(), true, true, true);
     restore(
-        reader,
+        reader.clone(),
         Some(&dir.path()),
         vec![],
         vec![],
@@ -308,6 +309,26 @@ fn extract_test() -> Result<(), Box<dyn std::error::Error>> {
     for p in inc.iter() {
         assert!(dir.path().join(strip_absolute_from_path(p)).exists());
     }
+
+    let dir = dir.path().join("tmp");
+    config.output = dir.clone();
+    backup(config, false, false, false, true);
+    restore(
+        reader,
+        Some(&dir),
+        vec![],
+        vec!["src".to_string()],
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+    );
+    for p in inc.iter() {
+        assert!(dir.join(strip_absolute_from_path(p)).exists());
+    }
+
     Ok(())
 }
 
