@@ -269,7 +269,7 @@ impl ConfigState {
                     };
                 }
             }
-            _ => eprintln!("Unexpected GUI message"),
+            _ => eprintln!("Unexpected GUI message: {:?}", message),
         }
         Command::none()
     }

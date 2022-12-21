@@ -238,7 +238,7 @@ impl MergeState {
             Message::Repeat => {
                 *self = Self::new();
             }
-            _ => eprintln!("Unexpected GUI message"),
+            _ => eprintln!("Unexpected GUI message: {:?}", message),
         }
         Command::none()
     }

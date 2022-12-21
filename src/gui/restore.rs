@@ -314,7 +314,7 @@ impl RestoreState {
                 self.error.clear();
                 self.try_view_list();
             }
-            _ => {}
+            _ => eprintln!("Unexpected GUI message: {:?}", message),
         }
         Command::none()
     }

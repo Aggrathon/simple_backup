@@ -242,7 +242,7 @@ impl BackupState {
                 }
             }
             Message::Repeat => *self = BackupState::new(std::mem::take(&mut self.config)),
-            _ => eprintln!("Unexpected GUI message"),
+            _ => eprintln!("Unexpected GUI message: {:?}", message),
         }
         Command::none()
     }
