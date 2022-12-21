@@ -400,7 +400,7 @@ impl BackupState {
             }
             BackupStage::Failed => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Edit", Message::None, false).into(),
+                    presets::button_nav("Edit", Message::EditConfig, false).into(),
                     presets::text_center_error("Backup failed").into(),
                     presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
@@ -409,7 +409,7 @@ impl BackupState {
             }
             BackupStage::Completed(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Edit", Message::None, false).into(),
+                    presets::button_nav("Edit", Message::EditConfig, false).into(),
                     presets::text_center("Backup completed").into(),
                     presets::button_nav("Repeat", Message::Repeat, true).into(),
                 ]);
@@ -418,7 +418,7 @@ impl BackupState {
             }
             BackupStage::Cancelled(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Edit", Message::None, false).into(),
+                    presets::button_nav("Edit", Message::EditConfig, false).into(),
                     presets::text_center_error("Backup cancelled").into(),
                     presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);

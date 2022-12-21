@@ -338,7 +338,7 @@ impl MergeState {
             }
             MergeStage::Completed(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::None, false).into(),
+                    presets::button_nav("Back", Message::MainView, false).into(),
                     presets::text_center("Merge completed").into(),
                     presets::button_nav("Repeat", Message::Repeat, true).into(),
                 ]);
@@ -347,7 +347,7 @@ impl MergeState {
             }
             MergeStage::Failed => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::None, false).into(),
+                    presets::button_nav("Back", Message::MainView, false).into(),
                     presets::text_center_error("Merge failed").into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
@@ -355,7 +355,7 @@ impl MergeState {
             }
             MergeStage::Error(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::None, false).into(),
+                    presets::button_nav("Back", Message::MainView, false).into(),
                     presets::text_center_error("Merge failed").into(),
                     presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
@@ -364,7 +364,7 @@ impl MergeState {
             }
             MergeStage::Cancelled(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::None, false).into(),
+                    presets::button_nav("Back", Message::MainView, false).into(),
                     presets::text_center_error("Merge cancelled").into(),
                     presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
