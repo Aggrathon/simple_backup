@@ -153,7 +153,7 @@ impl Application for ApplicationState {
     fn update(&mut self, message: Self::Message) -> iced::Command<Self::Message> {
         match message {
             Message::CreateConfig => {
-                *self = ApplicationState::Config(ConfigState::new(true));
+                *self = ApplicationState::Config(ConfigState::new(true, true));
                 Command::none()
             }
             Message::EditConfig => {

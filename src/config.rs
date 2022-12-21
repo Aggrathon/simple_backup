@@ -149,15 +149,39 @@ impl Config {
             BackupIterator::dir(self.get_dir())
         }
     }
+
+    pub fn add_default_ignores(&mut self) {
+        let regexes = [
+            r"\\[Dd]esktop\.ini$",
+            r"\\Thumbs\.db$",
+            r"\\\$RECYCLE.BIN$",
+            r"\.~?lock(\..*#)?$",
+            r"~$",
+            r"\\\.?[Tt]rash(-.*|es)?$",
+            r"\.bak\d*$",
+            r"\.?(Te?mp|te?mp|TE?MP)$",
+            r"([Ll]og|LOG)(\.|\d|s|txt|old|dat|html)*$",
+            r"\\[Cc]rash(es| Reports|Dumps|_dumps|[pP]lan|\.dmp|\.mem|\.txt|\.log)*$",
+            r"[Cc]aches?$",
+            r"\\\.DS_Store$",
+            r"[Tt]elemetry",
+            r"\\[Dd]umps?$",
+            r"\.part$",
+            r"\.crdownload$",
+        ];
+        self.regex.extend(regexes.iter().map(|s| s.to_string()));
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Config;
+    use crate::files::{FileCrawler, FileInfo};
 
     #[test]
     fn yaml() {
         let mut config = Config::new();
+        config.add_default_ignores();
         let yaml = config.as_yaml().unwrap();
         let mut config2 = Config::from_yaml(&yaml).unwrap();
         let yaml2 = config2.as_yaml().unwrap();
@@ -170,5 +194,15 @@ mod tests {
         assert_eq!(config.local, config2.local);
         assert_eq!(config.time, config2.time);
         assert_eq!(yaml, yaml2);
+    }
+
+    #[test]
+    fn default_ignores() -> std::io::Result<()> {
+        let mut config = Config::new();
+        config.add_default_ignores();
+        let fc = FileCrawler::new(["src"], config.exclude, config.regex, false)?;
+        assert!(fc.check_path(&mut FileInfo::from("src/cash"), Some(true)));
+        assert!(!fc.check_path(&mut FileInfo::from("src/cache"), Some(true)));
+        Ok(())
     }
 }

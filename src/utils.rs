@@ -229,6 +229,12 @@ pub fn default_dir() -> PathBuf {
         .unwrap_or_else(|_| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
 }
 
+#[cfg(feature = "dirs")]
+pub fn home_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
 #[cfg(not(feature = "dirs"))]
 pub fn default_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))

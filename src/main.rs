@@ -172,6 +172,9 @@ struct ArgConfig {
     /// Preserve relative (local) paths instead of converting to absolute paths
     #[clap(short, long)]
     local: bool,
+    /// Add default ignore-patterns for commonly unwanted files
+    #[clap(short = 'D', long)]
+    default: bool,
     /// Compression quality (1-22)
     #[clap(short, long, value_parser = parse_quality, default_value_t = 20, value_name = "NUM")]
     quality: i32,
@@ -182,7 +185,7 @@ struct ArgConfig {
 
 impl ArgConfig {
     fn into_config(self, time: Option<NaiveDateTime>) -> Config {
-        Config {
+        let mut conf = Config {
             include: self.include,
             exclude: self.exclude,
             regex: self.regex,
@@ -193,7 +196,11 @@ impl ArgConfig {
             threads: self.threads,
             time,
             origin: PathBuf::new(),
+        };
+        if self.default {
+            conf.add_default_ignores();
         }
+        conf
     }
 }
 
