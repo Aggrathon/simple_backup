@@ -2,7 +2,7 @@
 
 use iced::alignment::Horizontal;
 use iced::pure::Element;
-use iced::{Command, Length, Space, Subscription};
+use iced::{Command, Length, Subscription};
 use rfd::FileDialog;
 
 use super::threads::ThreadWrapper;
@@ -21,11 +21,13 @@ enum ListSort {
 
 #[allow(clippy::large_enum_variant)]
 enum BackupStage {
+    Failed,
     Scanning(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
     Viewing(BackupWriter),
     Performing(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
     Cancelling(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
-    Failure,
+    Completed(BackupWriter),
+    Cancelled(BackupWriter),
 }
 
 pub(crate) struct BackupState {
@@ -78,7 +80,7 @@ impl BackupState {
                                 }
                                 std::sync::mpsc::TryRecvError::Disconnected => {
                                     if let BackupStage::Scanning(crawler) =
-                                        std::mem::replace(&mut self.stage, BackupStage::Failure)
+                                        std::mem::replace(&mut self.stage, BackupStage::Failed)
                                     {
                                         match crawler.join() {
                                             Ok(mut bw) => {
@@ -131,12 +133,12 @@ impl BackupState {
                                 }
                                 std::sync::mpsc::TryRecvError::Disconnected => {
                                     if let BackupStage::Performing(wrapper) =
-                                        std::mem::replace(&mut self.stage, BackupStage::Failure)
+                                        std::mem::replace(&mut self.stage, BackupStage::Failed)
                                     {
                                         match wrapper.join() {
                                             Ok(bw) => {
                                                 self.current_count = 0;
-                                                self.stage = BackupStage::Viewing(bw)
+                                                self.stage = BackupStage::Completed(bw)
                                             }
                                             Err(_) => self
                                                 .error
@@ -151,12 +153,16 @@ impl BackupState {
                 }
                 BackupStage::Cancelling(_) => {
                     if let BackupStage::Cancelling(wrapper) =
-                        std::mem::replace(&mut self.stage, BackupStage::Failure)
+                        std::mem::replace(&mut self.stage, BackupStage::Failed)
                     {
                         match wrapper.cancel() {
                             Ok(writer) => {
+                                if let Err(e) = writer.delete_file() {
+                                    self.error.push('\n');
+                                    self.error.push_str(&e.to_string());
+                                }
                                 self.current_count = 0;
-                                self.stage = BackupStage::Viewing(writer)
+                                self.stage = BackupStage::Cancelled(writer)
                             }
                             Err(_) => self.error.push_str("\nFailure when cancelling the backup"),
                         };
@@ -194,7 +200,7 @@ impl BackupState {
                 if let BackupStage::Viewing(_) = &self.stage {
                     self.list_sort = ListSort::Name;
                     if let BackupStage::Viewing(mut writer) =
-                        std::mem::replace(&mut self.stage, BackupStage::Failure)
+                        std::mem::replace(&mut self.stage, BackupStage::Failed)
                     {
                         writer.list.as_mut().unwrap().sort_unstable();
                         self.stage =
@@ -207,7 +213,7 @@ impl BackupState {
             Message::Cancel => {
                 if let BackupStage::Performing(_) = &self.stage {
                     if let BackupStage::Performing(wrapper) =
-                        std::mem::replace(&mut self.stage, BackupStage::Failure)
+                        std::mem::replace(&mut self.stage, BackupStage::Failed)
                     {
                         self.stage = BackupStage::Cancelling(wrapper);
                     }
@@ -235,6 +241,7 @@ impl BackupState {
                     self.pagination.goto(index)
                 }
             }
+            Message::Repeat => *self = BackupState::new(std::mem::take(&mut self.config)),
             _ => eprintln!("Unexpected GUI message"),
         }
         Command::none()
@@ -391,11 +398,29 @@ impl BackupState {
                 let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![scroll.into(), bar.into(), brow.into()]).into()
             }
-            BackupStage::Failure => {
+            BackupStage::Failed => {
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::None, false).into(),
-                    Space::with_width(Length::Fill).into(),
-                    presets::button_nav("Refresh", Message::BackupView, true).into(),
+                    presets::text_center_error("Backup failed").into(),
+                    presets::button_nav("Retry", Message::Repeat, true).into(),
+                ]);
+                let scroll = presets::scroll_border(scroll.into());
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
+            }
+            BackupStage::Completed(_) => {
+                let brow = presets::row_bar(vec![
+                    presets::button_nav("Edit", Message::None, false).into(),
+                    presets::text_center("Backup completed").into(),
+                    presets::button_nav("Repeat", Message::Repeat, true).into(),
+                ]);
+                let scroll = presets::scroll_border(scroll.into());
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
+            }
+            BackupStage::Cancelled(_) => {
+                let brow = presets::row_bar(vec![
+                    presets::button_nav("Edit", Message::None, false).into(),
+                    presets::text_center_error("Backup cancelled").into(),
+                    presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![scroll.into(), brow.into()]).into()

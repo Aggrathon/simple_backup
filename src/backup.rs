@@ -272,6 +272,14 @@ impl BackupWriter {
         }
         Ok(())
     }
+
+    pub fn delete_file(&self) -> Result<(), std::io::Error> {
+        if self.path.exists() {
+            std::fs::remove_file(&self.path)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -625,16 +633,20 @@ impl BackupMerger {
         overwrite: bool,
         quality: Option<i32>,
         threads: Option<u32>,
-    ) -> Result<Self, BackupError> {
+    ) -> Result<Self, (Vec<BackupReader>, BackupError)> {
         if readers.len() < 2 {
-            return Err(BackupError::GenericError(
-                "At least two backups are needed for merging",
+            return Err((
+                readers,
+                BackupError::GenericError("At least two backups are needed for merging"),
             ));
         }
         readers.sort_by(|a, b| a.path.cmp(&b.path));
         readers.dedup_by(|a, b| b.path == a.path);
-        for r in readers.iter_mut() {
-            r.get_meta()?;
+        let err = readers
+            .iter_mut()
+            .try_for_each(|r| r.get_meta().map(|_| ()));
+        if let Err(e) = err {
+            return Err((readers, e));
         }
         readers.sort_by_cached_key(|r| {
             r.config
@@ -848,5 +860,13 @@ impl BackupMerger {
         }
         self.tmp_path.clear();
         Ok(())
+    }
+
+    pub fn delete_file(&self) -> Result<(), std::io::Error> {
+        if self.tmp_path.exists() {
+            std::fs::remove_file(&self.path)
+        } else {
+            Ok(())
+        }
     }
 }

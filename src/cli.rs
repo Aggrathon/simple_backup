@@ -318,6 +318,7 @@ pub fn merge(
         .collect::<std::io::Result<Vec<BackupReader>>>()
         .expect("Could not find backup");
     let mut merger = BackupMerger::new(path, backups, all, delete, force, quality, threads)
+        .map_err(|(_, e)| e)
         .expect("Could not read the backups");
     let count;
     if verbose {

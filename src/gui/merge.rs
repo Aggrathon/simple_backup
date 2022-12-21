@@ -41,9 +41,13 @@ fn select_output<P: AsRef<Path>>(path: P) -> Option<PathBuf> {
 }
 
 enum MergeStage {
+    Failed,
     Selecting(Vec<BackupReader>),
     Performing(ThreadWrapper<Result<FileInfo, BackupError>, BackupMerger>),
     Cancelling(ThreadWrapper<Result<FileInfo, BackupError>, BackupMerger>),
+    Error(Vec<BackupReader>),
+    Cancelled(Vec<BackupReader>),
+    Completed(Vec<BackupReader>),
 }
 
 pub(crate) struct MergeState {
@@ -95,18 +99,20 @@ impl MergeState {
                                     break;
                                 }
                                 std::sync::mpsc::TryRecvError::Disconnected => {
-                                    if let MergeStage::Performing(wrapper) = std::mem::replace(
-                                        &mut self.stage,
-                                        MergeStage::Selecting(Vec::new()),
-                                    ) {
+                                    if let MergeStage::Performing(wrapper) =
+                                        std::mem::replace(&mut self.stage, MergeStage::Failed)
+                                    {
                                         match wrapper.join() {
-                                            Ok(_) => {
+                                            Ok(merger) => {
                                                 self.current_count = 0;
-                                                self.stage = MergeStage::Selecting(Vec::new())
+                                                self.stage =
+                                                    MergeStage::Completed(merger.deconstruct());
                                             }
-                                            Err(_) => self
-                                                .error
-                                                .push_str("\nFailure when finalising the backup"),
+                                            Err(_) => {
+                                                self.error.push_str(
+                                                    "\nFailure when finalising the backup",
+                                                );
+                                            }
                                         }
                                     }
                                     break;
@@ -117,14 +123,20 @@ impl MergeState {
                 }
                 MergeStage::Cancelling(_) => {
                     if let MergeStage::Cancelling(wrapper) =
-                        std::mem::replace(&mut self.stage, MergeStage::Selecting(Vec::new()))
+                        std::mem::replace(&mut self.stage, MergeStage::Failed)
                     {
                         match wrapper.cancel() {
-                            Ok(_) => {
+                            Ok(merger) => {
+                                if let Err(e) = merger.delete_file() {
+                                    self.error.push('\n');
+                                    self.error.push_str(&e.to_string());
+                                }
                                 self.current_count = 0;
-                                self.stage = MergeStage::Selecting(Vec::new())
+                                self.stage = MergeStage::Cancelled(merger.deconstruct());
                             }
-                            Err(_) => self.error.push_str("\nFailure when cancelling the backup"),
+                            Err(_) => {
+                                self.error.push_str("\nFailure when cancelling the backup");
+                            }
                         };
                     }
                 }
@@ -133,7 +145,7 @@ impl MergeState {
             Message::Merge => {
                 if let MergeStage::Selecting(_) = &self.stage {
                     if let MergeStage::Selecting(list) =
-                        std::mem::replace(&mut self.stage, MergeStage::Selecting(Vec::new()))
+                        std::mem::replace(&mut self.stage, MergeStage::Failed)
                     {
                         match BackupMerger::new(
                             None,
@@ -155,10 +167,10 @@ impl MergeState {
                                     self.stage = MergeStage::Selecting(merger.deconstruct());
                                 }
                             }
-                            Err(e) => {
+                            Err((v, e)) => {
                                 self.error.push('\n');
                                 self.error.push_str(&e.to_string());
-                                self.stage = MergeStage::Selecting(Vec::new());
+                                self.stage = MergeStage::Error(v);
                             }
                         }
                     }
@@ -167,7 +179,7 @@ impl MergeState {
             Message::Cancel => {
                 if let MergeStage::Performing(_) = &self.stage {
                     if let MergeStage::Performing(wrapper) =
-                        std::mem::replace(&mut self.stage, MergeStage::Selecting(Vec::new()))
+                        std::mem::replace(&mut self.stage, MergeStage::Failed)
                     {
                         self.stage = MergeStage::Cancelling(wrapper);
                     }
@@ -189,7 +201,23 @@ impl MergeState {
                                 self.error.push('\n');
                                 self.error.push_str(&e.to_string());
                             } else if !list.iter().any(|r| r.path == reader.path) {
-                                list.push(reader);
+                                match reader.get_meta() {
+                                    Ok((config, _)) => {
+                                        if list.is_empty() {
+                                            if self.quality.is_none() {
+                                                self.quality = Some(config.quality);
+                                            }
+                                            if self.threads.is_none() {
+                                                self.threads = Some(config.threads);
+                                            }
+                                        }
+                                        list.push(reader);
+                                    }
+                                    Err(e) => {
+                                        self.error.push('\n');
+                                        self.error.push_str(&e.to_string());
+                                    }
+                                }
                             }
                         }
                     };
@@ -206,6 +234,9 @@ impl MergeState {
             }
             Message::ThreadCount(n) => {
                 self.threads = Some(n);
+            }
+            Message::Repeat => {
+                *self = Self::new();
             }
             _ => eprintln!("Unexpected GUI message"),
         }
@@ -304,6 +335,41 @@ impl MergeState {
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![scroll.into(), bar.into(), brow.into()]).into()
+            }
+            MergeStage::Completed(_) => {
+                let brow = presets::row_bar(vec![
+                    presets::button_nav("Back", Message::None, false).into(),
+                    presets::text_center("Merge completed").into(),
+                    presets::button_nav("Repeat", Message::Repeat, true).into(),
+                ]);
+                let scroll = presets::scroll_border(scroll.into());
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
+            }
+            MergeStage::Failed => {
+                let brow = presets::row_bar(vec![
+                    presets::button_nav("Back", Message::None, false).into(),
+                    presets::text_center_error("Merge failed").into(),
+                ]);
+                let scroll = presets::scroll_border(scroll.into());
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
+            }
+            MergeStage::Error(_) => {
+                let brow = presets::row_bar(vec![
+                    presets::button_nav("Back", Message::None, false).into(),
+                    presets::text_center_error("Merge failed").into(),
+                    presets::button_nav("Retry", Message::Repeat, true).into(),
+                ]);
+                let scroll = presets::scroll_border(scroll.into());
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
+            }
+            MergeStage::Cancelled(_) => {
+                let brow = presets::row_bar(vec![
+                    presets::button_nav("Back", Message::None, false).into(),
+                    presets::text_center_error("Merge cancelled").into(),
+                    presets::button_nav("Retry", Message::Repeat, true).into(),
+                ]);
+                let scroll = presets::scroll_border(scroll.into());
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
             }
         }
     }

@@ -11,16 +11,13 @@ use crate::backup::{BackupError, BackupReader};
 use crate::files::FileInfo;
 
 pub(crate) enum RestoreStage {
-    Error,
+    Failed,
+    Error(Box<BackupReader>),
     Viewing(Box<BackupReader>, Vec<(bool, String)>),
-    Performing(
-        ThreadWrapper<Result<FileInfo, BackupError>, BackupReader>,
-        bool,
-    ),
-    Cancelling(
-        ThreadWrapper<Result<FileInfo, BackupError>, BackupReader>,
-        bool,
-    ),
+    Performing(ThreadWrapper<Result<FileInfo, BackupError>, BackupReader>),
+    Cancelling(ThreadWrapper<Result<FileInfo, BackupError>, BackupReader>),
+    Completed(Box<BackupReader>),
+    Cancelled(Box<BackupReader>),
 }
 
 pub(crate) struct RestoreState {
@@ -31,21 +28,34 @@ pub(crate) struct RestoreState {
     all: bool,
     flat: bool,
     pagination: paginated::State,
+    extract: bool,
 }
 
 impl RestoreState {
     pub fn new(reader: BackupReader) -> Self {
         let mut state = Self {
             error: String::new(),
-            stage: RestoreStage::Error,
+            stage: RestoreStage::Failed,
             all: true,
             filter: String::new(),
             filter_ok: true,
             flat: false,
             pagination: paginated::State::new(100, 0),
+            extract: false,
         };
         state.view_list(reader);
         state
+    }
+
+    fn extract_reader(&mut self) -> Option<Box<BackupReader>> {
+        self.stage = match std::mem::replace(&mut self.stage, RestoreStage::Failed) {
+            RestoreStage::Error(br) => return Some(br),
+            RestoreStage::Viewing(br, _) => return Some(br),
+            RestoreStage::Completed(br) => return Some(br),
+            RestoreStage::Cancelled(br) => return Some(br),
+            x => x,
+        };
+        None
     }
 
     fn view_list(&mut self, mut reader: BackupReader) {
@@ -53,7 +63,7 @@ impl RestoreState {
             Err(e) => {
                 self.error.push_str("\nProblem with reading backup:");
                 self.error.push_str(&e.to_string());
-                self.stage = RestoreStage::Error;
+                self.view_error(reader);
             }
             Ok((_, list)) => {
                 let list: Vec<_> = list.iter().map(|(_, s)| (true, String::from(s))).collect();
@@ -61,6 +71,22 @@ impl RestoreState {
                 self.all = true;
                 self.stage = RestoreStage::Viewing(Box::new(reader), list);
             }
+        }
+    }
+
+    fn try_view_list(&mut self) {
+        if let Some(br) = self.extract_reader() {
+            self.view_list(*br);
+        }
+    }
+
+    fn view_error(&mut self, reader: BackupReader) {
+        self.stage = RestoreStage::Error(Box::new(reader))
+    }
+
+    fn try_view_error(&mut self) {
+        if let Some(br) = self.extract_reader() {
+            self.view_error(*br);
         }
     }
 
@@ -114,7 +140,7 @@ impl RestoreState {
     pub fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Tick => match &mut self.stage {
-                RestoreStage::Performing(wrapper, _) => {
+                RestoreStage::Performing(wrapper) => {
                     for recv in wrapper {
                         match recv {
                             Ok(res) => match res {
@@ -131,15 +157,17 @@ impl RestoreState {
                                     break;
                                 }
                                 std::sync::mpsc::TryRecvError::Disconnected => {
-                                    if let RestoreStage::Performing(wrapper, restore) =
-                                        std::mem::replace(&mut self.stage, RestoreStage::Error)
+                                    if let RestoreStage::Performing(wrapper) =
+                                        std::mem::replace(&mut self.stage, RestoreStage::Failed)
                                     {
                                         match wrapper.join() {
-                                            Ok(br) => self.view_list(br),
-                                            Err(_) => self.error.push_str(if restore {
-                                                "\nFailure when finalising the restoration"
-                                            } else {
+                                            Ok(br) => {
+                                                self.stage = RestoreStage::Completed(Box::new(br))
+                                            }
+                                            Err(_) => self.error.push_str(if self.extract {
                                                 "\nFailure when finalising the extraction"
+                                            } else {
+                                                "\nFailure when finalising the restoration"
                                             }),
                                         }
                                     }
@@ -150,15 +178,15 @@ impl RestoreState {
                     }
                 }
                 RestoreStage::Cancelling(..) => {
-                    if let RestoreStage::Cancelling(wrapper, restore) =
-                        std::mem::replace(&mut self.stage, RestoreStage::Error)
+                    if let RestoreStage::Cancelling(wrapper) =
+                        std::mem::replace(&mut self.stage, RestoreStage::Failed)
                     {
                         match wrapper.cancel() {
-                            Ok(reader) => self.view_list(reader),
-                            Err(_) => self.error.push_str(if restore {
-                                "\nFailure when cancelling the restoration"
-                            } else {
+                            Ok(reader) => self.stage = RestoreStage::Cancelled(Box::new(reader)),
+                            Err(_) => self.error.push_str(if self.extract {
                                 "\nFailure when cancelling the extraction"
+                            } else {
+                                "\nFailure when cancelling the restoration"
                             }),
                         };
                     }
@@ -179,8 +207,9 @@ impl RestoreState {
                         .pick_folder()
                     {
                         if let RestoreStage::Viewing(reader, list) =
-                            std::mem::replace(&mut self.stage, RestoreStage::Error)
+                            std::mem::replace(&mut self.stage, RestoreStage::Failed)
                         {
+                            self.extract = true;
                             self.stage = match ThreadWrapper::restore_files(
                                 *reader,
                                 list.into_iter()
@@ -190,11 +219,11 @@ impl RestoreState {
                                 Some(output),
                                 1000,
                             ) {
-                                Ok(w) => RestoreStage::Performing(w, false),
-                                Err(e) => {
+                                Ok(w) => RestoreStage::Performing(w),
+                                Err((br, e)) => {
                                     self.error.push('\n');
                                     self.error.push_str(&e.to_string());
-                                    RestoreStage::Error
+                                    RestoreStage::Error(Box::new(br))
                                 }
                             }
                         }
@@ -204,9 +233,10 @@ impl RestoreState {
             Message::Restore => {
                 if let RestoreStage::Viewing(..) = &self.stage {
                     if let RestoreStage::Viewing(reader, list) =
-                        std::mem::replace(&mut self.stage, RestoreStage::Error)
+                        std::mem::replace(&mut self.stage, RestoreStage::Failed)
                     {
                         self.pagination.set_total(list.len());
+                        self.extract = false;
                         self.stage = match ThreadWrapper::restore_files(
                             *reader,
                             list.into_iter()
@@ -216,11 +246,11 @@ impl RestoreState {
                             None,
                             1000,
                         ) {
-                            Ok(w) => RestoreStage::Performing(w, true),
-                            Err(e) => {
+                            Ok(w) => RestoreStage::Performing(w),
+                            Err((br, e)) => {
                                 self.error.push('\n');
                                 self.error.push_str(&e.to_string());
-                                RestoreStage::Error
+                                RestoreStage::Error(Box::new(br))
                             }
                         };
                     }
@@ -228,10 +258,10 @@ impl RestoreState {
             }
             Message::Cancel => {
                 if let RestoreStage::Performing(..) = &self.stage {
-                    if let RestoreStage::Performing(wrapper, restore) =
-                        std::mem::replace(&mut self.stage, RestoreStage::Error)
+                    if let RestoreStage::Performing(wrapper) =
+                        std::mem::replace(&mut self.stage, RestoreStage::Failed)
                     {
-                        self.stage = RestoreStage::Cancelling(wrapper, restore);
+                        self.stage = RestoreStage::Cancelling(wrapper);
                     }
                 }
             }
@@ -258,7 +288,7 @@ impl RestoreState {
                             self.error.push('\n');
                             self.error.push_str(&e.to_string());
                             self.pagination.set_total(0);
-                            self.stage = RestoreStage::Error;
+                            self.try_view_error();
                         }
                     }
                 }
@@ -279,6 +309,10 @@ impl RestoreState {
                 if let RestoreStage::Viewing(_, _) = &mut self.stage {
                     self.pagination.goto(index)
                 }
+            }
+            Message::Repeat => {
+                self.error.clear();
+                self.try_view_list();
             }
             _ => {}
         }
@@ -336,29 +370,34 @@ impl RestoreState {
                 let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![trow.into(), scroll.into(), brow.into()]).into()
             }
-            RestoreStage::Error => {
+            RestoreStage::Error(_) => {
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Back", Message::MainView, false).into(),
-                    Space::with_width(Length::Fill).into(),
+                    if self.extract {
+                        presets::text_center_error("Extraction failed").into()
+                    } else {
+                        presets::text_center_error("Restoration failed").into()
+                    },
+                    presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![scroll.into(), brow.into()]).into()
             }
-            RestoreStage::Performing(_, restore) => {
+            RestoreStage::Performing(_) => {
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Cancel", Message::Cancel, false).into(),
-                    presets::text_center(if *restore {
-                        format!(
-                            "Restoring files: {} / {}",
-                            self.pagination.index,
-                            self.pagination.get_total(),
-                        )
-                    } else {
+                    presets::text_center(if self.extract {
                         format!(
                             "Extracting files: {} / {}",
                             self.pagination.index,
                             self.pagination.get_total(),
                         )
+                    } else {
+                        format!(
+                            "Restoring files: {} / {}",
+                            self.pagination.index,
+                            self.pagination.get_total(),
+                        )
                     })
                     .into(),
                 ]);
@@ -366,19 +405,58 @@ impl RestoreState {
                 let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![scroll.into(), pb.into(), brow.into()]).into()
             }
-            RestoreStage::Cancelling(_, restore) => {
+            RestoreStage::Cancelling(_) => {
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Cancel", Message::None, false).into(),
-                    presets::text_center_error(if *restore {
-                        "Cancelling the restoration"
+                    if self.extract {
+                        presets::text_center_error("Cancelling the extraction").into()
                     } else {
-                        "Cancelling the extraction"
-                    })
-                    .into(),
+                        presets::text_center_error("Cancelling the restoration").into()
+                    },
                 ]);
                 let pb = presets::progress_bar2(self.pagination.index, self.pagination.get_total());
                 let scroll = presets::scroll_border(scroll.into());
                 presets::column_main(vec![scroll.into(), pb.into(), brow.into()]).into()
+            }
+            RestoreStage::Completed(_) => {
+                let brow = presets::row_bar(vec![
+                    presets::button_nav("Back", Message::MainView, false).into(),
+                    if self.extract {
+                        presets::text_center("Extraction complete").into()
+                    } else {
+                        presets::text_center("Restoration complete").into()
+                    },
+                    presets::button_nav("Repeat", Message::Repeat, true).into(),
+                ]);
+                let scroll = presets::scroll_border(scroll.into());
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
+            }
+            RestoreStage::Cancelled(_) => {
+                let brow = presets::row_bar(vec![
+                    presets::button_nav("Back", Message::MainView, false).into(),
+                    if self.extract {
+                        presets::text_center("Extraction cancelled").into()
+                    } else {
+                        presets::text_center("Restoration cancelled").into()
+                    },
+                    presets::button_nav("Retry", Message::Repeat, true).into(),
+                ]);
+                let scroll = presets::scroll_border(scroll.into());
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
+            }
+            RestoreStage::Failed => {
+                let brow = presets::row_bar(vec![
+                    presets::button_nav("Back", Message::MainView, false).into(),
+                    presets::text_center(if self.extract {
+                        "Extraction failed"
+                    } else {
+                        "Restoration failed"
+                    })
+                    .into(),
+                    Space::with_width(Length::Fill).into(),
+                ]);
+                let scroll = presets::scroll_border(scroll.into());
+                presets::column_main(vec![scroll.into(), brow.into()]).into()
             }
         }
     }

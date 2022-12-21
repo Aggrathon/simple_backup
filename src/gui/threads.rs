@@ -134,10 +134,11 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader> {
         flatten: bool,
         output: Option<PathBuf>,
         batch_size: usize,
-    ) -> Result<Self, BackupError> {
+    ) -> Result<Self, (BackupReader, BackupError)> {
         if flatten && output.is_none() {
-            return Err(BackupError::GenericError(
-                "The output must be given if flatten=true",
+            return Err((
+                reader,
+                BackupError::GenericError("The output must be given if flatten=true"),
             ));
         }
 

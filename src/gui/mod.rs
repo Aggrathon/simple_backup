@@ -86,6 +86,7 @@ pub(crate) enum Message {
     Flat(bool),
     All(bool),
     Delete(bool),
+    Repeat,
     None,
 }
 
@@ -101,10 +102,10 @@ fn open_config() -> Option<Config> {
     FileDialog::new()
         .set_directory(default_dir())
         .set_title("Open existing config or backup file")
-        .add_filter("Config and backup files", &[
-            &CONFIG_FILE_EXTENSION[1..],
-            &BACKUP_FILE_EXTENSION[1..],
-        ])
+        .add_filter(
+            "Config and backup files",
+            &[&CONFIG_FILE_EXTENSION[1..], &BACKUP_FILE_EXTENSION[1..]],
+        )
         .add_filter("Config files", &[&CONFIG_FILE_EXTENSION[1..]])
         .add_filter("Backup files", &[&BACKUP_FILE_EXTENSION[1..]])
         .pick_file()
@@ -176,10 +177,6 @@ impl Application for ApplicationState {
                         config.output = path;
                         *self = ApplicationState::Backup(BackupState::new(config))
                     }
-                } else if let ApplicationState::Backup(state) = self {
-                    *self = ApplicationState::Backup(BackupState::new(std::mem::take(
-                        &mut state.config,
-                    )))
                 } else if let Some(config) = open_config() {
                     *self = ApplicationState::Backup(BackupState::new(config))
                 };
