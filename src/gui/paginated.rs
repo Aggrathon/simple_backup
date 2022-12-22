@@ -2,11 +2,10 @@
 
 use std::cmp::min;
 
-use iced::pure::widget::{Column, Space};
-use iced::pure::Element;
-use iced::Length;
+use iced::widget::{Column, Space};
+use iced::{Element, Length, Renderer};
 
-use super::{presets, Message};
+use super::{presets, theme, Message};
 
 pub(crate) struct State {
     pub index: usize,
@@ -54,14 +53,14 @@ impl State {
 
     pub fn push_to<'a, T>(
         &self,
-        scroll: Column<'a, Message>,
+        scroll: Column<'a, Message, Renderer<theme::Theme>>,
         items: impl std::iter::Iterator<Item = T>,
-        renderer: fn(T) -> Element<'a, Message>,
-    ) -> Column<'a, Message> {
+        renderer: fn(T) -> Element<'a, Message, Renderer<theme::Theme>>,
+    ) -> Column<'a, Message, Renderer<theme::Theme>> {
         let mut scroll = scroll;
         let count = min(self.index + self.length, self.total) - self.index;
         for item in items.skip(self.index).take(count) {
-            let item: Element<Message> = renderer(item);
+            let item: Element<Message, Renderer<theme::Theme>> = renderer(item);
             scroll = scroll.push(item);
         }
         if self.total > self.length {
@@ -87,7 +86,7 @@ impl State {
                     false,
                 )
                 .into(),
-                presets::text(&format!(
+                presets::text(format!(
                     "{} - {} ({})",
                     self.index,
                     min(self.index + self.length, self.total),

@@ -3,12 +3,12 @@
 use std::path::{Path, PathBuf};
 
 use iced::alignment::Horizontal;
-use iced::pure::Element;
-use iced::{Command, Length, Space, Subscription};
+use iced::widget::Space;
+use iced::{Command, Element, Length, Renderer, Subscription};
 use rfd::FileDialog;
 
 use super::threads::ThreadWrapper;
-use super::{presets, Message};
+use super::{presets, theme, Message};
 use crate::backup::{BackupError, BackupMerger, BackupReader, BACKUP_FILE_EXTENSION};
 use crate::files::FileInfo;
 use crate::utils::{default_dir, default_dir_opt};
@@ -255,7 +255,7 @@ impl MergeState {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<Message, Renderer<theme::Theme>> {
         let mut scroll = presets::column_list();
         if !self.error.is_empty() {
             scroll = scroll.push(presets::text_error(&self.error[1..]));
@@ -274,7 +274,7 @@ impl MergeState {
                 scroll = scroll.push(presets::space_large());
                 scroll = scroll.push(presets::row_list2(vec![
                     presets::space_hfill().into(),
-                    presets::button_color("  Add backup  ", Message::IncludeAdd(0)).into(),
+                    presets::button("  Add backup  ", Message::IncludeAdd(0)).into(),
                     presets::space_hfill().into(),
                 ]));
                 let mess = if list.len() < 2 {
@@ -303,7 +303,7 @@ impl MergeState {
                     presets::button_nav("Merge", mess, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
             MergeStage::Performing(_) | MergeStage::Cancelling(_) => {
                 let status = if let MergeStage::Cancelling(_) = self.stage {
@@ -311,7 +311,7 @@ impl MergeState {
                 } else if self.current_count >= self.total_count {
                     presets::text_center("Waiting for the compression to complete...")
                 } else {
-                    presets::text_center(&format!(
+                    presets::text_center(format!(
                         "Processing file {} of {}",
                         self.current_count, self.total_count,
                     ))
@@ -334,7 +334,7 @@ impl MergeState {
                     .into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), bar.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), bar.into(), brow.into()]).into()
             }
             MergeStage::Completed(_) => {
                 let brow = presets::row_bar(vec![
@@ -343,7 +343,7 @@ impl MergeState {
                     presets::button_nav("Repeat", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
             MergeStage::Failed => {
                 let brow = presets::row_bar(vec![
@@ -351,7 +351,7 @@ impl MergeState {
                     presets::text_center_error("Merge failed").into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
             MergeStage::Error(_) => {
                 let brow = presets::row_bar(vec![
@@ -360,7 +360,7 @@ impl MergeState {
                     presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
             MergeStage::Cancelled(_) => {
                 let brow = presets::row_bar(vec![
@@ -369,7 +369,7 @@ impl MergeState {
                     presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
         }
     }

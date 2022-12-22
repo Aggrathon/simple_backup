@@ -1,9 +1,8 @@
 #![cfg(feature = "gui")]
 /// This module contains the logic for running the program through a GUI
-use iced::pure::widget::{pane_grid, Column, Row, Space};
-use iced::pure::{Application, Element};
+use iced::widget::{pane_grid, Row, Space};
 use iced::window::Icon;
-use iced::{executor, Alignment, Command, Length, Settings, Subscription};
+use iced::{executor, Application, Command, Element, Length, Renderer, Settings, Subscription};
 use rfd::{FileDialog, MessageDialog};
 
 use self::backup::BackupState;
@@ -20,6 +19,7 @@ mod merge;
 mod paginated;
 mod presets;
 mod restore;
+mod theme;
 mod threads;
 
 #[allow(dead_code)]
@@ -36,9 +36,9 @@ pub fn gui() {
     };
     let mut settings = Settings::default();
     #[cfg(windows)]
-    let bytes = include_bytes!("..\\..\\target\\icon.dump").to_vec();
+    let bytes = include_bytes!("..\\..\\target\\icon.bytes").to_vec();
     #[cfg(not(windows))]
-    let bytes = include_bytes!("../../target/icon.dump").to_vec();
+    let bytes = include_bytes!("../../target/icon.bytes").to_vec();
     settings.window.icon = Some(Icon::from_rgba(bytes, 64, 64).expect("Could not load icon"));
     ApplicationState::run(settings).unwrap();
 }
@@ -210,7 +210,7 @@ impl Application for ApplicationState {
         }
     }
 
-    fn view(&self) -> Element<'_, Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
         match self {
             ApplicationState::Main(state) => state.view(),
             ApplicationState::Config(state) => state.view(),
@@ -228,6 +228,12 @@ impl Application for ApplicationState {
             _ => Subscription::none(),
         }
     }
+
+    fn theme(&self) -> Self::Theme {
+        theme::Theme {}
+    }
+
+    type Theme = theme::Theme;
 }
 
 struct MainState {}
@@ -237,8 +243,8 @@ impl MainState {
         Self {}
     }
 
-    fn view(&self) -> Element<Message> {
-        let col = Column::with_children(vec![
+    fn view(&self) -> Element<Message, Renderer<theme::Theme>> {
+        let column = presets::column_main(vec![
             Space::with_height(Length::Fill).into(),
             presets::text_title("simple_backup").into(),
             Space::with_height(Length::Shrink).into(),
@@ -248,12 +254,10 @@ impl MainState {
             presets::button_main("Merge", true, Message::MergeView).into(),
             presets::button_main("Restore", true, Message::RestoreView).into(),
             Space::with_height(Length::Fill).into(),
-        ])
-        .align_items(Alignment::Center)
-        .spacing(presets::LARGE_SPACING);
-        Row::with_children(vec![
+        ]);
+        Row::<'_, Message, Renderer<theme::Theme>>::with_children(vec![
             Space::with_width(Length::Fill).into(),
-            col.into(),
+            column.into(),
             Space::with_width(Length::Fill).into(),
         ])
         .into()

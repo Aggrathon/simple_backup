@@ -10,7 +10,7 @@ const ICON_SIZES: [u32; 2] = [16, 64];
 fn main() {
     // Render the icon to a bitmap and store the raw bytes so that they can be included when the binary is compiled
     let input = Path::new("assets/icon.svg");
-    let output = Path::new("target/icon.dump");
+    let output = Path::new("target/icon.bytes");
     let svg = fs::read_to_string(input).expect("Could not read svg");
     let mut opts = Options::default();
     opts.fontdb.load_system_fonts();

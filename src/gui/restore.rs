@@ -1,12 +1,12 @@
 #![cfg(feature = "gui")]
 
-use iced::pure::Element;
-use iced::{Command, Length, Space, Subscription};
+use iced::widget::Space;
+use iced::{Command, Element, Length, Renderer, Subscription};
 use regex::Regex;
 use rfd::FileDialog;
 
 use super::threads::ThreadWrapper;
-use super::{paginated, presets, Message};
+use super::{paginated, presets, theme, Message};
 use crate::backup::{BackupError, BackupReader};
 use crate::files::FileInfo;
 
@@ -319,7 +319,7 @@ impl RestoreState {
         Command::none()
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<Message, Renderer<theme::Theme>> {
         let mut scroll = presets::column_list();
         if !self.error.is_empty() {
             scroll = scroll.push(presets::text_error(&self.error[1..]))
@@ -344,31 +344,31 @@ impl RestoreState {
                     .on_submit(Message::FilterAdd)
                     .into(),
                 ]);
+                let status = match reader
+                    .config
+                    .as_ref()
+                    .expect("The config should already be read at this point!")
+                    .time
+                {
+                    Some(t) => format!(
+                        "{} files from {}",
+                        list.len(),
+                        t.format("%Y-%m-%d %H:%M:%S")
+                    ),
+                    None => format!("{} files", list.len(),),
+                };
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Back", Message::MainView, false).into(),
-                    presets::text_center(&match reader
-                        .config
-                        .as_ref()
-                        .expect("The config should already be read at this point!")
-                        .time
-                    {
-                        Some(t) => format!(
-                            "{} files from {}",
-                            list.len(),
-                            t.format("%Y-%m-%d %H:%M:%S")
-                        ),
-                        None => format!("{} files", list.len(),),
-                    })
-                    .into(),
-                    presets::button_color("Export list", Message::Export).into(),
+                    presets::text_center(status).into(),
+                    presets::button("Export list", Message::Export).into(),
                     presets::space_large().into(),
                     presets::toggler(self.flat, "Flat", Message::Flat).into(),
                     presets::space_large().into(),
-                    presets::button_color("Extract", Message::Extract).into(),
-                    presets::button_color("Restore", Message::Restore).into(),
+                    presets::button("Extract", Message::Extract).into(),
+                    presets::button("Restore", Message::Restore).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![trow.into(), scroll.into(), brow.into()]).into()
+                presets::column_root(vec![trow.into(), scroll.into(), brow.into()]).into()
             }
             RestoreStage::Error(_) => {
                 let brow = presets::row_bar(vec![
@@ -381,7 +381,7 @@ impl RestoreState {
                     presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
             RestoreStage::Performing(_) => {
                 let brow = presets::row_bar(vec![
@@ -403,7 +403,7 @@ impl RestoreState {
                 ]);
                 let pb = presets::progress_bar2(self.pagination.index, self.pagination.get_total());
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), pb.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), pb.into(), brow.into()]).into()
             }
             RestoreStage::Cancelling(_) => {
                 let brow = presets::row_bar(vec![
@@ -416,7 +416,7 @@ impl RestoreState {
                 ]);
                 let pb = presets::progress_bar2(self.pagination.index, self.pagination.get_total());
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), pb.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), pb.into(), brow.into()]).into()
             }
             RestoreStage::Completed(_) => {
                 let brow = presets::row_bar(vec![
@@ -429,7 +429,7 @@ impl RestoreState {
                     presets::button_nav("Repeat", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
             RestoreStage::Cancelled(_) => {
                 let brow = presets::row_bar(vec![
@@ -442,7 +442,7 @@ impl RestoreState {
                     presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
             RestoreStage::Failed => {
                 let brow = presets::row_bar(vec![
@@ -456,7 +456,7 @@ impl RestoreState {
                     Space::with_width(Length::Fill).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
         }
     }

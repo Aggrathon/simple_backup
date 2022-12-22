@@ -152,20 +152,20 @@ impl Config {
 
     pub fn add_default_ignores(&mut self) {
         let regexes = [
-            r"\\[Dd]esktop\.ini$",
-            r"\\Thumbs\.db$",
             r"\\\$RECYCLE.BIN$",
+            r"\\Thumbs\.db$",
+            r"\\\.?[Tt]rash(-.*|es)?$",
+            r"\.?(Te?mp|te?mp|TE?MP)$",
             r"\.~?lock(\..*#)?$",
             r"~$",
-            r"\\\.?[Tt]rash(-.*|es)?$",
             r"\.bak\d*$",
-            r"\.?(Te?mp|te?mp|TE?MP)$",
             r"([Ll]og|LOG)(\.|\d|s|txt|old|dat|html)*$",
             r"\\[Cc]rash(es| Reports|Dumps|_dumps|[pP]lan|\.dmp|\.mem|\.txt|\.log)*$",
             r"[Cc]aches?$",
             r"\\\.DS_Store$",
             r"[Tt]elemetry",
             r"\\[Dd]umps?$",
+            r"\\[Dd]esktop\.ini$",
             r"\.part$",
             r"\.crdownload$",
         ];

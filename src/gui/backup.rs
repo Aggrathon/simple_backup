@@ -1,12 +1,11 @@
 #![cfg(feature = "gui")]
 
 use iced::alignment::Horizontal;
-use iced::pure::Element;
-use iced::{Command, Length, Subscription};
+use iced::{Command, Element, Length, Renderer, Subscription};
 use rfd::FileDialog;
 
 use super::threads::ThreadWrapper;
-use super::{paginated, presets, Message};
+use super::{paginated, presets, theme, Message};
 use crate::backup::{BackupError, BackupWriter};
 use crate::config::Config;
 use crate::files::FileInfo;
@@ -262,7 +261,7 @@ impl BackupState {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<Message, Renderer<theme::Theme>> {
         let mut scroll = presets::column_list();
         if !self.error.is_empty() {
             scroll = scroll.push(presets::text_error(&self.error[1..]));
@@ -280,7 +279,7 @@ impl BackupState {
                     presets::button_nav("Backup", Message::None, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
             BackupStage::Viewing(writer) => {
                 let trow = presets::row_list2(vec![
@@ -358,11 +357,11 @@ impl BackupState {
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Edit", Message::EditConfig, false).into(),
                     presets::text_center(status).into(),
-                    presets::button_color("Export list", Message::Export).into(),
+                    presets::button("Export list", Message::Export).into(),
                     presets::button_nav("Backup", Message::Backup, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![trow.into(), scroll.into(), brow.into()]).into()
+                presets::column_root(vec![trow.into(), scroll.into(), brow.into()]).into()
             }
             BackupStage::Performing(_) | BackupStage::Cancelling(_) => {
                 let status = if let BackupStage::Cancelling(_) = self.stage {
@@ -370,7 +369,7 @@ impl BackupState {
                 } else if self.current_count >= self.total_count {
                     presets::text_center("Waiting for the compression to complete...")
                 } else {
-                    presets::text_center(&format!(
+                    presets::text_center(format!(
                         "Backing up file {} of {} ({} of {})",
                         self.current_count,
                         self.total_count,
@@ -396,7 +395,7 @@ impl BackupState {
                     .into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), bar.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), bar.into(), brow.into()]).into()
             }
             BackupStage::Failed => {
                 let brow = presets::row_bar(vec![
@@ -405,7 +404,7 @@ impl BackupState {
                     presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
             BackupStage::Completed(_) => {
                 let brow = presets::row_bar(vec![
@@ -414,7 +413,7 @@ impl BackupState {
                     presets::button_nav("Repeat", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
             BackupStage::Cancelled(_) => {
                 let brow = presets::row_bar(vec![
@@ -423,7 +422,7 @@ impl BackupState {
                     presets::button_nav("Retry", Message::Repeat, true).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_main(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll.into(), brow.into()]).into()
             }
         }
     }

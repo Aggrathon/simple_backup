@@ -2,13 +2,12 @@
 
 use std::path::PathBuf;
 
-use iced::pure::widget::pane_grid;
-use iced::pure::Element;
-use iced::{Command, Length, Space};
+use iced::widget::{pane_grid, Space};
+use iced::{Command, Element, Length, Renderer};
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
 
-use super::{presets, Message};
+use super::{presets, theme, Message};
 use crate::backup::{CONFIG_DEFAULT_NAME, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
 use crate::files::{FileCrawler, FileInfo};
@@ -65,7 +64,8 @@ impl ConfigState {
             filters,
             current_dir: FileInfo::from(if open_home { home_dir() } else { default_dir() }),
         };
-        if open_home {
+        if open_home | default_ignores {
+            state.refresh_filters();
             state.refresh_files();
         }
         state
@@ -83,8 +83,8 @@ impl ConfigState {
         state
     }
 
-    pub fn view(&self) -> Element<Message> {
-        let pane_grid = presets::pane_grid(&self.panes, |_, pane| pane.content());
+    pub fn view(&self) -> Element<Message, iced::Renderer<theme::Theme>> {
+        let pane_grid = presets::pane_grid(&self.panes, |_, pane, _| pane.content());
         let bar = presets::row_bar(vec![
             presets::button_nav("Back", Message::MainView, false).into(),
             Space::with_width(Length::Fill).into(),
@@ -114,7 +114,7 @@ impl ConfigState {
             presets::button_nav("Save", Message::Save, true).into(),
             presets::button_nav("Backup", Message::BackupView, true).into(),
         ]);
-        presets::column_main(vec![pane_grid.into(), bar.into()]).into()
+        presets::column_root(vec![pane_grid.into(), bar.into()]).into()
     }
 
     pub fn update(&mut self, message: Message) -> iced::Command<Message> {
@@ -382,7 +382,7 @@ impl Pane {
         }
     }
 
-    fn content(&self) -> pane_grid::Content<Message> {
+    fn content(&self) -> pane_grid::Content<Message, Renderer<theme::Theme>> {
         let content = presets::column_list2(self.items.iter().map(|i| i.view()).collect());
         match self.content {
             ConfigPane::Files => presets::scroll_pane(
@@ -443,7 +443,7 @@ impl ListItem {
         Self::new(ListState::Filter, text, index, valid)
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<Message, Renderer<theme::Theme>> {
         let row = presets::row_list();
         let row = match self.state {
             ListState::File => row.push(presets::space_icon()),

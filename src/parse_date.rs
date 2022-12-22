@@ -67,7 +67,7 @@ pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &'static str> {
     }
     for f in FORMATS_D.iter() {
         if let Ok(t) = NaiveDate::parse_from_str(input, f) {
-            return Ok(Some(t.and_hms(0, 0, 0)));
+            return Ok(t.and_hms_opt(0, 0, 0));
         }
     }
     Err("Unknown time format, try, e.g., `YYMMDD`")
