@@ -55,4 +55,4 @@ Precompiled binaries can be found on the [releases page](https://github.com/Aggr
 
 ### Compilation
 
-Download this repo and run: `cargo build --release`. To compile without the GUI functionality, add `--no-default-features`.
+Download this repo and run: `cargo build --release`. To compile a version without the GUI add: `--no-default-features`.
