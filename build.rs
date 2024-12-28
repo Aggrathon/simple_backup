@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use tiny_skia::{Pixmap, Transform};
-use usvg::{FitTo, Options, Tree};
+use usvg::{Options, Tree};
 
 const ICON_SIZE: u32 = 64;
 const ICON_SIZES: [u32; 2] = [16, 64];
@@ -18,20 +18,14 @@ fn main() {
     {
         let svg = fs::read_to_string(input).expect("Could not read svg");
         let mut opts = Options::default();
-        opts.fontdb.load_system_fonts();
-        tree = Tree::from_str(&svg, &opts.to_ref()).expect("Could not parse svg");
+        opts.fontdb_mut().load_system_fonts();
+        tree = Tree::from_str(&svg, &opts).expect("Could not parse svg");
     }
 
     #[cfg(feature = "gui")]
     {
         let mut pixmap = Pixmap::new(ICON_SIZE, ICON_SIZE).unwrap();
-        resvg::render(
-            &tree,
-            FitTo::Size(ICON_SIZE, ICON_SIZE),
-            Transform::identity(),
-            pixmap.as_mut(),
-        )
-        .unwrap();
+        resvg::render(&tree, Transform::identity(), &mut pixmap.as_mut());
         fs::write(output_bytes, pixmap.data()).expect("Could not write image dump");
     }
 
@@ -41,13 +35,7 @@ fn main() {
         let mut icon = ico::IconDir::new(ico::ResourceType::Icon);
         for size in ICON_SIZES {
             let mut pixmap = Pixmap::new(size, size).unwrap();
-            resvg::render(
-                &tree,
-                FitTo::Size(size, size),
-                Transform::identity(),
-                pixmap.as_mut(),
-            )
-            .unwrap();
+            resvg::render(&tree, Transform::identity(), &mut pixmap.as_mut());
             let img = ico::IconImage::from_rgba_data(size, size, pixmap.data().to_vec());
             icon.add_entry(ico::IconDirEntry::encode(&img).expect("Could not encode ico"));
         }

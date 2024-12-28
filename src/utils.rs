@@ -35,6 +35,7 @@ where
     }
 }
 
+#[allow(unused)]
 pub fn format_size(size: u64) -> String {
     match NumberPrefix::binary(size as f64) {
         NumberPrefix::Standalone(number) => {
@@ -230,6 +231,7 @@ pub fn default_dir() -> PathBuf {
 }
 
 #[cfg(feature = "dirs")]
+#[allow(unused)]
 pub fn home_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
@@ -241,6 +243,7 @@ pub fn default_dir() -> PathBuf {
 }
 
 #[cfg(feature = "dirs")]
+#[allow(unused)]
 pub fn default_dir_opt() -> Option<PathBuf> {
     std::env::current_dir()
         .map(Some)

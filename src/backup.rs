@@ -236,6 +236,7 @@ impl BackupWriter {
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn export_list<P: AsRef<Path>>(&mut self, path: P, all: bool) -> Result<(), BackupError> {
         let f = File::create(path).map_err(BackupError::FileError)?;
         let mut f = BufWriter::new(f);
@@ -273,6 +274,7 @@ impl BackupWriter {
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn delete_file(&self) -> Result<(), std::io::Error> {
         if self.path.exists() {
             std::fs::remove_file(&self.path)
@@ -388,6 +390,7 @@ impl BackupReader {
     }
 
     /// Get the embedded list of files
+    #[allow(unused)]
     pub fn get_list(&mut self) -> Result<&FileListString, BackupError> {
         if self.list.is_none() {
             self.read_list()
@@ -453,6 +456,7 @@ impl BackupReader {
         }
     }
 
+    #[allow(unused)]
     pub fn export_list<P: AsRef<Path>>(&mut self, path: P) -> Result<(), BackupError> {
         let mut f = File::create(path).map_err(BackupError::FileError)?;
         f.write_all(self.get_list()?.as_ref())
@@ -711,6 +715,7 @@ impl BackupMerger {
         })
     }
 
+    #[allow(unused)]
     pub fn deconstruct(self) -> Vec<BackupReader> {
         self.readers
     }
@@ -722,14 +727,13 @@ impl BackupMerger {
         on_final: impl FnOnce(),
     ) -> Result<(), BackupError> {
         self.tmp_path = self.get_tmp_output();
-        self.write_internal(on_added, on_final).map_err(|e| {
+        self.write_internal(on_added, on_final).inspect_err(|_| {
             // Clean up failed merge (allowed to fail without checking)
             #[allow(unused_must_use)]
             {
                 std::fs::remove_file(&self.tmp_path);
                 self.tmp_path.clear();
             }
-            e
         })?;
         self.cleanup()
     }
@@ -862,6 +866,7 @@ impl BackupMerger {
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn delete_file(&self) -> Result<(), std::io::Error> {
         if self.tmp_path.exists() {
             std::fs::remove_file(&self.path)

@@ -140,7 +140,7 @@ pub fn restore<P: AsRef<Path>>(
 ) {
     source.get_meta().expect("Could not read the backup");
     let only_this = {
-        let mut conf = source.get_config().expect("Could not read the backup");
+        let conf = source.get_config().expect("Could not read the backup");
         if conf.incremental {
             if only_this {
                 conf.incremental = false;

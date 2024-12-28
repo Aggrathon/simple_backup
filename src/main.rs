@@ -1,5 +1,4 @@
 /// This is the main module that handles parsing the commandline arguments
-
 #[macro_use]
 mod utils;
 mod backup;
@@ -16,7 +15,7 @@ use std::path::PathBuf;
 
 use backup::CONFIG_FILE_EXTENSION;
 use chrono::NaiveDateTime;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use config::Config;
 use utils::{get_backup_from_path, get_config_from_path};
 
@@ -24,7 +23,7 @@ use utils::{get_backup_from_path, get_config_from_path};
 #[clap(version, about, long_about = None, propagate_version = true, term_width = 0)]
 struct Cli {
     #[clap(subcommand)]
-    command: Option<Commands>,
+    cmd: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -242,7 +241,7 @@ fn parse_config_path(s: &str) -> Result<PathBuf, String> {
 fn main() {
     let cli = Cli::parse();
 
-    if cli.command.is_none() {
+    if cli.cmd.is_none() {
         #[cfg(feature = "gui")]
         gui::gui();
         #[cfg(not(feature = "gui"))]
@@ -250,7 +249,7 @@ fn main() {
         return;
     }
 
-    match cli.command.unwrap() {
+    match cli.cmd.unwrap() {
         Commands::Backup {
             mut config,
             time,

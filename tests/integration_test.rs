@@ -47,7 +47,7 @@ fn cli_test() {
     remove_file(&f3).unwrap();
     remove_file(&f4).unwrap();
 
-    let conf = Config::from_yaml(&mut bw1.config.as_yaml().unwrap()).unwrap();
+    let conf = Config::from_yaml(bw1.config.as_yaml().unwrap()).unwrap();
     let mut reader = BackupReader::from_config(conf).unwrap();
     reader.get_config().unwrap();
     reader.get_list().unwrap();
@@ -71,7 +71,7 @@ fn cli_test() {
     assert!(!f3.exists());
     assert!(!f4.exists());
 
-    let conf = Config::from_yaml(&mut bw1.config.as_yaml().unwrap()).unwrap();
+    let conf = Config::from_yaml(bw1.config.as_yaml().unwrap()).unwrap();
     restore::<PathBuf>(
         BackupReader::from_config(conf).unwrap(),
         None,
@@ -90,7 +90,7 @@ fn cli_test() {
     assert!(!f3.exists());
     assert!(!f4.exists());
 
-    let conf = Config::from_yaml(&mut bw1.config.as_yaml().unwrap()).unwrap();
+    let conf = Config::from_yaml(bw1.config.as_yaml().unwrap()).unwrap();
     restore(
         BackupReader::from_config(conf).unwrap(),
         Some(&dir2),

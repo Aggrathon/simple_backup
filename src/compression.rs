@@ -12,7 +12,7 @@ use crate::files::FileInfo;
 
 pub struct CompressionEncoder<'a>(Builder<Encoder<'a, File>>);
 
-impl<'a> CompressionEncoder<'a> {
+impl CompressionEncoder<'_> {
     /// Create a compressed archive
     pub fn create<P: AsRef<Path>>(path: P, quality: i32, threads: u32) -> std::io::Result<Self> {
         if let Some(p) = path.as_ref().parent() {
@@ -67,7 +67,7 @@ pub type CompressionDecoderEntry<'dummy, 'a> =
     (FileInfo, Entry<'dummy, Decoder<'a, BufReader<File>>>);
 pub struct CompressionDecoder<'a>(Archive<Decoder<'a, BufReader<File>>>);
 
-impl<'a> Debug for CompressionDecoder<'a> {
+impl Debug for CompressionDecoder<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CompressionDecoder").finish()
     }
@@ -148,7 +148,7 @@ mod tests {
     fn paths_abs() {
         let dir = PathBuf::from(".").absolutize().unwrap().to_path_buf();
         let pta = path_to_archive(&dir);
-        let out = path_from_archive(&PathBuf::from(&pta)).consume_path();
+        let out = path_from_archive(PathBuf::from(&pta)).consume_path();
         assert_eq!(dir, out);
 
         let tmp: Vec<u8> = vec![];
@@ -168,7 +168,7 @@ mod tests {
     fn paths_rel() {
         let dir = PathBuf::from(".");
         let pta = path_to_archive(&dir);
-        let out = path_from_archive(&PathBuf::from(&pta)).consume_path();
+        let out = path_from_archive(PathBuf::from(&pta)).consume_path();
         assert_eq!(dir, out);
 
         let tmp: Vec<u8> = vec![];

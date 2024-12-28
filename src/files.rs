@@ -89,6 +89,7 @@ impl PartialEq for FileInfo {
     }
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl PartialOrd for FileInfo {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         if let Some(s1) = self.string.as_ref() {
@@ -299,6 +300,7 @@ impl FileCrawler {
         })
     }
 
+    #[allow(unused)]
     pub fn check_path(&self, path: &mut FileInfo, parent_included: Option<bool>) -> bool {
         let p = path.get_path();
         let p2;
@@ -457,9 +459,9 @@ mod tests {
     #[test]
     fn file_crawler_abs() {
         let files: Vec<PathBuf> = FileCrawler::new(
-            &vec!["src".to_string()],
-            &vec!["src/main.rs".to_string()],
-            &vec!["config.*".to_string()],
+            vec!["src".to_string()],
+            vec!["src/main.rs".to_string()],
+            vec!["config.*".to_string()],
             false,
         )
         .unwrap()
@@ -489,9 +491,9 @@ mod tests {
     fn file_crawler_rel() {
         let main_path = Path::new("src").join("main.rs");
         let files: Vec<PathBuf> = FileCrawler::new(
-            &vec!["src".to_string()],
-            &vec![main_path.to_string_lossy()],
-            &vec!["config.*".to_string()],
+            vec!["src".to_string()],
+            vec![main_path.to_string_lossy()],
+            vec!["config.*".to_string()],
             true,
         )
         .unwrap()
@@ -518,9 +520,9 @@ mod tests {
     #[test]
     fn file_crawler_check() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let fc = FileCrawler::new(
-            &vec!["src".to_string(), "tests".to_string()],
-            &vec!["src/main.rs".to_string()],
-            &vec!["config.*".to_string()],
+            vec!["src".to_string(), "tests".to_string()],
+            vec!["src/main.rs".to_string()],
+            vec!["config.*".to_string()],
             false,
         )?;
         let path = Path::new(".").absolutize()?;
@@ -540,9 +542,9 @@ mod tests {
     #[test]
     fn file_crawler_check_local() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let fc = FileCrawler::new(
-            &vec!["src".to_string(), "tests".to_string()],
-            &vec!["src/main.rs".to_string()],
-            &vec!["config.*".to_string()],
+            vec!["src".to_string(), "tests".to_string()],
+            vec!["src/main.rs".to_string()],
+            vec!["config.*".to_string()],
             true,
         )?;
         assert!(!fc.check_path(&mut FileInfo::from("."), None));

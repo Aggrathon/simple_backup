@@ -30,6 +30,7 @@ pub struct Config {
 
 impl Config {
     /// Create an empty config
+    #[allow(unused)]
     pub fn new() -> Self {
         Config {
             include: vec![],
@@ -45,10 +46,12 @@ impl Config {
         }
     }
 
+    #[allow(unused)]
     pub fn set_quality(&mut self, quality: i32) {
         self.quality = clamp(quality, 1, 22);
     }
 
+    #[allow(unused)]
     pub fn set_threads(&mut self, threads: u32) {
         self.threads = clamp(threads, 1, num_cpus::get() as u32);
     }

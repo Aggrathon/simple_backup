@@ -102,10 +102,10 @@ fn open_config() -> Option<Config> {
     FileDialog::new()
         .set_directory(default_dir())
         .set_title("Open existing config or backup file")
-        .add_filter(
-            "Config and backup files",
-            &[&CONFIG_FILE_EXTENSION[1..], &BACKUP_FILE_EXTENSION[1..]],
-        )
+        .add_filter("Config and backup files", &[
+            &CONFIG_FILE_EXTENSION[1..],
+            &BACKUP_FILE_EXTENSION[1..],
+        ])
         .add_filter("Config files", &[&CONFIG_FILE_EXTENSION[1..]])
         .add_filter("Backup files", &[&BACKUP_FILE_EXTENSION[1..]])
         .pick_file()

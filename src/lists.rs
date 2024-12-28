@@ -74,6 +74,7 @@ impl FileListVec {
         self.0.len()
     }
 
+    #[allow(unused)]
     pub fn sort_unstable_by<F>(&mut self, mut f: F)
     where
         F: FnMut(&FileInfo, &FileInfo) -> Ordering,
@@ -81,6 +82,7 @@ impl FileListVec {
         self.0.sort_unstable_by(|a, b| f(&a.1, &b.1));
     }
 
+    #[allow(unused)]
     pub fn sort_unstable(&mut self) {
         self.0.sort_unstable_by(|a, b| a.1.cmp(&b.1));
     }
@@ -128,7 +130,7 @@ impl FileListString {
     }
 
     /// Get an iterator over all the files in the list with a flag
-    pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (bool, &str)> + 'a> {
+    pub fn iter(&'_ self) -> Box<dyn Iterator<Item = (bool, &str)> + '_> {
         match self.version {
             2 => Box::new(
                 self.list
@@ -140,7 +142,7 @@ impl FileListString {
     }
 
     /// Get an iterator over all the files that are included
-    pub fn iter_included<'a>(&'a self) -> Box<dyn Iterator<Item = &str> + 'a> {
+    pub fn iter_included(&'_ self) -> Box<dyn Iterator<Item = &str> + '_> {
         match self.version {
             2 => Box::new(self.list.split('\n').filter_map(|s: &str| {
                 if s.starts_with('1') {
