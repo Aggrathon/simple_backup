@@ -1,9 +1,8 @@
-#![cfg(feature = "gui")]
 /// This module contains the logic for running the program through a GUI
-use iced::widget::{pane_grid, Row, Space};
-use iced::window::Icon;
-use iced::{executor, Application, Command, Element, Length, Renderer, Settings, Subscription};
+use iced::widget::{column, pane_grid, row, Space};
+use iced::{Element, Length, Subscription};
 use rfd::{FileDialog, MessageDialog};
+use theme::theme;
 
 use self::backup::BackupState;
 use self::config::ConfigState;
@@ -34,13 +33,29 @@ pub fn gui() {
         // Safety: Windows syscall to hide the console
         FreeConsole()
     };
-    let mut settings = Settings::default();
     #[cfg(windows)]
     let bytes = include_bytes!("..\\..\\target\\icon.bytes").to_vec();
     #[cfg(not(windows))]
     let bytes = include_bytes!("../../target/icon.bytes").to_vec();
-    settings.window.icon = Some(Icon::from_rgba(bytes, 64, 64).expect("Could not load icon"));
-    ApplicationState::run(settings).unwrap();
+    let icon = iced::window::icon::from_rgba(bytes, 64, 64).expect("Could not load icon");
+    let settings = iced::window::settings::Settings {
+        icon: Some(icon),
+        ..Default::default()
+    };
+    iced::application(title, update, view)
+        .theme(theme)
+        .window(settings)
+        .subscription(subscription)
+        .run()
+        .expect("Failed to run application");
+}
+
+enum ApplicationState {
+    Main(MainState),
+    Config(ConfigState),
+    Backup(BackupState),
+    Merge(MergeState),
+    Restore(RestoreState),
 }
 
 #[derive(Debug, Clone)]
@@ -90,12 +105,80 @@ pub(crate) enum Message {
     None,
 }
 
-enum ApplicationState {
-    Main(MainState),
-    Config(ConfigState),
-    Backup(BackupState),
-    Merge(MergeState),
-    Restore(RestoreState),
+impl Default for ApplicationState {
+    fn default() -> Self {
+        ApplicationState::Main(MainState::new())
+    }
+}
+
+fn title(state: &ApplicationState) -> String {
+    match state {
+        ApplicationState::Main(_) => String::from("simple_backup"),
+        ApplicationState::Config(_) => String::from("simple_backup - Config"),
+        ApplicationState::Backup(_) => String::from("simple_backup - Backup"),
+        ApplicationState::Merge(_) => String::from("simple_backup - Merge"),
+        ApplicationState::Restore(_) => String::from("simple_backup - Restore"),
+    }
+}
+
+fn update(state: &mut ApplicationState, message: Message) {
+    match message {
+        Message::CreateConfig => *state = ApplicationState::Config(ConfigState::new(true, true)),
+        Message::EditConfig => {
+            if let ApplicationState::Backup(state2) = state {
+                *state =
+                    ApplicationState::Config(ConfigState::from(std::mem::take(&mut state2.config)))
+            } else if let Some(config) = open_config() {
+                *state = ApplicationState::Config(ConfigState::from(config))
+            }
+        }
+        Message::BackupView => {
+            if let ApplicationState::Config(state2) = state {
+                let mut config = std::mem::take(&mut state2.config);
+                if let Some(path) = FileDialog::new()
+                    .set_directory(config.get_output(true))
+                    .set_title("Where should the backups be stored")
+                    .pick_folder()
+                {
+                    config.output = path;
+                    *state = ApplicationState::Backup(BackupState::new(config))
+                }
+            } else if let Some(config) = open_config() {
+                *state = ApplicationState::Backup(BackupState::new(config))
+            };
+        }
+        Message::RestoreView => {
+            if let Some(reader) = open_backup() {
+                *state = ApplicationState::Restore(restore::RestoreState::new(reader));
+            }
+        }
+        Message::None => {
+            eprintln!("Unspecified GUI message");
+        }
+        Message::MainView => {
+            *state = ApplicationState::Main(MainState::new());
+        }
+        Message::MergeView => {
+            *state = ApplicationState::Merge(MergeState::new());
+        }
+        _ => match state {
+            ApplicationState::Main(_) => {}
+            ApplicationState::Config(state) => state.update(message),
+            ApplicationState::Backup(state) => state.update(message),
+            ApplicationState::Merge(state) => state.update(message),
+            ApplicationState::Restore(state) => state.update(message),
+        },
+    }
+}
+
+fn view(state: &ApplicationState) -> Element<Message> {
+    match state {
+        ApplicationState::Main(state) => state.view(),
+        ApplicationState::Config(state) => state.view(),
+        ApplicationState::Backup(state) => state.view(),
+        ApplicationState::Merge(state) => state.view(),
+        ApplicationState::Restore(state) => state.view(),
+    }
 }
 
 fn open_config() -> Option<Config> {
@@ -113,7 +196,7 @@ fn open_config() -> Option<Config> {
             Ok(config) => Some(config),
             Err(e) => {
                 MessageDialog::new()
-                    .set_description(&e.to_string())
+                    .set_description(e.to_string())
                     .set_level(rfd::MessageLevel::Error)
                     .set_buttons(rfd::MessageButtons::Ok)
                     .set_title("Problem with reading config")
@@ -131,109 +214,13 @@ fn open_backup() -> Option<BackupReader> {
         .map(BackupReader::new)
 }
 
-impl Application for ApplicationState {
-    type Message = Message;
-    type Executor = executor::Default;
-    type Flags = ();
-
-    fn new(_flags: Self::Flags) -> (Self, iced::Command<Self::Message>) {
-        (ApplicationState::Main(MainState::new()), Command::none())
+fn subscription(state: &ApplicationState) -> iced::Subscription<Message> {
+    match state {
+        ApplicationState::Backup(state) => state.subscription(),
+        ApplicationState::Merge(state) => state.subscription(),
+        ApplicationState::Restore(state) => state.subscription(),
+        _ => Subscription::none(),
     }
-
-    fn title(&self) -> String {
-        match self {
-            ApplicationState::Main(_) => String::from("simple_backup"),
-            ApplicationState::Config(_) => String::from("simple_backup - Config"),
-            ApplicationState::Backup(_) => String::from("simple_backup - Backup"),
-            ApplicationState::Merge(_) => String::from("simple_backup - Merge"),
-            ApplicationState::Restore(_) => String::from("simple_backup - Restore"),
-        }
-    }
-
-    fn update(&mut self, message: Self::Message) -> iced::Command<Self::Message> {
-        match message {
-            Message::CreateConfig => {
-                *self = ApplicationState::Config(ConfigState::new(true, true));
-                Command::none()
-            }
-            Message::EditConfig => {
-                if let ApplicationState::Backup(state) = self {
-                    *self = ApplicationState::Config(ConfigState::from(std::mem::take(
-                        &mut state.config,
-                    )))
-                } else if let Some(config) = open_config() {
-                    *self = ApplicationState::Config(ConfigState::from(config))
-                }
-                Command::none()
-            }
-            Message::BackupView => {
-                if let ApplicationState::Config(state) = self {
-                    let mut config = std::mem::take(&mut state.config);
-                    if let Some(path) = FileDialog::new()
-                        .set_directory(config.get_output(true))
-                        .set_title("Where should the backups be stored")
-                        .pick_folder()
-                    {
-                        config.output = path;
-                        *self = ApplicationState::Backup(BackupState::new(config))
-                    }
-                } else if let Some(config) = open_config() {
-                    *self = ApplicationState::Backup(BackupState::new(config))
-                };
-                Command::none()
-            }
-            Message::RestoreView => {
-                if let Some(reader) = open_backup() {
-                    *self = ApplicationState::Restore(restore::RestoreState::new(reader));
-                }
-                Command::none()
-            }
-            Message::None => {
-                eprintln!("Unspecified GUI message");
-                Command::none()
-            }
-            Message::MainView => {
-                *self = ApplicationState::Main(MainState::new());
-                Command::none()
-            }
-            Message::MergeView => {
-                *self = ApplicationState::Merge(MergeState::new());
-                Command::none()
-            }
-            _ => match self {
-                ApplicationState::Main(_) => Command::none(),
-                ApplicationState::Config(state) => state.update(message),
-                ApplicationState::Backup(state) => state.update(message),
-                ApplicationState::Merge(state) => state.update(message),
-                ApplicationState::Restore(state) => state.update(message),
-            },
-        }
-    }
-
-    fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
-        match self {
-            ApplicationState::Main(state) => state.view(),
-            ApplicationState::Config(state) => state.view(),
-            ApplicationState::Backup(state) => state.view(),
-            ApplicationState::Merge(state) => state.view(),
-            ApplicationState::Restore(state) => state.view(),
-        }
-    }
-
-    fn subscription(&self) -> iced::Subscription<Self::Message> {
-        match self {
-            ApplicationState::Backup(state) => state.subscription(),
-            ApplicationState::Merge(state) => state.subscription(),
-            ApplicationState::Restore(state) => state.subscription(),
-            _ => Subscription::none(),
-        }
-    }
-
-    fn theme(&self) -> Self::Theme {
-        theme::Theme {}
-    }
-
-    type Theme = theme::Theme;
 }
 
 struct MainState {}
@@ -243,23 +230,23 @@ impl MainState {
         Self {}
     }
 
-    fn view(&self) -> Element<Message, Renderer<theme::Theme>> {
-        let column = presets::column_main(vec![
-            Space::with_height(Length::Fill).into(),
-            presets::text_title("simple_backup").into(),
-            Space::with_height(Length::Shrink).into(),
-            presets::button_main("Create", false, Message::CreateConfig).into(),
-            presets::button_main("Edit", false, Message::EditConfig).into(),
-            presets::button_main("Backup", false, Message::BackupView).into(),
-            presets::button_main("Merge", true, Message::MergeView).into(),
-            presets::button_main("Restore", true, Message::RestoreView).into(),
-            Space::with_height(Length::Fill).into(),
+    fn view(&self) -> Element<Message> {
+        let column = presets::column_main(column![
+            Space::with_height(Length::Fill),
+            presets::text_title("simple_backup"),
+            Space::with_height(Length::Shrink),
+            presets::button_main("Create", false, Message::CreateConfig),
+            presets::button_main("Edit", false, Message::EditConfig),
+            presets::button_main("Backup", false, Message::BackupView),
+            presets::button_main("Merge", true, Message::MergeView),
+            presets::button_main("Restore", true, Message::RestoreView),
+            Space::with_height(Length::Fill),
         ]);
-        Row::<'_, Message, Renderer<theme::Theme>>::with_children(vec![
-            Space::with_width(Length::Fill).into(),
-            column.into(),
-            Space::with_width(Length::Fill).into(),
-        ])
+        row![
+            Space::with_width(Length::Fill),
+            column,
+            Space::with_width(Length::Fill),
+        ]
         .into()
     }
 }

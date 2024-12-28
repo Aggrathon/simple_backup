@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 
 use iced::alignment::Horizontal;
 use iced::widget::Space;
-use iced::{Command, Element, Length, Renderer, Subscription};
+use iced::{Element, Length, Subscription};
 use rfd::FileDialog;
 
 use super::threads::ThreadWrapper;
-use super::{presets, theme, Message};
+use super::{presets, Message};
 use crate::backup::{BackupError, BackupMerger, BackupReader, BACKUP_FILE_EXTENSION};
 use crate::files::FileInfo;
 use crate::utils::{default_dir, default_dir_opt};
@@ -33,7 +33,7 @@ fn select_output<P: AsRef<Path>>(path: P) -> Option<PathBuf> {
         fd = fd.set_directory(parent);
     }
     if let Some(name) = path.as_ref().file_name() {
-        fd = fd.set_file_name(&name.to_string_lossy());
+        fd = fd.set_file_name(name.to_string_lossy());
     }
     fd.set_title("Where should the merged backup be stored")
         .add_filter("Backup files", &[&BACKUP_FILE_EXTENSION[1..]])
@@ -45,9 +45,9 @@ enum MergeStage {
     Selecting(Vec<BackupReader>),
     Performing(ThreadWrapper<Result<FileInfo, BackupError>, BackupMerger>),
     Cancelling(ThreadWrapper<Result<FileInfo, BackupError>, BackupMerger>),
-    Error(Vec<BackupReader>),
-    Cancelled(Vec<BackupReader>),
-    Completed(Vec<BackupReader>),
+    Error,
+    Cancelled,
+    Completed,
 }
 
 pub(crate) struct MergeState {
@@ -79,7 +79,7 @@ impl MergeState {
         }
     }
 
-    pub fn update(&mut self, message: Message) -> Command<Message> {
+    pub fn update(&mut self, message: Message) {
         match message {
             Message::Tick => match &mut self.stage {
                 MergeStage::Performing(wrapper) => {
@@ -103,10 +103,9 @@ impl MergeState {
                                         std::mem::replace(&mut self.stage, MergeStage::Failed)
                                     {
                                         match wrapper.join() {
-                                            Ok(merger) => {
+                                            Ok(_) => {
                                                 self.current_count = 0;
-                                                self.stage =
-                                                    MergeStage::Completed(merger.deconstruct());
+                                                self.stage = MergeStage::Completed;
                                             }
                                             Err(_) => {
                                                 self.error.push_str(
@@ -121,23 +120,25 @@ impl MergeState {
                         }
                     }
                 }
-                MergeStage::Cancelling(_) => {
-                    if let MergeStage::Cancelling(wrapper) =
-                        std::mem::replace(&mut self.stage, MergeStage::Failed)
-                    {
-                        match wrapper.cancel() {
-                            Ok(merger) => {
-                                if let Err(e) = merger.delete_file() {
-                                    self.error.push('\n');
-                                    self.error.push_str(&e.to_string());
+                MergeStage::Cancelling(wrapper) => {
+                    if wrapper.try_cancel() {
+                        if let MergeStage::Cancelling(wrapper) =
+                            std::mem::replace(&mut self.stage, MergeStage::Failed)
+                        {
+                            match wrapper.cancel() {
+                                Ok(merger) => {
+                                    if let Err(e) = merger.delete_file() {
+                                        self.error.push('\n');
+                                        self.error.push_str(&e.to_string());
+                                    }
+                                    self.current_count = 0;
+                                    self.stage = MergeStage::Cancelled;
                                 }
-                                self.current_count = 0;
-                                self.stage = MergeStage::Cancelled(merger.deconstruct());
-                            }
-                            Err(_) => {
-                                self.error.push_str("\nFailure when cancelling the backup");
-                            }
-                        };
+                                Err(_) => {
+                                    self.error.push_str("\nFailure when cancelling the backup");
+                                }
+                            };
+                        }
                     }
                 }
                 _ => {}
@@ -167,10 +168,10 @@ impl MergeState {
                                     self.stage = MergeStage::Selecting(merger.deconstruct());
                                 }
                             }
-                            Err((v, e)) => {
+                            Err((_, e)) => {
                                 self.error.push('\n');
                                 self.error.push_str(&e.to_string());
-                                self.stage = MergeStage::Error(v);
+                                self.stage = MergeStage::Error;
                             }
                         }
                     }
@@ -240,7 +241,6 @@ impl MergeState {
             }
             _ => eprintln!("Unexpected GUI message: {:?}", message),
         }
-        Command::none()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -255,7 +255,7 @@ impl MergeState {
         }
     }
 
-    pub fn view(&self) -> Element<Message, Renderer<theme::Theme>> {
+    pub fn view(&self) -> Element<Message> {
         let mut scroll = presets::column_list();
         if !self.error.is_empty() {
             scroll = scroll.push(presets::text_error(&self.error[1..]));
@@ -264,18 +264,18 @@ impl MergeState {
             MergeStage::Selecting(list) => {
                 scroll = list.iter().enumerate().fold(scroll, |s, (i, r)| {
                     s.push(presets::row_list2(vec![
-                        presets::button_icon("-", Message::IncludeRemove(i), true).into(),
+                        presets::button_icon("-", Message::IncludeRemove(i), true),
                         presets::text(r.path.copy_string())
                             .width(Length::Fill)
-                            .horizontal_alignment(Horizontal::Left)
+                            .align_x(Horizontal::Left)
                             .into(),
                     ]))
                 });
                 scroll = scroll.push(presets::space_large());
                 scroll = scroll.push(presets::row_list2(vec![
-                    presets::space_hfill().into(),
-                    presets::button("  Add backup  ", Message::IncludeAdd(0)).into(),
-                    presets::space_hfill().into(),
+                    presets::space_hfill(),
+                    presets::button("  Add backup  ", Message::IncludeAdd(0)),
+                    presets::space_hfill(),
                 ]));
                 let mess = if list.len() < 2 {
                     Message::None
@@ -283,27 +283,26 @@ impl MergeState {
                     Message::Merge
                 };
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::MainView, false).into(),
+                    presets::button_nav("Back", Message::MainView, false),
                     Space::with_width(Length::Fill).into(),
                     presets::text("Compression:").into(),
                     presets::pick_list(
                         &self.compression_alt,
                         self.quality,
                         Message::CompressionQuality,
-                    )
-                    .into(),
-                    presets::space_large().into(),
+                    ),
+                    presets::space_large(),
                     presets::text("Threads:").into(),
-                    presets::pick_list(&self.thread_alt, self.threads, Message::ThreadCount).into(),
-                    presets::space_large().into(),
-                    presets::toggler(self.all, "Deleted files", Message::All).into(),
-                    presets::space_large().into(),
-                    presets::toggler(self.delete, "Remove merged", Message::Delete).into(),
-                    presets::space_large().into(),
-                    presets::button_nav("Merge", mess, true).into(),
+                    presets::pick_list(&self.thread_alt, self.threads, Message::ThreadCount),
+                    presets::space_large(),
+                    presets::toggler(self.all, "Deleted files", Message::All),
+                    presets::space_large(),
+                    presets::toggler_comp(self.delete, "Remove merged", Message::Delete),
+                    Space::with_width(Length::Fill).into(),
+                    presets::button_nav("Merge", mess, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
             MergeStage::Performing(_) | MergeStage::Cancelling(_) => {
                 let status = if let MergeStage::Cancelling(_) = self.stage {
@@ -320,8 +319,8 @@ impl MergeState {
                 let current = self.current_count as f32;
                 let bar = presets::progress_bar(current + max * 0.01, max * 1.03);
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::None, false).into(),
-                    status.into(),
+                    presets::button_nav("Back", Message::None, false),
+                    status,
                     presets::button_nav(
                         "Cancel",
                         if let MergeStage::Cancelling(_) = self.stage {
@@ -330,46 +329,45 @@ impl MergeState {
                             Message::Cancel
                         },
                         false,
-                    )
-                    .into(),
+                    ),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), bar.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, bar.into(), brow.into()]).into()
             }
-            MergeStage::Completed(_) => {
+            MergeStage::Completed => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::MainView, false).into(),
-                    presets::text_center("Merge completed").into(),
-                    presets::button_nav("Repeat", Message::Repeat, true).into(),
+                    presets::button_nav("Back", Message::MainView, false),
+                    presets::text_center("Merge completed"),
+                    presets::button_nav("Repeat", Message::Repeat, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
             MergeStage::Failed => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::MainView, false).into(),
-                    presets::text_center_error("Merge failed").into(),
+                    presets::button_nav("Back", Message::MainView, false),
+                    presets::text_center_error("Merge failed"),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
-            MergeStage::Error(_) => {
+            MergeStage::Error => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::MainView, false).into(),
-                    presets::text_center_error("Merge failed").into(),
-                    presets::button_nav("Retry", Message::Repeat, true).into(),
+                    presets::button_nav("Back", Message::MainView, false),
+                    presets::text_center_error("Merge failed"),
+                    presets::button_nav("Retry", Message::Repeat, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
-            MergeStage::Cancelled(_) => {
+            MergeStage::Cancelled => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::MainView, false).into(),
-                    presets::text_center_error("Merge cancelled").into(),
-                    presets::button_nav("Retry", Message::Repeat, true).into(),
+                    presets::button_nav("Back", Message::MainView, false),
+                    presets::text_center_error("Merge cancelled"),
+                    presets::button_nav("Retry", Message::Repeat, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
         }
     }

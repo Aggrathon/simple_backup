@@ -1,11 +1,11 @@
 #![cfg(feature = "gui")]
 
 use iced::alignment::Horizontal;
-use iced::{Command, Element, Length, Renderer, Subscription};
+use iced::{Element, Length, Subscription};
 use rfd::FileDialog;
 
 use super::threads::ThreadWrapper;
-use super::{paginated, presets, theme, Message};
+use super::{paginated, presets, Message};
 use crate::backup::{BackupError, BackupWriter};
 use crate::config::Config;
 use crate::files::FileInfo;
@@ -25,8 +25,8 @@ enum BackupStage {
     Viewing(BackupWriter),
     Performing(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
     Cancelling(ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter>),
-    Completed(BackupWriter),
-    Cancelled(BackupWriter),
+    Completed,
+    Cancelled,
 }
 
 pub(crate) struct BackupState {
@@ -57,7 +57,7 @@ impl BackupState {
         }
     }
 
-    pub fn update(&mut self, message: Message) -> Command<Message> {
+    pub fn update(&mut self, message: Message) {
         match message {
             Message::Tick => match &mut self.stage {
                 BackupStage::Scanning(crawler) => {
@@ -135,9 +135,9 @@ impl BackupState {
                                         std::mem::replace(&mut self.stage, BackupStage::Failed)
                                     {
                                         match wrapper.join() {
-                                            Ok(bw) => {
+                                            Ok(_) => {
                                                 self.current_count = 0;
-                                                self.stage = BackupStage::Completed(bw)
+                                                self.stage = BackupStage::Completed
                                             }
                                             Err(_) => self
                                                 .error
@@ -150,21 +150,25 @@ impl BackupState {
                         }
                     }
                 }
-                BackupStage::Cancelling(_) => {
-                    if let BackupStage::Cancelling(wrapper) =
-                        std::mem::replace(&mut self.stage, BackupStage::Failed)
-                    {
-                        match wrapper.cancel() {
-                            Ok(writer) => {
-                                if let Err(e) = writer.delete_file() {
-                                    self.error.push('\n');
-                                    self.error.push_str(&e.to_string());
+                BackupStage::Cancelling(wrapper) => {
+                    if wrapper.try_cancel() {
+                        if let BackupStage::Cancelling(wrapper) =
+                            std::mem::replace(&mut self.stage, BackupStage::Failed)
+                        {
+                            match wrapper.cancel() {
+                                Ok(writer) => {
+                                    if let Err(e) = writer.delete_file() {
+                                        self.error.push('\n');
+                                        self.error.push_str(&e.to_string());
+                                    }
+                                    self.current_count = 0;
+                                    self.stage = BackupStage::Cancelled
                                 }
-                                self.current_count = 0;
-                                self.stage = BackupStage::Cancelled(writer)
-                            }
-                            Err(_) => self.error.push_str("\nFailure when cancelling the backup"),
-                        };
+                                Err(_) => {
+                                    self.error.push_str("\nFailure when cancelling the backup")
+                                }
+                            };
+                        }
                     }
                 }
                 _ => {}
@@ -243,7 +247,6 @@ impl BackupState {
             Message::Repeat => *self = BackupState::new(std::mem::take(&mut self.config)),
             _ => eprintln!("Unexpected GUI message: {:?}", message),
         }
-        Command::none()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -261,7 +264,7 @@ impl BackupState {
         }
     }
 
-    pub fn view(&self) -> Element<Message, Renderer<theme::Theme>> {
+    pub fn view(&self) -> Element<Message> {
         let mut scroll = presets::column_list();
         if !self.error.is_empty() {
             scroll = scroll.push(presets::text_error(&self.error[1..]));
@@ -269,40 +272,39 @@ impl BackupState {
         match &self.stage {
             BackupStage::Scanning(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Edit", Message::EditConfig, false).into(),
+                    presets::button_nav("Edit", Message::EditConfig, false),
                     presets::text_center(format!(
                         "Scanning for files to backup: {} with total size {}\n",
                         self.total_count,
                         format_size(self.total_size)
-                    ))
-                    .into(),
-                    presets::button_nav("Backup", Message::None, true).into(),
+                    )),
+                    presets::button_nav("Backup", Message::None, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
             BackupStage::Viewing(writer) => {
                 let trow = presets::row_list2(vec![
-                    presets::button_grey(
+                    presets::button_group(
                         "Name",
                         Message::SortName,
-                        self.list_sort != ListSort::Name,
+                        self.list_sort == ListSort::Name,
                     )
                     .width(Length::Fill)
                     .into(),
-                    presets::button_grey(
+                    presets::button_group(
                         "Size",
                         Message::SortSize,
-                        self.list_sort != ListSort::Size,
+                        self.list_sort == ListSort::Size,
                     )
-                    .width(Length::Units(102))
+                    .width(Length::Fixed(102.0))
                     .into(),
-                    presets::button_grey(
+                    presets::button_group(
                         "Time",
                         Message::SortTime,
-                        self.list_sort != ListSort::Time,
+                        self.list_sort == ListSort::Time,
                     )
-                    .width(Length::Units(182))
+                    .width(Length::Fixed(182.0))
                     .into(),
                 ]);
                 scroll = self.pagination.push_to(
@@ -317,19 +319,19 @@ impl BackupState {
                         presets::row_list2(vec![
                             presets::text(f.copy_string()).width(Length::Fill).into(),
                             presets::text(format_size(f.size))
-                                .width(Length::Units(102))
-                                .horizontal_alignment(Horizontal::Right)
+                                .width(Length::Fixed(102.0))
+                                .align_x(Horizontal::Right)
                                 .into(),
                             presets::text(f.time.unwrap().format("%Y-%m-%d %H:%M:%S").to_string())
-                                .width(Length::Units(182))
-                                .horizontal_alignment(Horizontal::Right)
+                                .width(Length::Fixed(182.0))
+                                .align_x(Horizontal::Right)
                                 .into(),
-                            presets::space_scroll().into(),
+                            presets::space_scroll(),
                         ])
                         .into()
                     },
                 );
-                let diff = writer.list.as_ref().unwrap().len() - self.total_count as usize;
+                let diff = writer.list.as_ref().unwrap().len() - self.total_count;
                 let status = if diff > 0 {
                     if let Some(time) = writer.prev_time {
                         format!(
@@ -355,13 +357,13 @@ impl BackupState {
                     )
                 };
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Edit", Message::EditConfig, false).into(),
-                    presets::text_center(status).into(),
-                    presets::button("Export list", Message::Export).into(),
-                    presets::button_nav("Backup", Message::Backup, true).into(),
+                    presets::button_nav("Edit", Message::EditConfig, false),
+                    presets::text_center(status),
+                    presets::button("Export list", Message::Export),
+                    presets::button_nav("Backup", Message::Backup, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![trow.into(), scroll.into(), brow.into()]).into()
+                presets::column_root(vec![trow.into(), scroll, brow.into()]).into()
             }
             BackupStage::Performing(_) | BackupStage::Cancelling(_) => {
                 let status = if let BackupStage::Cancelling(_) = self.stage {
@@ -381,8 +383,8 @@ impl BackupState {
                 let current = (self.current_size / 1024 + self.current_count as u64) as f32;
                 let bar = presets::progress_bar(current + max * 0.01, max * 1.03);
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Edit", Message::None, false).into(),
-                    status.into(),
+                    presets::button_nav("Edit", Message::None, false),
+                    status,
                     presets::button_nav(
                         "Cancel",
                         if let BackupStage::Cancelling(_) = self.stage {
@@ -391,38 +393,37 @@ impl BackupState {
                             Message::Cancel
                         },
                         false,
-                    )
-                    .into(),
+                    ),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), bar.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, bar.into(), brow.into()]).into()
             }
             BackupStage::Failed => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Edit", Message::EditConfig, false).into(),
-                    presets::text_center_error("Backup failed").into(),
-                    presets::button_nav("Retry", Message::Repeat, true).into(),
+                    presets::button_nav("Edit", Message::EditConfig, false),
+                    presets::text_center_error("Backup failed"),
+                    presets::button_nav("Retry", Message::Repeat, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
-            BackupStage::Completed(_) => {
+            BackupStage::Completed => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Edit", Message::EditConfig, false).into(),
-                    presets::text_center("Backup completed").into(),
-                    presets::button_nav("Repeat", Message::Repeat, true).into(),
+                    presets::button_nav("Edit", Message::EditConfig, false),
+                    presets::text_center("Backup completed"),
+                    presets::button_nav("Repeat", Message::Repeat, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
-            BackupStage::Cancelled(_) => {
+            BackupStage::Cancelled => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Edit", Message::EditConfig, false).into(),
-                    presets::text_center_error("Backup cancelled").into(),
-                    presets::button_nav("Retry", Message::Repeat, true).into(),
+                    presets::button_nav("Edit", Message::EditConfig, false),
+                    presets::text_center_error("Backup cancelled"),
+                    presets::button_nav("Retry", Message::Repeat, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
         }
     }

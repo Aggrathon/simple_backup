@@ -1,12 +1,12 @@
 #![cfg(feature = "gui")]
 
 use iced::widget::Space;
-use iced::{Command, Element, Length, Renderer, Subscription};
+use iced::{Element, Length, Subscription};
 use regex::Regex;
 use rfd::FileDialog;
 
 use super::threads::ThreadWrapper;
-use super::{paginated, presets, theme, Message};
+use super::{paginated, presets, Message};
 use crate::backup::{BackupError, BackupReader};
 use crate::files::FileInfo;
 
@@ -137,7 +137,7 @@ impl RestoreState {
         }
     }
 
-    pub fn update(&mut self, message: Message) -> Command<Message> {
+    pub fn update(&mut self, message: Message) {
         match message {
             Message::Tick => match &mut self.stage {
                 RestoreStage::Performing(wrapper) => {
@@ -177,18 +177,22 @@ impl RestoreState {
                         }
                     }
                 }
-                RestoreStage::Cancelling(..) => {
-                    if let RestoreStage::Cancelling(wrapper) =
-                        std::mem::replace(&mut self.stage, RestoreStage::Failed)
-                    {
-                        match wrapper.cancel() {
-                            Ok(reader) => self.stage = RestoreStage::Cancelled(Box::new(reader)),
-                            Err(_) => self.error.push_str(if self.extract {
-                                "\nFailure when cancelling the extraction"
-                            } else {
-                                "\nFailure when cancelling the restoration"
-                            }),
-                        };
+                RestoreStage::Cancelling(wrapper) => {
+                    if wrapper.try_cancel() {
+                        if let RestoreStage::Cancelling(wrapper) =
+                            std::mem::replace(&mut self.stage, RestoreStage::Failed)
+                        {
+                            match wrapper.cancel() {
+                                Ok(reader) => {
+                                    self.stage = RestoreStage::Cancelled(Box::new(reader))
+                                }
+                                Err(_) => self.error.push_str(if self.extract {
+                                    "\nFailure when cancelling the extraction"
+                                } else {
+                                    "\nFailure when cancelling the restoration"
+                                }),
+                            };
+                        }
                     }
                 }
                 _ => {}
@@ -316,10 +320,9 @@ impl RestoreState {
             }
             _ => eprintln!("Unexpected GUI message: {:?}", message),
         }
-        Command::none()
     }
 
-    pub fn view(&self) -> Element<Message, Renderer<theme::Theme>> {
+    pub fn view(&self) -> Element<Message> {
         let mut scroll = presets::column_list();
         if !self.error.is_empty() {
             scroll = scroll.push(presets::text_error(&self.error[1..]))
@@ -334,9 +337,9 @@ impl RestoreState {
                                 .into()
                         });
                 let trow = presets::row_list2(vec![
-                    presets::space_inner().into(),
+                    presets::space_inner(),
                     presets::checkbox(self.all, "", |_| Message::ToggleAll).into(),
-                    presets::space_large().into(),
+                    presets::space_large(),
                     presets::regex_field(&self.filter, "Search", self.filter_ok, |s| {
                         Message::FilterEdit(0, s)
                     })
@@ -358,34 +361,34 @@ impl RestoreState {
                     None => format!("{} files", list.len(),),
                 };
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::MainView, false).into(),
-                    presets::text_center(status).into(),
-                    presets::button("Export list", Message::Export).into(),
-                    presets::space_large().into(),
-                    presets::toggler(self.flat, "Flat", Message::Flat).into(),
-                    presets::space_large().into(),
-                    presets::button("Extract", Message::Extract).into(),
-                    presets::button("Restore", Message::Restore).into(),
+                    presets::button_nav("Back", Message::MainView, false),
+                    presets::text_center(status),
+                    presets::button("Export list", Message::Export),
+                    presets::space_large(),
+                    presets::toggler(self.flat, "Flat", Message::Flat),
+                    presets::space_large(),
+                    presets::button("Extract", Message::Extract),
+                    presets::button("Restore", Message::Restore),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![trow.into(), scroll.into(), brow.into()]).into()
+                presets::column_root(vec![trow.into(), scroll, brow.into()]).into()
             }
             RestoreStage::Error(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::MainView, false).into(),
+                    presets::button_nav("Back", Message::MainView, false),
                     if self.extract {
-                        presets::text_center_error("Extraction failed").into()
+                        presets::text_center_error("Extraction failed")
                     } else {
-                        presets::text_center_error("Restoration failed").into()
+                        presets::text_center_error("Restoration failed")
                     },
-                    presets::button_nav("Retry", Message::Repeat, true).into(),
+                    presets::button_nav("Retry", Message::Repeat, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
             RestoreStage::Performing(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Cancel", Message::Cancel, false).into(),
+                    presets::button_nav("Cancel", Message::Cancel, false),
                     presets::text_center(if self.extract {
                         format!(
                             "Extracting files: {} / {}",
@@ -398,65 +401,63 @@ impl RestoreState {
                             self.pagination.index,
                             self.pagination.get_total(),
                         )
-                    })
-                    .into(),
+                    }),
                 ]);
                 let pb = presets::progress_bar2(self.pagination.index, self.pagination.get_total());
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), pb.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, pb.into(), brow.into()]).into()
             }
             RestoreStage::Cancelling(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Cancel", Message::None, false).into(),
+                    presets::button_nav("Cancel", Message::None, false),
                     if self.extract {
-                        presets::text_center_error("Cancelling the extraction").into()
+                        presets::text_center_error("Cancelling the extraction")
                     } else {
-                        presets::text_center_error("Cancelling the restoration").into()
+                        presets::text_center_error("Cancelling the restoration")
                     },
                 ]);
                 let pb = presets::progress_bar2(self.pagination.index, self.pagination.get_total());
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), pb.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, pb.into(), brow.into()]).into()
             }
             RestoreStage::Completed(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::MainView, false).into(),
+                    presets::button_nav("Back", Message::MainView, false),
                     if self.extract {
-                        presets::text_center("Extraction complete").into()
+                        presets::text_center("Extraction complete")
                     } else {
-                        presets::text_center("Restoration complete").into()
+                        presets::text_center("Restoration complete")
                     },
-                    presets::button_nav("Repeat", Message::Repeat, true).into(),
+                    presets::button_nav("Repeat", Message::Repeat, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
             RestoreStage::Cancelled(_) => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::MainView, false).into(),
+                    presets::button_nav("Back", Message::MainView, false),
                     if self.extract {
-                        presets::text_center("Extraction cancelled").into()
+                        presets::text_center("Extraction cancelled")
                     } else {
-                        presets::text_center("Restoration cancelled").into()
+                        presets::text_center("Restoration cancelled")
                     },
-                    presets::button_nav("Retry", Message::Repeat, true).into(),
+                    presets::button_nav("Retry", Message::Repeat, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
             RestoreStage::Failed => {
                 let brow = presets::row_bar(vec![
-                    presets::button_nav("Back", Message::MainView, false).into(),
+                    presets::button_nav("Back", Message::MainView, false),
                     presets::text_center(if self.extract {
                         "Extraction failed"
                     } else {
                         "Restoration failed"
-                    })
-                    .into(),
+                    }),
                     Space::with_width(Length::Fill).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
-                presets::column_root(vec![scroll.into(), brow.into()]).into()
+                presets::column_root(vec![scroll, brow.into()]).into()
             }
         }
     }

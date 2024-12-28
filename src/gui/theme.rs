@@ -1,380 +1,245 @@
 #![cfg(feature = "gui")]
 
+use iced::theme::palette::{Background, Danger, Extended, Primary, Secondary, Success};
+use iced::theme::Palette;
 use iced::widget::{
-    button, checkbox, container, pane_grid, pick_list, progress_bar, scrollable, text, text_input,
-    toggler,
+    button, checkbox, container, pick_list, progress_bar, scrollable, text_input, toggler,
 };
-use iced::{application, overlay, Background, Color, Vector};
+use iced::{border, Border, Color, Shadow, Theme, Vector};
+
+use super::ApplicationState;
 
 const COLOR_APP: Color = Color::from_rgb(78.0 / 255.0, 155.0 / 255.0, 71.0 / 255.0); //#4E9B47
-const COLOR_APP_LIGHT: Color = Color::from_rgb(172.0 / 255.0, 215.0 / 255.0, 168.0 / 255.0); //#acd7a8
 const COLOR_COMP: Color = Color::from_rgb(148.0 / 255.0, 71.0 / 255.0, 155.0 / 255.0); //#94479b
 const COLOR_GREY: Color = Color::from_rgb(0.6, 0.6, 0.6);
 const COLOR_LIGHT: Color = Color::from_rgb(0.9, 0.9, 0.9);
-const COLOR_DARK: Color = Color::from_rgb(0.3, 0.3, 0.3);
-const COLOR_BACKGROUND: Color = Color::WHITE;
-const RADIUS_SMALL: f32 = 3.0;
-const RADIUS_LARGE: f32 = 5.0;
-const SHADOW_OFFSET: Vector<f32> = Vector::new(1.0, 2.0);
-const BORDER_WIDTH: f32 = 2.0;
-const BORDER_SMALL: f32 = 1.0;
+const RADIUS_SMALL: f32 = 4.0;
+const RADIUS_LARGE: f32 = 8.0;
+const SHADOW_OFFSET: Vector<f32> = Vector::new(1.3, 2.0);
+const BORDER_WIDTH: f32 = 3.0;
+const BORDER_SMALL: f32 = 1.5;
 
-#[derive(Default)]
-pub struct Theme {}
-
-impl application::StyleSheet for Theme {
-    type Style = ();
-
-    fn appearance(&self, _style: &Self::Style) -> application::Appearance {
-        application::Appearance {
-            background_color: COLOR_BACKGROUND,
-            text_color: Color::BLACK,
-        }
-    }
+pub fn theme(_state: &ApplicationState) -> Theme {
+    Theme::custom_with_fn(
+        "white_green_pruple".to_string(),
+        Palette {
+            background: Color::WHITE,
+            text: Color::BLACK,
+            primary: COLOR_LIGHT,
+            success: COLOR_APP,
+            danger: COLOR_COMP,
+        },
+        |p| Extended {
+            background: Background::new(p.background, p.text),
+            primary: Primary::generate(p.success, p.background, p.text),
+            secondary: Secondary::generate(COLOR_GREY, p.text),
+            success: Success::generate(p.success, p.background, p.text),
+            danger: Danger::generate(p.danger, p.background, p.text),
+            is_dark: false,
+        },
+    )
 }
 
-#[derive(Default, Clone, Copy)]
-pub enum Text {
-    #[default]
-    Normal,
-    // Color,
-    Negative,
-}
-
-impl text::StyleSheet for Theme {
-    type Style = Text;
-
-    fn appearance(&self, style: Self::Style) -> text::Appearance {
-        match style {
-            Text::Normal => text::Appearance { color: None },
-            // Text::Color => text::Appearance {
-            //     color: Some(COLOR_APP),
-            // },
-            Text::Negative => text::Appearance {
-                color: Some(COLOR_COMP),
-            },
-        }
-    }
-}
-
-#[derive(Default)]
-pub enum Button {
-    #[default]
-    Normal,
-    Negative,
-    DarkGrey,
-    LightGrey,
-    Main,
-    MainAlt,
-}
-
-impl button::StyleSheet for Theme {
-    type Style = Button;
-
-    fn active(&self, style: &Self::Style) -> button::Appearance {
-        match style {
-            Button::DarkGrey => button::Appearance {
-                background: Some(COLOR_DARK.into()),
-                text_color: COLOR_BACKGROUND,
-                border_radius: RADIUS_SMALL,
+pub fn button_normal(theme: &Theme, status: button::Status) -> button::Style {
+    let pal = theme.palette();
+    let ext = theme.extended_palette();
+    match status {
+        button::Status::Active => button::Style {
+            background: Some(ext.success.base.color.into()),
+            text_color: pal.background,
+            border: border::rounded(RADIUS_SMALL),
+            ..Default::default()
+        },
+        button::Status::Hovered => button::Style {
+            background: Some(ext.success.strong.color.into()),
+            text_color: pal.background,
+            border: border::rounded(RADIUS_SMALL),
+            shadow: Shadow {
+                offset: SHADOW_OFFSET,
+                color: ext.success.weak.color,
                 ..Default::default()
             },
-            Button::LightGrey => button::Appearance {
-                background: Some(COLOR_GREY.into()),
-                text_color: COLOR_BACKGROUND,
-                border_radius: RADIUS_SMALL,
+        },
+        button::Status::Pressed => button::Style {
+            background: Some(ext.success.strong.color.into()),
+            text_color: ext.success.strong.text,
+            border: border::rounded(RADIUS_SMALL),
+            ..Default::default()
+        },
+        button::Status::Disabled => button::Style {
+            background: Some(pal.primary.into()),
+            text_color: pal.text,
+            border: border::rounded(RADIUS_SMALL),
+            ..Default::default()
+        },
+    }
+}
+
+pub fn button_negative(theme: &Theme, status: button::Status) -> button::Style {
+    let pal = theme.palette();
+    let ext = theme.extended_palette();
+    match status {
+        button::Status::Active => button::Style {
+            background: Some(ext.danger.base.color.into()),
+            text_color: pal.background,
+            border: border::rounded(RADIUS_SMALL),
+            ..Default::default()
+        },
+        button::Status::Hovered => button::Style {
+            background: Some(ext.danger.strong.color.into()),
+            text_color: pal.background,
+            border: border::rounded(RADIUS_SMALL),
+            shadow: Shadow {
+                offset: SHADOW_OFFSET,
+                color: ext.danger.weak.color,
                 ..Default::default()
             },
-            Button::Main => button::Appearance {
-                background: Some(COLOR_APP.into()),
-                text_color: COLOR_BACKGROUND,
-                border_radius: RADIUS_LARGE,
-                ..Default::default()
-            },
-            Button::MainAlt => button::Appearance {
-                background: Some(COLOR_COMP.into()),
-                text_color: COLOR_BACKGROUND,
-                border_radius: RADIUS_LARGE,
-                ..Default::default()
-            },
-            Button::Normal => button::Appearance {
-                background: Some(COLOR_APP.into()),
-                text_color: COLOR_BACKGROUND,
-                border_radius: RADIUS_SMALL,
-                ..Default::default()
-            },
-            Button::Negative => button::Appearance {
-                background: Some(COLOR_COMP.into()),
-                text_color: COLOR_BACKGROUND,
-                border_radius: RADIUS_SMALL,
-                ..Default::default()
-            },
+        },
+        button::Status::Pressed => button::Style {
+            background: Some(ext.danger.strong.color.into()),
+            text_color: ext.danger.strong.text,
+            border: border::rounded(RADIUS_SMALL),
+            ..Default::default()
+        },
+        button::Status::Disabled => button::Style {
+            background: Some(pal.primary.into()),
+            text_color: pal.text,
+            border: border::rounded(RADIUS_SMALL),
+            ..Default::default()
+        },
+    }
+}
+
+pub fn button_grey(theme: &Theme, status: button::Status) -> button::Style {
+    let pal = theme.palette();
+    let ext = theme.extended_palette();
+    button::Style {
+        background: Some(
+            match status {
+                button::Status::Active => ext.secondary.base.color,
+                button::Status::Hovered => ext.secondary.weak.color,
+                button::Status::Pressed => ext.secondary.strong.color,
+                button::Status::Disabled => pal.primary,
+            }
+            .into(),
+        ),
+        text_color: match status {
+            button::Status::Active => pal.background,
+            button::Status::Hovered => pal.background,
+            button::Status::Pressed => pal.background,
+            button::Status::Disabled => pal.text,
+        },
+        border: Border {
+            radius: RADIUS_SMALL.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+pub fn input_primary(theme: &Theme, status: text_input::Status) -> text_input::Style {
+    let mut style = text_input::default(theme, status);
+    style.value = theme.palette().text;
+    style
+}
+
+pub fn input_success(theme: &Theme, status: text_input::Status) -> text_input::Style {
+    let mut style = text_input::default(theme, status);
+    style.value = theme.palette().success;
+    style
+}
+
+pub fn input_danger(theme: &Theme, status: text_input::Status) -> text_input::Style {
+    let mut style = text_input::default(theme, status);
+    style.value = theme.palette().danger;
+    style
+}
+
+pub fn container_pane(theme: &Theme) -> container::Style {
+    container::transparent(theme).border(
+        border::color(theme.palette().primary)
+            .rounded(RADIUS_LARGE)
+            .width(BORDER_WIDTH),
+    )
+}
+
+pub fn container_title(theme: &Theme) -> container::Style {
+    container::background(theme.palette().primary).border(border::rounded(RADIUS_LARGE))
+}
+
+pub fn tooltip(theme: &Theme) -> container::Style {
+    container::background(theme.palette().primary).border(border::rounded(RADIUS_SMALL))
+}
+
+pub fn progressbar(theme: &Theme) -> progress_bar::Style {
+    progress_bar::success(theme)
+}
+
+pub fn toggle(theme: &Theme, status: toggler::Status) -> toggler::Style {
+    _toggle(theme, status, theme.palette().success)
+}
+
+pub fn toggle_comp(theme: &Theme, status: toggler::Status) -> toggler::Style {
+    _toggle(theme, status, theme.palette().danger)
+}
+
+fn _toggle(theme: &Theme, status: toggler::Status, color: Color) -> toggler::Style {
+    let palette = theme.extended_palette();
+    let mut style = toggler::default(theme, status);
+    match status {
+        toggler::Status::Active { is_toggled } | toggler::Status::Hovered { is_toggled } => {
+            if is_toggled {
+                style.background = color;
+                style.foreground = palette.background.base.color;
+            }
         }
+        _ => {}
     }
-
-    fn hovered(&self, style: &Self::Style) -> button::Appearance {
-        button::Appearance {
-            text_color: COLOR_LIGHT,
-            shadow_offset: SHADOW_OFFSET,
-            ..self.active(style)
-        }
-    }
+    style.foreground_border_width = BORDER_SMALL;
+    style
 }
 
-#[derive(Default)]
-pub enum Container {
-    PaneTitleBar,
-    #[default]
-    Pane,
-    Tooltip,
-}
-
-impl container::StyleSheet for Theme {
-    type Style = Container;
-
-    fn appearance(&self, style: &Self::Style) -> container::Appearance {
-        match style {
-            Container::PaneTitleBar => container::Appearance {
-                text_color: Some(COLOR_BACKGROUND),
-                background: Some(COLOR_DARK.into()),
-                border_radius: RADIUS_SMALL,
-                ..Default::default()
-            },
-            Container::Pane => container::Appearance {
-                background: Some(COLOR_BACKGROUND.into()),
-                border_width: BORDER_WIDTH,
-                border_color: COLOR_DARK,
-                border_radius: RADIUS_SMALL,
-                ..Default::default()
-            },
-            Container::Tooltip => container::Appearance {
-                background: Some(COLOR_LIGHT.into()),
-                border_radius: RADIUS_SMALL,
-                ..container::Appearance::default()
-            },
-        }
-    }
-}
-
-#[derive(Default)]
-pub enum TextInput {
-    #[default]
-    Normal,
-    Working,
-    Problem,
-}
-
-impl text_input::StyleSheet for Theme {
-    type Style = TextInput;
-
-    fn active(&self, _style: &Self::Style) -> text_input::Appearance {
-        text_input::Appearance {
-            background: COLOR_BACKGROUND.into(),
-            border_color: COLOR_DARK,
-            border_radius: RADIUS_SMALL,
-            border_width: BORDER_SMALL,
-            // ..Default::default()
-        }
-    }
-
-    fn focused(&self, style: &Self::Style) -> text_input::Appearance {
-        text_input::Appearance {
-            ..self.active(style)
-        }
-    }
-
-    fn placeholder_color(&self, _style: &Self::Style) -> Color {
-        COLOR_LIGHT
-    }
-
-    fn value_color(&self, style: &Self::Style) -> Color {
-        match style {
-            TextInput::Normal => COLOR_DARK,
-            TextInput::Working => COLOR_DARK,
-            TextInput::Problem => COLOR_COMP,
-        }
-    }
-
-    fn selection_color(&self, _style: &Self::Style) -> Color {
-        COLOR_APP_LIGHT
-    }
-}
-
-#[derive(Default)]
-pub enum ProgressBar {
-    #[default]
-    Normal,
-}
-
-impl progress_bar::StyleSheet for Theme {
-    type Style = ProgressBar;
-
-    fn appearance(&self, _style: &Self::Style) -> progress_bar::Appearance {
-        progress_bar::Appearance {
-            background: COLOR_LIGHT.into(),
-            bar: COLOR_APP.into(),
-            border_radius: RADIUS_LARGE,
-        }
-    }
-}
-
-#[derive(Default)]
-pub enum Toggle {
-    #[default]
-    Normal,
-}
-
-impl toggler::StyleSheet for Theme {
-    type Style = Toggle;
-
-    fn active(&self, _style: &Self::Style, is_active: bool) -> toggler::Appearance {
-        toggler::Appearance {
-            background: if is_active { COLOR_APP } else { COLOR_GREY },
-            background_border: None,
-            foreground: COLOR_BACKGROUND,
-            foreground_border: None,
-        }
-    }
-
-    fn hovered(&self, style: &Self::Style, is_active: bool) -> toggler::Appearance {
-        toggler::Appearance {
-            foreground: COLOR_LIGHT,
-            ..self.active(style, is_active)
-        }
-    }
-}
-
-#[derive(Default, Clone, Copy)]
-pub enum PickList {
-    #[default]
-    Normal,
-}
-
-impl pick_list::StyleSheet for Theme {
-    type Style = PickList;
-
-    fn active(&self, _style: &<Self as pick_list::StyleSheet>::Style) -> pick_list::Appearance {
-        pick_list::Appearance {
-            border_radius: RADIUS_SMALL,
-            background: Background::Color(COLOR_APP),
-            text_color: COLOR_BACKGROUND,
-            border_color: COLOR_APP,
-            border_width: BORDER_WIDTH,
-            icon_size: 0.7,
-            placeholder_color: COLOR_DARK,
-        }
-    }
-
-    fn hovered(&self, style: &<Self as pick_list::StyleSheet>::Style) -> pick_list::Appearance {
-        pick_list::Appearance {
-            border_color: Color::BLACK,
-            text_color: COLOR_LIGHT,
-            ..self.active(style)
-        }
-    }
-}
-
-impl overlay::menu::StyleSheet for Theme {
-    type Style = PickList;
-
-    fn appearance(&self, _style: &Self::Style) -> overlay::menu::Appearance {
-        overlay::menu::Appearance {
-            text_color: Color::BLACK,
-            background: Background::Color(COLOR_LIGHT),
-            border_width: BORDER_SMALL,
-            border_radius: RADIUS_SMALL,
-            border_color: COLOR_DARK,
-            selected_text_color: COLOR_BACKGROUND,
-            selected_background: Background::Color(COLOR_APP),
-        }
-    }
-}
-
-#[derive(Default, Clone, Copy)]
-pub enum Scrollable {
-    #[default]
-    Normal,
-}
-
-impl scrollable::StyleSheet for Theme {
-    type Style = Scrollable;
-
-    fn active(&self, _style: &Self::Style) -> scrollable::Scrollbar {
-        scrollable::Scrollbar {
-            background: None,
-            border_radius: RADIUS_SMALL,
-            border_width: BORDER_SMALL,
-            border_color: Color::TRANSPARENT,
-            scroller: scrollable::Scroller {
-                color: COLOR_APP,
-                border_radius: RADIUS_SMALL,
-                border_width: BORDER_SMALL,
-                border_color: COLOR_APP,
-            },
-        }
-    }
-
-    fn hovered(&self, style: &Self::Style) -> scrollable::Scrollbar {
-        scrollable::Scrollbar {
-            scroller: scrollable::Scroller {
-                color: COLOR_APP_LIGHT,
-                border_radius: RADIUS_SMALL,
-                border_width: BORDER_SMALL,
-                border_color: COLOR_APP_LIGHT,
-            },
-            ..self.active(style)
-        }
-    }
-}
-
-#[derive(Default, Clone, Copy)]
-pub enum PaneGrid {
-    #[default]
-    Normal,
-}
-
-impl pane_grid::StyleSheet for Theme {
-    type Style = PaneGrid;
-
-    fn picked_split(&self, _style: &Self::Style) -> Option<pane_grid::Line> {
-        None
-    }
-
-    fn hovered_split(&self, _style: &Self::Style) -> Option<pane_grid::Line> {
-        None
-    }
-}
-
-#[derive(Default, Clone, Copy)]
-pub enum Checkbox {
-    #[default]
-    Normal,
-}
-
-impl checkbox::StyleSheet for Theme {
-    type Style = Checkbox;
-
-    fn active(&self, _style: &Self::Style, _is_checked: bool) -> checkbox::Appearance {
-        checkbox::Appearance {
-            background: Background::Color(COLOR_BACKGROUND),
-            checkmark_color: COLOR_APP,
-            border_radius: RADIUS_SMALL,
-            border_width: BORDER_SMALL,
-            border_color: COLOR_DARK,
-            text_color: None,
-        }
-    }
-
-    fn hovered(&self, style: &Self::Style, is_checked: bool) -> checkbox::Appearance {
-        checkbox::Appearance {
-            background: Background::Color(if is_checked {
-                COLOR_APP
+pub fn checkbox_color(theme: &Theme, status: checkbox::Status) -> checkbox::Style {
+    match status {
+        checkbox::Status::Active { is_checked }
+        | checkbox::Status::Hovered { is_checked }
+        | checkbox::Status::Disabled { is_checked } => {
+            if is_checked {
+                checkbox::success(theme, status)
             } else {
-                COLOR_APP_LIGHT
-            }),
-            checkmark_color: COLOR_BACKGROUND,
-            // border_color: COLOR_APP,
-            ..self.active(style, is_checked)
+                let mut style = checkbox::danger(theme, status);
+                style.text_color = Some(theme.palette().danger);
+                style
+            }
         }
     }
+}
+
+pub fn dropdown(theme: &Theme, status: pick_list::Status) -> pick_list::Style {
+    let palette = theme.extended_palette();
+    pick_list::Style {
+        text_color: palette.background.base.text,
+        background: palette.background.base.color.into(),
+        placeholder_color: palette.background.strong.color,
+        handle_color: palette.background.weak.text,
+        border: match status {
+            pick_list::Status::Active => Border {
+                radius: RADIUS_SMALL.into(),
+                width: BORDER_SMALL,
+                color: palette.background.base.text,
+            },
+            pick_list::Status::Hovered | pick_list::Status::Opened => Border {
+                radius: RADIUS_SMALL.into(),
+                width: BORDER_SMALL * 1.5,
+                color: palette.primary.base.color,
+            },
+        },
+    }
+}
+
+pub fn scrollbar(theme: &Theme, status: scrollable::Status) -> scrollable::Style {
+    let mut style = scrollable::default(theme, status);
+    style.horizontal_rail.background = None;
+    style.vertical_rail.background = None;
+    style
 }

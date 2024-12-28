@@ -2,12 +2,12 @@
 
 use std::path::PathBuf;
 
-use iced::widget::{pane_grid, Space};
-use iced::{Command, Element, Length, Renderer};
+use iced::widget::pane_grid;
+use iced::{Element, Length};
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
 
-use super::{presets, theme, Message};
+use super::{presets, Message};
 use crate::backup::{CONFIG_DEFAULT_NAME, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
 use crate::files::{FileCrawler, FileInfo};
@@ -31,21 +31,21 @@ impl ConfigState {
         let (includes, _) = panes
             .split(
                 pane_grid::Axis::Vertical,
-                &files,
+                files,
                 Pane::new(ConfigPane::Includes),
             )
             .unwrap();
         let (excludes, _) = panes
             .split(
                 pane_grid::Axis::Horizontal,
-                &includes,
+                includes,
                 Pane::new(ConfigPane::Excludes),
             )
             .unwrap();
         let (filters, _) = panes
             .split(
                 pane_grid::Axis::Horizontal,
-                &excludes,
+                excludes,
                 Pane::new(ConfigPane::Filters),
             )
             .unwrap();
@@ -83,54 +83,51 @@ impl ConfigState {
         state
     }
 
-    pub fn view(&self) -> Element<Message, iced::Renderer<theme::Theme>> {
+    pub fn view(&self) -> Element<Message> {
         let pane_grid = presets::pane_grid(&self.panes, |_, pane, _| pane.content());
         let bar = presets::row_bar(vec![
-            presets::button_nav("Back", Message::MainView, false).into(),
-            Space::with_width(Length::Fill).into(),
+            presets::button_nav("Back", Message::MainView, false),
+            presets::space_hfill(),
             presets::text("Compression:").into(),
             presets::pick_list(
                 &self.compression_alt,
                 Some(self.config.quality),
                 Message::CompressionQuality,
-            )
-            .into(),
-            presets::space_large().into(),
+            ),
+            presets::space_large(),
             presets::text("Threads:").into(),
             presets::pick_list(
                 &self.thread_alt,
                 Some(self.config.threads),
                 Message::ThreadCount,
-            )
-            .into(),
-            presets::space_large().into(),
+            ),
+            presets::space_large(),
             presets::toggler(
                 self.config.incremental,
                 "Incremental backups:",
                 Message::Incremental,
-            )
-            .into(),
-            Space::with_width(Length::Fill).into(),
-            presets::button_nav("Save", Message::Save, true).into(),
-            presets::button_nav("Backup", Message::BackupView, true).into(),
+            ),
+            presets::space_hfill(),
+            presets::button_nav("Save", Message::Save, true),
+            presets::button_nav("Backup", Message::BackupView, true),
         ]);
         presets::column_root(vec![pane_grid.into(), bar.into()]).into()
     }
 
-    pub fn update(&mut self, message: Message) -> iced::Command<Message> {
+    pub fn update(&mut self, message: Message) {
         match message {
             Message::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
-                self.panes.resize(&split, ratio)
+                self.panes.resize(split, ratio)
             }
             Message::PaneDragged(pane_grid::DragEvent::Dropped { pane, target }) => {
-                self.panes.swap(&pane, &target)
+                self.panes.drop(pane, target)
             }
             Message::PaneDragged(_) => {}
             Message::Incremental(t) => self.config.incremental = t,
             Message::ThreadCount(text) => self.config.set_threads(text),
             Message::CompressionQuality(text) => self.config.set_quality(text),
             Message::IncludeAdd(i) => {
-                let pane = self.panes.get_mut(&self.files).unwrap();
+                let pane = self.panes.get_mut(self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
                     let s = std::mem::take(&mut li.text);
                     if let Ok(i) = self.config.exclude.binary_search(&s) {
@@ -163,7 +160,7 @@ impl ConfigState {
                 }
             }
             Message::ExcludeAdd(i) => {
-                let pane = self.panes.get_mut(&self.files).unwrap();
+                let pane = self.panes.get_mut(self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
                     let s = std::mem::take(&mut li.text);
                     if let Ok(i) = self.config.include.binary_search(&s) {
@@ -207,7 +204,7 @@ impl ConfigState {
                 }
             }
             Message::FilterEdit(i, s) => {
-                let pane = self.panes.get_mut(&self.filters).unwrap();
+                let pane = self.panes.get_mut(self.filters).unwrap();
                 let mut refresh = false;
                 if let Some(item) = pane.items.get_mut(i) {
                     if !item.text.eq(&s) {
@@ -227,7 +224,7 @@ impl ConfigState {
                 }
             }
             Message::FolderOpen(i) => {
-                let pane = self.panes.get_mut(&self.files).unwrap();
+                let pane = self.panes.get_mut(self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
                     let dir: FileInfo = std::mem::take(&mut li.text).into();
                     self.open_dir(dir);
@@ -260,7 +257,7 @@ impl ConfigState {
                         Ok(_) => {}
                         Err(e) => {
                             MessageDialog::new()
-                                .set_description(&e.to_string())
+                                .set_description(e.to_string())
                                 .set_level(rfd::MessageLevel::Error)
                                 .set_buttons(rfd::MessageButtons::Ok)
                                 .set_title("Problem saving config")
@@ -271,7 +268,6 @@ impl ConfigState {
             }
             _ => eprintln!("Unexpected GUI message: {:?}", message),
         }
-        Command::none()
     }
 
     fn open_dir<P: Into<FileInfo>>(&mut self, folder: P) {
@@ -280,7 +276,7 @@ impl ConfigState {
     }
 
     fn refresh_files(&mut self) {
-        let pane = self.panes.get_mut(&self.files).unwrap();
+        let pane = self.panes.get_mut(self.files).unwrap();
         pane.items.clear();
         match FileCrawler::new(
             &self.config.include,
@@ -326,7 +322,7 @@ impl ConfigState {
     }
 
     fn refresh_includes(&mut self) {
-        let pane = self.panes.get_mut(&self.includes).unwrap();
+        let pane = self.panes.get_mut(self.includes).unwrap();
         pane.items.clear();
         pane.items.extend(
             self.config
@@ -338,7 +334,7 @@ impl ConfigState {
     }
 
     fn refresh_excludes(&mut self) {
-        let pane = self.panes.get_mut(&self.excludes).unwrap();
+        let pane = self.panes.get_mut(self.excludes).unwrap();
         pane.items.clear();
         pane.items.extend(
             self.config
@@ -350,7 +346,7 @@ impl ConfigState {
     }
 
     fn refresh_filters(&mut self) {
-        let pane = self.panes.get_mut(&self.filters).unwrap();
+        let pane = self.panes.get_mut(self.filters).unwrap();
         pane.items.clear();
         pane.items.extend(
             self.config
@@ -382,7 +378,7 @@ impl Pane {
         }
     }
 
-    fn content(&self) -> pane_grid::Content<Message, Renderer<theme::Theme>> {
+    fn content(&self) -> pane_grid::Content<Message> {
         let content = presets::column_list2(self.items.iter().map(|i| i.view()).collect());
         match self.content {
             ConfigPane::Files => presets::scroll_pane(
@@ -443,12 +439,12 @@ impl ListItem {
         Self::new(ListState::Filter, text, index, valid)
     }
 
-    fn view(&self) -> Element<Message, Renderer<theme::Theme>> {
+    fn view(&self) -> Element<Message> {
         let row = presets::row_list();
         let row = match self.state {
             ListState::File => row.push(presets::space_icon()),
             ListState::Folder => row.push(presets::tooltip_right(
-                presets::button_icon(">", Message::FolderOpen(self.index), false).into(),
+                presets::button_icon(">", Message::FolderOpen(self.index), false),
                 "Open",
             )),
             ListState::ParentFolder(up) => row.push(presets::tooltip_right(
@@ -456,16 +452,15 @@ impl ListItem {
                     "<",
                     if up { Message::FolderUp } else { Message::None },
                     true,
-                )
-                .into(),
+                ),
                 "Go Up",
             )),
             ListState::Include => row.push(presets::tooltip_right(
-                presets::button_icon("O", Message::IncludeOpen(self.index), false).into(),
+                presets::button_icon("O", Message::IncludeOpen(self.index), false),
                 "Open",
             )),
             ListState::Exclude => row.push(presets::tooltip_right(
-                presets::button_icon("O", Message::ExcludeOpen(self.index), false).into(),
+                presets::button_icon("O", Message::ExcludeOpen(self.index), false),
                 "Open",
             )),
             ListState::Error | ListState::Filter => row,
@@ -486,8 +481,7 @@ impl ListItem {
                             Message::IncludeAdd(self.index)
                         },
                         false,
-                    )
-                    .into(),
+                    ),
                     "Include",
                 ))
                 .push(presets::tooltip_left(
@@ -499,16 +493,15 @@ impl ListItem {
                             Message::None
                         },
                         true,
-                    )
-                    .into(),
+                    ),
                     "Exclude",
                 )),
             ListState::Include => row.push(presets::tooltip_left(
-                presets::button_icon("-", Message::IncludeRemove(self.index), true).into(),
+                presets::button_icon("-", Message::IncludeRemove(self.index), true),
                 "Remove",
             )),
             ListState::Exclude => row.push(presets::tooltip_left(
-                presets::button_icon("-", Message::ExcludeRemove(self.index), true).into(),
+                presets::button_icon("-", Message::ExcludeRemove(self.index), true),
                 "Remove",
             )),
             ListState::Filter => {
@@ -526,7 +519,7 @@ impl ListItem {
                     row
                 }
                 .push(presets::tooltip_left(
-                    presets::button_icon("-", Message::FilterRemove(self.index), true).into(),
+                    presets::button_icon("-", Message::FilterRemove(self.index), true),
                     "Remove",
                 ))
             }

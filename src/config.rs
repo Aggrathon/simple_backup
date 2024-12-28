@@ -130,8 +130,8 @@ impl Config {
         let mut path = self.get_output(false);
         if path.is_file() {
             path = match path.parent() {
-                Some(p) => p.to_path_buf(),
-                None => PathBuf::from("."),
+                Option::Some(p) => p.to_path_buf(),
+                Option::None => PathBuf::from("."),
             };
         }
         if self.local || path.is_absolute() {

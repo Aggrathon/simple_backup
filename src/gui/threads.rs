@@ -13,13 +13,22 @@ pub(crate) struct ThreadWrapper<T1, T2> {
     batch_size: usize,
     batch_mult: usize,
     index: usize,
-    queue: Receiver<T1>,
+    queue: Option<Receiver<T1>>,
     handle: JoinHandle<T2>,
 }
 
 impl<T1, T2> ThreadWrapper<T1, T2> {
     pub fn try_recv(&self) -> Result<T1, TryRecvError> {
-        self.queue.try_recv()
+        if let Some(q) = &self.queue {
+            q.try_recv()
+        } else {
+            Err(TryRecvError::Disconnected)
+        }
+    }
+
+    pub fn try_cancel(&mut self) -> bool {
+        std::mem::drop(self.queue.take());
+        self.handle.is_finished()
     }
 
     pub fn cancel(self) -> std::thread::Result<T2> {
@@ -59,7 +68,7 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
             batch_size,
             batch_mult: 1,
             index: 0,
-            queue,
+            queue: Some(queue),
             handle,
         }
     }
@@ -89,7 +98,7 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupWriter> {
             batch_size,
             batch_mult: 1,
             index: 0,
-            queue,
+            queue: Some(queue),
             handle,
         }
     }
@@ -121,7 +130,7 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupMerger> {
             batch_size,
             batch_mult: 1,
             index: 0,
-            queue,
+            queue: Some(queue),
             handle,
         }
     }
@@ -181,7 +190,7 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader> {
             batch_size,
             batch_mult: 1,
             index: 0,
-            queue,
+            queue: Some(queue),
             handle,
         })
     }

@@ -14,18 +14,25 @@ fn main() {
     let output_ico = Path::new("target\\icon.ico");
 
     let tree;
+    let size;
     #[cfg(any(feature = "gui", windows))]
     {
         let svg = fs::read_to_string(input).expect("Could not read svg");
         let mut opts = Options::default();
         opts.fontdb_mut().load_system_fonts();
         tree = Tree::from_str(&svg, &opts).expect("Could not parse svg");
+        size = tree.size().width().max(tree.size().height());
     }
 
     #[cfg(feature = "gui")]
     {
+        let scale = (ICON_SIZE as f32) / size;
         let mut pixmap = Pixmap::new(ICON_SIZE, ICON_SIZE).unwrap();
-        resvg::render(&tree, Transform::identity(), &mut pixmap.as_mut());
+        resvg::render(
+            &tree,
+            Transform::from_scale(scale, scale),
+            &mut pixmap.as_mut(),
+        );
         fs::write(output_bytes, pixmap.data()).expect("Could not write image dump");
     }
 
@@ -33,10 +40,15 @@ fn main() {
     {
         // Create a ico file and embed it with resources in the Windows executable
         let mut icon = ico::IconDir::new(ico::ResourceType::Icon);
-        for size in ICON_SIZES {
-            let mut pixmap = Pixmap::new(size, size).unwrap();
-            resvg::render(&tree, Transform::identity(), &mut pixmap.as_mut());
-            let img = ico::IconImage::from_rgba_data(size, size, pixmap.data().to_vec());
+        for icon_size in ICON_SIZES {
+            let scale = (icon_size as f32) / size;
+            let mut pixmap = Pixmap::new(icon_size, icon_size).unwrap();
+            resvg::render(
+                &tree,
+                Transform::from_scale(scale, scale),
+                &mut pixmap.as_mut(),
+            );
+            let img = ico::IconImage::from_rgba_data(icon_size, icon_size, pixmap.data().to_vec());
             icon.add_entry(ico::IconDirEntry::encode(&img).expect("Could not encode ico"));
         }
         {

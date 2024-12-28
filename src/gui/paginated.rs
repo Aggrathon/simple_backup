@@ -3,9 +3,9 @@
 use std::cmp::min;
 
 use iced::widget::{Column, Space};
-use iced::{Element, Length, Renderer};
+use iced::{Element, Length};
 
-use super::{presets, theme, Message};
+use super::{presets, Message};
 
 pub(crate) struct State {
     pub index: usize,
@@ -53,14 +53,14 @@ impl State {
 
     pub fn push_to<'a, T>(
         &self,
-        scroll: Column<'a, Message, Renderer<theme::Theme>>,
+        scroll: Column<'a, Message>,
         items: impl std::iter::Iterator<Item = T>,
-        renderer: fn(T) -> Element<'a, Message, Renderer<theme::Theme>>,
-    ) -> Column<'a, Message, Renderer<theme::Theme>> {
+        renderer: fn(T) -> Element<'a, Message>,
+    ) -> Column<'a, Message> {
         let mut scroll = scroll;
         let count = min(self.index + self.length, self.total) - self.index;
         for item in items.skip(self.index).take(count) {
-            let item: Element<Message, Renderer<theme::Theme>> = renderer(item);
+            let item: Element<Message> = renderer(item);
             scroll = scroll.push(item);
         }
         if self.total > self.length {
@@ -73,7 +73,6 @@ impl State {
                     } else {
                         Message::None
                     },
-                    false,
                 )
                 .into(),
                 presets::button_grey(
@@ -83,17 +82,14 @@ impl State {
                     } else {
                         Message::None
                     },
-                    false,
                 )
                 .into(),
-                presets::text(format!(
+                presets::text_vcenter(format!(
                     "{} - {} ({})",
                     self.index,
                     min(self.index + self.length, self.total),
                     self.total
-                ))
-                .vertical_alignment(iced::alignment::Vertical::Center)
-                .into(),
+                )),
                 presets::button_grey(
                     ">",
                     if self.index + self.length < self.total {
@@ -101,7 +97,6 @@ impl State {
                     } else {
                         Message::None
                     },
-                    false,
                 )
                 .into(),
                 presets::button_grey(
@@ -111,7 +106,6 @@ impl State {
                     } else {
                         Message::None
                     },
-                    false,
                 )
                 .into(),
                 Space::with_width(Length::Fill).into(),

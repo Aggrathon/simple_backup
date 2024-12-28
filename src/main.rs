@@ -15,7 +15,7 @@ use std::path::PathBuf;
 
 use backup::CONFIG_FILE_EXTENSION;
 use chrono::NaiveDateTime;
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use config::Config;
 use utils::{get_backup_from_path, get_config_from_path};
 
