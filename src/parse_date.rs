@@ -23,6 +23,7 @@ const FORMATS_DT: [&str; 13] = [
 const FORMATS_D: [&str; 6] = [
     "%Y-%m-%d", "%y-%m-%d", "%Y.%m.%d", "%y.%m.%d", "%Y%m%d", "%y%m%d",
 ];
+const FORMAT_SER: [&str; 2] = ["%Y-%m-%d %H:%M:%S.%3f", "%Y-%m-%d %H:%M:%S"];
 
 /// Serialise a Option<NaiveDateTime> (for serde)
 pub fn serialize<S>(date: &Option<NaiveDateTime>, serializer: S) -> Result<S::Ok, S::Error>
@@ -31,7 +32,7 @@ where
 {
     match date {
         None => serializer.serialize_str(""),
-        Some(date) => serializer.serialize_str(&format!("{}", date.format("%Y-%m-%d %H:%M:%S"))),
+        Some(date) => serializer.serialize_str(&format!("{}", date.format(FORMAT_SER[0]))),
     }
 }
 
@@ -44,7 +45,12 @@ where
     if date.is_empty() {
         Ok(None)
     } else {
-        NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S")
+        for format in FORMAT_SER.iter() {
+            if let Ok(time) = NaiveDateTime::parse_from_str(date, format) {
+                return Ok(Some(time));
+            }
+        }
+        NaiveDateTime::parse_from_str(date, FORMAT_SER[0])
             .map_err(Error::custom)
             .map(Some)
     }
@@ -96,9 +102,8 @@ mod tests {
 
     use chrono::{Datelike, Timelike};
 
-    use crate::parse_date::parse_backup_file_name;
-
     use super::{system_to_naive, try_parse};
+    use crate::parse_date::parse_backup_file_name;
 
     #[test]
     fn parse() {

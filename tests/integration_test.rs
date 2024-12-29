@@ -137,11 +137,11 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut bw1 = BackupWriter::new(config).0;
     bw1.write(|_, _| Ok(()), || ())?;
 
-    std::thread::sleep(std::time::Duration::from_millis(10));
     let f5 = dir.path().join("e.txt");
     let f6 = dir.path().join("f.txt");
     File::create(&f5)?;
     File::create(&f6)?;
+    std::thread::sleep(std::time::Duration::from_millis(20));
 
     let mut bw2 = BackupWriter::new(bw1.config).0;
     bw2.path = dir.path().join("b2.tar.zst");
@@ -149,6 +149,7 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     remove_file(&f2)?;
     remove_file(&f5)?;
+    std::thread::sleep(std::time::Duration::from_millis(20));
     assert!(!f2.exists());
     assert!(!f5.exists());
 
@@ -341,7 +342,7 @@ fn time_test() -> Result<(), Box<dyn std::error::Error>> {
     let f4 = dir.path().join("d.txt");
     File::create(&f1)?;
     File::create(&f2)?;
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(20));
 
     let config = Config {
         include: vec![dir.path().to_string_lossy().to_string()],
@@ -356,7 +357,7 @@ fn time_test() -> Result<(), Box<dyn std::error::Error>> {
         origin: PathBuf::new(),
     };
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(20));
     File::create(&f3)?;
     File::create(&f4)?;
 
@@ -476,7 +477,7 @@ fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
     config.time = Some(naive_now());
 
     remove_file(&f1)?;
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(20));
     File::create(&f2)?;
 
     backup(config.clone(), false, false, false, true);
@@ -484,7 +485,7 @@ fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
     config.output = b3.clone();
     config.time = Some(naive_now());
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(20));
     File::create(&f3)?;
 
     backup(config, false, false, false, true);
@@ -526,7 +527,7 @@ fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
         true,
     );
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(20));
     assert!(!b1.exists());
     assert!(!b2.exists());
     assert!(!b3.exists());
