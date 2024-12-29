@@ -122,7 +122,7 @@ impl FileListString {
             #[cfg(target_os = "windows")]
             list.push_str(&fi.get_string().replace('\\', "/"));
             #[cfg(not(target_os = "windows"))]
-            list_string.push_str(fi.get_string());
+            list.push_str(fi.get_string());
             list.push('\n');
         });
         list.pop();

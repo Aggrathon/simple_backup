@@ -129,7 +129,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
 pub fn restore<P: AsRef<Path>>(
     mut source: BackupReader,
     output: Option<P>,
-    mut include: Vec<String>,
+    #[allow(unused_mut)] mut include: Vec<String>,
     regex: Vec<String>,
     flatten: bool,
     only_this: bool,
