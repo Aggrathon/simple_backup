@@ -126,6 +126,11 @@ impl FileInfo {
         }
     }
 
+    #[allow(unused)]
+    pub fn via_path(string: &str) -> Self {
+        Self::from(PathBuf::from(&string).clean())
+    }
+
     /// Returns the String version (with lazy conversion)
     pub fn get_string(&mut self) -> &String {
         if self.string.is_none() {
@@ -327,38 +332,25 @@ impl FileCrawler {
         }
         match parent_included {
             Some(parent) => parent,
-            None => match path.get_path().parent() {
-                Some(path) => self.check_path(&mut FileInfo::from(path), None),
-                None => false,
-            },
+            None => {
+                if path.get_string().is_empty() || path.get_string().eq(".") {
+                    return false;
+                }
+                match path.get_path().parent() {
+                    Some(parent) => self.check_path(&mut FileInfo::from(parent), None),
+                    None => false,
+                }
+            }
         }
     }
 }
 
-#[cfg(target_os = "windows")]
-fn dir_read<P: AsRef<Path>>(
-    dir: P,
-) -> std::io::Result<impl Iterator<Item = std::io::Result<DirEntry>>> {
-    if dir.as_ref().as_os_str() == "." {
-        Path::new("").read_dir()
-    } else {
-        dir.as_ref().read_dir()
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
 fn dir_read<P: AsRef<Path>>(
     dir: P,
 ) -> std::io::Result<impl Iterator<Item = std::io::Result<DirEntry>>> {
     dir.as_ref().read_dir()
 }
 
-#[cfg(target_os = "windows")]
-fn dir_path(d: &DirEntry, _local: bool) -> PathBuf {
-    d.path()
-}
-
-#[cfg(not(target_os = "windows"))]
 fn dir_path(d: &DirEntry, local: bool) -> PathBuf {
     let path = d.path();
     if local && path.is_relative() {
@@ -547,14 +539,14 @@ mod tests {
             vec!["config.*".to_string()],
             true,
         )?;
-        assert!(!fc.check_path(&mut FileInfo::from("."), None));
-        assert!(fc.check_path(&mut FileInfo::from("."), Some(true)));
-        assert!(fc.check_path(&mut FileInfo::from("src"), None));
-        assert!(!fc.check_path(&mut FileInfo::from("src/main.rs"), Some(true)));
-        assert!(!fc.check_path(&mut FileInfo::from("src/main.rs"), None));
-        assert!(fc.check_path(&mut FileInfo::from("src/gui.rs"), Some(true)));
-        assert!(fc.check_path(&mut FileInfo::from("src/gui.rs"), None));
-        assert!(!fc.check_path(&mut FileInfo::from("src/config.rs"), None));
+        assert!(!fc.check_path(&mut FileInfo::via_path("."), None));
+        assert!(fc.check_path(&mut FileInfo::via_path("."), Some(true)));
+        assert!(fc.check_path(&mut FileInfo::via_path("src"), None));
+        assert!(!fc.check_path(&mut FileInfo::via_path("src/main.rs"), Some(true)));
+        assert!(!fc.check_path(&mut FileInfo::via_path("src/main.rs"), None));
+        assert!(fc.check_path(&mut FileInfo::via_path("src/gui.rs"), Some(true)));
+        assert!(fc.check_path(&mut FileInfo::via_path("src/gui.rs"), None));
+        assert!(!fc.check_path(&mut FileInfo::via_path("src/config.rs"), None));
         Ok(())
     }
 
