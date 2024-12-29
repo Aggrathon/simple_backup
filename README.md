@@ -4,11 +4,11 @@ A minimal application for doing backups.
 
 ## Features
 
-- [X] No propriety format, the backups are saved in a normal compressed archive.
+- [X] No propriety formats, the backups are saved in a normal compressed archives.
 - [X] Modern, state-of-the-art compression using [zstd](https://www.zstd.net).
 - [X] Optional multithreading for increased performance.
 <!--></!-->
-- [X] Incremental backups (using metadata from the files).
+- [X] Incremental backups (using the "last changed" metadata from the files).
 - [X] Selective restores (only deleted files, only selected files, or all files).
 - [X] Merge old backups to save sapace.
 <!--></!-->
@@ -16,13 +16,18 @@ A minimal application for doing backups.
 - [X] Configurations can be saved for easy reuse (e.g. for incremental backups).
 - [X] Graphical user interface.
 
+## Binaries
+
+Precompiled binaries can be found on the [releases page](https://github.com/Aggrathon/simple_backup/releases/) (no installation required).
+
+
 ## Usage
 
 ### GUI
 
 Just run the program and select what to do (assuming it has been compiled without disabling the GUI).
 
-<!-- TODO: Add screenshots -->
+![screenshot](screenshot.avif)
 
 ### Command line
 
@@ -48,10 +53,6 @@ simple_backup restore config.yml
 
 rm backup_*.tar.zst config.yml test1.txt dir/test3.txt dir -r
 ```
-
-## Binaries
-
-Precompiled binaries can be found on the [releases page](https://github.com/Aggrathon/simple_backup/releases/).
 
 ### Compilation
 
