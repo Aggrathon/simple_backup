@@ -457,11 +457,11 @@ impl ListItem {
             )),
             ListState::Include => row.push(presets::tooltip_right(
                 presets::button_icon("O", Message::IncludeOpen(self.index), false),
-                "Open",
+                "Go To",
             )),
             ListState::Exclude => row.push(presets::tooltip_right(
                 presets::button_icon("O", Message::ExcludeOpen(self.index), false),
-                "Open",
+                "Go To",
             )),
             ListState::Error | ListState::Filter => row,
         };

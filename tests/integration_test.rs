@@ -506,7 +506,6 @@ fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
         true,
     );
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
     assert_eq!(
         b3,
         *get_backup_from_path(dir2.path().to_path_buf())?

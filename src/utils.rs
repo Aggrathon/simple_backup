@@ -9,7 +9,7 @@ use number_prefix::NumberPrefix;
 
 use crate::backup::{BackupError, BackupReader, BACKUP_FILE_EXTENSION, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
-use crate::parse_date::{parse_backup_file_name, system_to_naive};
+use crate::parse_date::parse_backup_file_name;
 
 macro_rules! try_some {
     ($value:expr) => {
@@ -50,12 +50,8 @@ pub fn format_size(size: u64) -> String {
 fn get_probable_time<P: AsRef<Path>>(path: P) -> Option<NaiveDateTime> {
     let path = path.as_ref();
     let s = path.file_name()?;
-    if let Ok(ndt) = parse_backup_file_name(s.to_string_lossy()) {
+    if let Ok(ndt) = parse_backup_file_name(&s.to_string_lossy()) {
         return Some(ndt);
-    }
-    let md = path.metadata().ok()?;
-    if let Ok(st) = md.created() {
-        return Some(system_to_naive(st));
     }
     let br = BackupReader::read_config_only(path.to_path_buf()).ok()?;
     br.time

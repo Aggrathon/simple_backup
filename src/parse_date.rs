@@ -74,8 +74,10 @@ pub fn try_parse(input: &str) -> Result<Option<NaiveDateTime>, &'static str> {
 }
 
 /// Try parsing a backup file name into a NaiveDateTime
-pub fn parse_backup_file_name<S: AsRef<str>>(filename: S) -> Result<NaiveDateTime, ParseError> {
-    NaiveDateTime::parse_from_str(filename.as_ref(), "backup_%Y-%m-%d_%H-%M-%S.tar.zst")
+pub fn parse_backup_file_name(filename: &str) -> Result<NaiveDateTime, ParseError> {
+    const PATTERN: &str = "_%Y-%m-%d_%H-%M-%S.tar.zst";
+    const LENGTH: usize = "_YYYY-mm-dd_HH-MM-SS.tar.zst".len();
+    NaiveDateTime::parse_from_str(&filename[filename.len().saturating_sub(LENGTH)..], PATTERN)
 }
 
 // Encode a NaiveDateTime into a backup file name
@@ -93,6 +95,8 @@ mod tests {
     use std::time::SystemTime;
 
     use chrono::{Datelike, Timelike};
+
+    use crate::parse_date::parse_backup_file_name;
 
     use super::{system_to_naive, try_parse};
 
@@ -127,5 +131,16 @@ mod tests {
         assert_eq!(now2.hour(), now3.hour());
         assert_eq!(now2.minute(), now3.minute());
         assert_eq!(now2.second(), now3.second());
+
+        assert_eq!(
+            parse_backup_file_name("backup_2020-12-12_20-12-12.tar.zst").unwrap(),
+            parse_backup_file_name("test_2020-12-12_20-12-12.tar.zst").unwrap()
+        );
+        assert_eq!(
+            parse_backup_file_name("backup_2020-12-12_20-12-12.tar.zst")
+                .unwrap()
+                .year(),
+            2020
+        );
     }
 }
