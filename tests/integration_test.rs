@@ -450,10 +450,10 @@ fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
     let f1 = dir.path().join("a.txt");
     let f2 = dir.path().join("b.txt");
     let f3 = dir.path().join("c.txt");
-    let b1 = dir2.path().join("b1_2020-20-20_20-20-20.tar.zst");
-    let b2 = dir2.path().join("b2_2020-20-20_20-20-20.tar.zst");
-    let b3 = dir2.path().join("b3_2020-20-20_20-20-20.tar.zst");
-    let b4 = dir2.path().join("b4_2020-20-20_20-20-20.tar.zst");
+    let b1 = dir2.path().join("b1_2020-20-20_20-20-21.tar.zst");
+    let b2 = dir2.path().join("b2_2020-20-20_20-20-22.tar.zst");
+    let b3 = dir2.path().join("b3_2020-20-20_20-20-23.tar.zst");
+    let b4 = dir2.path().join("b4_2020-20-20_20-20-24.tar.zst");
 
     let mut config = Config {
         include: vec![dir.path().to_string_lossy().to_string()],

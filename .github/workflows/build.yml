@@ -36,7 +36,7 @@ jobs:
     - name: Run
       run: ${{ matrix.file }} --help
     - name: Release
-      uses: softprops/action-gh-release@v2.2.0
+      uses: softprops/action-gh-release@v2.1.0
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: ${{ matrix.file }}

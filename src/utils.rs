@@ -126,6 +126,14 @@ impl BackupIterator {
             .max_by_key(|(_, t)| *t)
             .map(|(p, _)| p)
     }
+
+    /// Get a vec of backups in chronological order
+    #[allow(unused)]
+    pub fn get_all(&mut self) -> std::io::Result<Vec<PathBuf>> {
+        let mut vec = self.collect::<std::io::Result<Vec<PathBuf>>>()?;
+        vec.sort_by_key(|p| get_probable_time(p));
+        Ok(vec)
+    }
 }
 
 impl Iterator for BackupIterator {
@@ -251,6 +259,7 @@ pub fn default_dir_opt() -> Option<PathBuf> {
 }
 
 #[cfg(not(feature = "dirs"))]
+#[allow(unused)]
 pub fn default_dir_opt() -> Option<PathBuf> {
     std::env::current_dir().map(Some).unwrap_or_default()
 }
@@ -289,8 +298,7 @@ mod tests {
         File::create(&f3)?;
         File::create(&f4)?;
         File::create(&f5)?;
-        let bi = BackupIterator::dir(dir.path());
-        let bis = bi.collect::<std::io::Result<Vec<PathBuf>>>()?;
+        let bis = BackupIterator::dir(dir.path()).get_all()?;
         assert_eq!(bis, vec![f2.clone(), f3.clone(), f4.clone()]);
         let mut bi = BackupIterator::dir(dir.path());
         assert_eq!(bi.get_latest().unwrap(), f4);
@@ -303,8 +311,7 @@ mod tests {
         assert_eq!(bi.get_latest().unwrap(), f2);
         std::thread::sleep(std::time::Duration::from_millis(10));
         File::create(&f6)?;
-        let bi = BackupIterator::path(dir2.path().to_path_buf())?;
-        let bis = bi.collect::<std::io::Result<Vec<PathBuf>>>()?;
+        let bis = BackupIterator::path(dir2.path().to_path_buf())?.get_all()?;
         assert_eq!(bis, vec![f5, f6.clone()]);
         let mut bi = BackupIterator::dir(dir2.path());
         assert_eq!(bi.get_latest().unwrap(), f6);

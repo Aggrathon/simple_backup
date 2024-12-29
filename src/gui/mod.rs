@@ -1,3 +1,4 @@
+#![cfg(feature = "gui")]
 /// This module contains the logic for running the program through a GUI
 use iced::widget::{column, pane_grid, row, Space};
 use iced::{Element, Length, Subscription};
@@ -27,12 +28,14 @@ extern "system" {
     fn FreeConsole() -> i32;
 }
 
-pub fn gui() {
+pub fn gui(_hide_terminal: bool) {
     #[cfg(all(target_os = "windows", not(debug_assertions)))]
-    unsafe {
-        // Safety: Windows syscall to hide the console
-        FreeConsole()
-    };
+    if _hide_terminal {
+        unsafe {
+            // Safety: Windows syscall to hide the console
+            FreeConsole()
+        };
+    }
     #[cfg(windows)]
     let bytes = include_bytes!("..\\..\\target\\icon.bytes").to_vec();
     #[cfg(not(windows))]

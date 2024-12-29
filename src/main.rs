@@ -15,7 +15,8 @@ use std::path::PathBuf;
 
 use backup::CONFIG_FILE_EXTENSION;
 use chrono::NaiveDateTime;
-use clap::{Args, Parser, Subcommand};
+#[allow(unused_imports)]
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use config::Config;
 use utils::{get_backup_from_path, get_config_from_path};
 
@@ -243,7 +244,7 @@ fn main() {
 
     if cli.cmd.is_none() {
         #[cfg(feature = "gui")]
-        gui::gui();
+        gui::gui(true);
         #[cfg(not(feature = "gui"))]
         Cli::command().print_help().unwrap();
         return;
@@ -264,7 +265,7 @@ fn main() {
         }
         #[cfg(feature = "gui")]
         Commands::Gui => {
-            gui::gui();
+            gui::gui(false);
         }
         Commands::Restore {
             source,

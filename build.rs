@@ -5,7 +5,7 @@ use tiny_skia::{Pixmap, Transform};
 use usvg::{Options, Tree};
 
 const ICON_SIZE: u32 = 64;
-const ICON_SIZES: [u32; 2] = [16, 64];
+const ICON_SIZES: [u32; 5] = [16, 32, 64, 96, 128];
 
 fn main() {
     // Render the icon to a bitmap and store the raw bytes so that they can be included when the binary is compiled
