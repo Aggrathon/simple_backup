@@ -1,6 +1,6 @@
 [package]
 name = "simple_backup"
-version = "2.1.0"
+version = "2.2.0"
 authors = ["Aggrathon <antonbjo@gmail.com>"]
 edition = "2021"
 description = "A minimal application for doing backups."
@@ -9,10 +9,9 @@ keywords = ["backup", "compression", "application", "software"]
 
 [dependencies]
 tar = "0.4.43"
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5.23", features = ["derive"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_yaml = "0.9.34"
-yaml-rust = "0.4.5"
 chrono = "0.4.39"
 regex = "1.11.1"
 path-clean = "1.0.1"
