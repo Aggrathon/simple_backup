@@ -21,7 +21,7 @@ A minimal application for doing backups.
 
 ## Binaries
 
-Precompiled binaries can be found on the [releases page](https://github.com/Aggrathon/simple_backup/releases/) (no installation required).
+Precompiled binaries (for Linux, Windows, and Mac) can be found on the [releases page](https://github.com/Aggrathon/simple_backup/releases/) (no installation required).
 
 
 ## Usage
