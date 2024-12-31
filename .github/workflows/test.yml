@@ -1,8 +1,12 @@
-name: Test
+name: Tests
 
 on:
   push:
     branches: [main, master]
+    paths:
+      - '**.rs'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
   pull_request:
     branches: [main, master]
   workflow_dispatch:

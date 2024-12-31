@@ -1,5 +1,8 @@
 # simple_backup
 
+[![Tests](https://github.com/Aggrathon/simple_backup/actions/workflows/test.yml/badge.svg)](https://github.com/Aggrathon/simple_backup/actions/workflows/test.yml)
+[![Builds](https://github.com/Aggrathon/simple_backup/actions/workflows/build.yml/badge.svg)](https://github.com/Aggrathon/simple_backup/actions/workflows/build.yml)
+
 A minimal application for doing backups.
 
 ## Features
