@@ -1,7 +1,6 @@
 #![cfg(feature = "gui")]
 /// This module contains the logic for running the program through a GUI
 use iced::widget::{Space, column, pane_grid, row};
-use iced::window::settings::PlatformSpecific;
 use iced::{Element, Length, Subscription};
 use rfd::{FileDialog, MessageDialog};
 use theme::theme;
@@ -45,7 +44,7 @@ pub fn gui(_hide_terminal: bool) {
     let settings = iced::window::settings::Settings {
         icon: Some(icon),
         #[cfg(target_os = "linux")]
-        platform_specific: PlatformSpecific {
+        platform_specific: iced::window::settings::PlatformSpecific {
             application_id: "simple_backup".into(),
             ..Default::default()
         },
