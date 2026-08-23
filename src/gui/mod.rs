@@ -1,6 +1,6 @@
 #![cfg(feature = "gui")]
 /// This module contains the logic for running the program through a GUI
-use iced::widget::{column, pane_grid, row, Space};
+use iced::widget::{Space, column, pane_grid, row};
 use iced::{Element, Length, Subscription};
 use rfd::{FileDialog, MessageDialog};
 use theme::theme;
@@ -9,7 +9,7 @@ use self::backup::BackupState;
 use self::config::ConfigState;
 use self::merge::MergeState;
 use self::restore::RestoreState;
-use crate::backup::{BackupReader, BACKUP_FILE_EXTENSION, CONFIG_FILE_EXTENSION};
+use crate::backup::{BACKUP_FILE_EXTENSION, BackupReader, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
 use crate::utils::{default_dir, get_config_from_path};
 
@@ -24,7 +24,7 @@ mod threads;
 
 #[allow(dead_code)]
 #[cfg_attr(target_os = "windows", link(name = "Kernel32"))]
-extern "system" {
+unsafe extern "system" {
     fn FreeConsole() -> i32;
 }
 
@@ -188,10 +188,10 @@ fn open_config() -> Option<Config> {
     FileDialog::new()
         .set_directory(default_dir())
         .set_title("Open existing config or backup file")
-        .add_filter("Config and backup files", &[
-            &CONFIG_FILE_EXTENSION[1..],
-            &BACKUP_FILE_EXTENSION[1..],
-        ])
+        .add_filter(
+            "Config and backup files",
+            &[&CONFIG_FILE_EXTENSION[1..], &BACKUP_FILE_EXTENSION[1..]],
+        )
         .add_filter("Config files", &[&CONFIG_FILE_EXTENSION[1..]])
         .add_filter("Backup files", &[&BACKUP_FILE_EXTENSION[1..]])
         .pick_file()

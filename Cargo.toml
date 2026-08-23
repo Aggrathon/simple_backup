@@ -2,7 +2,7 @@
 name = "simple_backup"
 version = "2.2.0"
 authors = ["Aggrathon <antonbjo@gmail.com>"]
-edition = "2021"
+edition = "2024"
 description = "A minimal application for doing backups."
 readme = "README.md"
 keywords = ["backup", "compression", "application", "software"]
