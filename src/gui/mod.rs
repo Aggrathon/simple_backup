@@ -44,6 +44,7 @@ pub fn gui(_hide_terminal: bool) {
     let icon = iced::window::icon::from_rgba(bytes, 64, 64).expect("Could not load icon");
     let settings = iced::window::settings::Settings {
         icon: Some(icon),
+        #[cfg(target_os = "linux")]
         platform_specific: PlatformSpecific {
             application_id: "simple_backup".into(),
             ..Default::default()
