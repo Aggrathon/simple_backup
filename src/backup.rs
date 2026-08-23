@@ -1,18 +1,17 @@
 /// This module contains the objects for reading and writing backups
 use std::fmt::{Display, Formatter};
-use std::fs::{create_dir_all, File};
+use std::fs::{File, create_dir_all};
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
-use number_prefix::NumberPrefix;
 
 use crate::compression::{CompressionDecoder, CompressionDecoderEntry, CompressionEncoder};
 use crate::config::Config;
 use crate::files::{FileAccessError, FileCrawler, FileInfo};
 use crate::lists::{FileListString, FileListVec};
 use crate::parse_date::naive_now;
-use crate::utils::extend_pathbuf;
+use crate::utils::{extend_pathbuf, format_size};
 
 pub(crate) const BACKUP_FILE_EXTENSION: &str = ".tar.zst";
 pub(crate) const CONFIG_DEFAULT_NAME: &str = "config.yml";
@@ -78,7 +77,11 @@ impl Display for BackupError {
                 write!(f, "Could not parse the config: {}", e)
             }
             BackupError::InvalidPath(path) => {
-                write!(f, "The path must be either a config ({}), a backup ({}), or a directory containing backups: {}", CONFIG_FILE_EXTENSION, BACKUP_FILE_EXTENSION, path)
+                write!(
+                    f,
+                    "The path must be either a config ({}), a backup ({}), or a directory containing backups: {}",
+                    CONFIG_FILE_EXTENSION, BACKUP_FILE_EXTENSION, path
+                )
             }
             BackupError::Cancel => {
                 write!(f, "The operation has been cancelled")
@@ -242,27 +245,13 @@ impl BackupWriter {
         let mut f = BufWriter::new(f);
         write!(f, "{:19}, {:10}, Path", "Time", "Size").map_err(BackupError::WriteError)?;
         let mut callback = |fi: &mut FileInfo| {
-            match NumberPrefix::binary(fi.size as f64) {
-                NumberPrefix::Standalone(number) => {
-                    write!(
-                        f,
-                        "\n{}, {:>6.2} KiB, {}",
-                        fi.time.unwrap().format("%Y-%m-%d %H:%M:%S"),
-                        number / 1024.0,
-                        &fi.get_string()
-                    )
-                }
-                NumberPrefix::Prefixed(prefix, number) => {
-                    write!(
-                        f,
-                        "\n{}, {:>6.2} {}B, {}",
-                        fi.time.unwrap().format("%Y-%m-%d %H:%M:%S"),
-                        number,
-                        prefix,
-                        &fi.get_string()
-                    )
-                }
-            }
+            write!(
+                f,
+                "\n{}, {:>10}, {}",
+                fi.time.unwrap().format("%Y-%m-%d %H:%M:%S"),
+                format_size(fi.size),
+                &fi.get_string()
+            )
             .map_err(BackupError::WriteError)
         };
         let all = all || self.prev_time.is_none();

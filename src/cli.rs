@@ -5,14 +5,13 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
-use number_prefix::NumberPrefix;
 use regex::RegexSet;
 
 use crate::backup::{BackupMerger, BackupReader, BackupWriter};
 use crate::config::Config;
 use crate::files::{FileAccessError, FileInfo};
 use crate::lists::FileListString;
-use crate::utils::{strip_absolute_from_path, BackupIterator};
+use crate::utils::{BackupIterator, format_size, strip_absolute_from_path};
 
 /// Backup files
 pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool) {
@@ -47,14 +46,7 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
                 Ok(fi) => {
                     num_files += 1;
                     total_size += fi.size;
-                    match NumberPrefix::binary(fi.size as f64) {
-                        NumberPrefix::Standalone(number) => {
-                            println!("{:>6.2} KiB  {}", number / 1024.0, &fi.get_string());
-                        }
-                        NumberPrefix::Prefixed(prefix, number) => {
-                            println!("{:>6.2} {}B  {}", number, prefix, &fi.get_string());
-                        }
-                    }
+                    println!("{:>10}  {}", format_size(fi.size), &fi.get_string())
                 }
                 Err(e) => eprintln!("{}", e),
             }

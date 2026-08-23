@@ -7,11 +7,11 @@ use iced::{Element, Length};
 use regex::Regex;
 use rfd::{FileDialog, MessageDialog};
 
-use super::{presets, Message};
+use super::{Message, presets};
 use crate::backup::{CONFIG_DEFAULT_NAME, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
 use crate::files::{FileCrawler, FileInfo};
-use crate::utils::{default_dir, home_dir};
+use crate::utils::{default_dir, home_dir, num_cpus};
 
 pub(crate) struct ConfigState {
     pub config: Config,
@@ -56,7 +56,7 @@ impl ConfigState {
         let mut state = Self {
             config,
             panes,
-            thread_alt: (1..=num_cpus::get() as u32).collect(),
+            thread_alt: (1..=num_cpus() as u32).collect(),
             compression_alt: (1..=22).collect(),
             files,
             includes,

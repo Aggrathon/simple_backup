@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::backup::BACKUP_FILE_EXTENSION;
 use crate::parse_date;
 use crate::parse_date::{create_backup_file_name, naive_now};
-use crate::utils::{BackupIterator, default_dir};
+use crate::utils::{BackupIterator, default_dir, num_cpus};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Config {
@@ -53,7 +53,7 @@ impl Config {
 
     #[allow(unused)]
     pub fn set_threads(&mut self, threads: u32) {
-        self.threads = u32::clamp(threads, 1, num_cpus::get() as u32);
+        self.threads = u32::clamp(threads, 1, num_cpus() as u32);
     }
 
     pub fn get_output(&self, home: bool) -> PathBuf {

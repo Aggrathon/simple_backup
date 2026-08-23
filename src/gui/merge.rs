@@ -8,10 +8,10 @@ use iced::{Element, Length, Subscription};
 use rfd::FileDialog;
 
 use super::threads::ThreadWrapper;
-use super::{presets, Message};
-use crate::backup::{BackupError, BackupMerger, BackupReader, BACKUP_FILE_EXTENSION};
+use super::{Message, presets};
+use crate::backup::{BACKUP_FILE_EXTENSION, BackupError, BackupMerger, BackupReader};
 use crate::files::FileInfo;
-use crate::utils::{default_dir, default_dir_opt};
+use crate::utils::{default_dir, default_dir_opt, num_cpus};
 
 fn open_backups<P: AsRef<Path>>(dir: Option<P>) -> Option<Vec<PathBuf>> {
     if let Some(dir) = dir {
@@ -73,7 +73,7 @@ impl MergeState {
             delete: false,
             quality: None,
             threads: None,
-            thread_alt: (1..=num_cpus::get() as u32).collect(),
+            thread_alt: (1..=num_cpus() as u32).collect(),
             compression_alt: (1..=22).collect(),
             stage: MergeStage::Selecting(Vec::new()),
         }

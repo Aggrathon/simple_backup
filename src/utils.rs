@@ -4,7 +4,6 @@ use std::fs::ReadDir;
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
-use number_prefix::NumberPrefix;
 
 use crate::backup::{BACKUP_FILE_EXTENSION, BackupError, BackupReader, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
@@ -19,16 +18,25 @@ macro_rules! try_some {
     };
 }
 
-#[allow(unused)]
 pub fn format_size(size: u64) -> String {
-    match NumberPrefix::binary(size as f64) {
-        NumberPrefix::Standalone(number) => {
-            format!("{:.2} KiB", number / 1024.0)
-        }
-        NumberPrefix::Prefixed(prefix, number) => {
-            format!("{:.2} {}B", number, prefix)
-        }
+    const KI: u64 = 2 ^ 10;
+    const ME: u64 = 2 ^ 20;
+    const GI: u64 = 2 ^ 30;
+    const TE: u64 = 2 ^ 40;
+    const PE: u64 = 2 ^ 50;
+    const EX: u64 = 2 ^ 60;
+    match size {
+        ..KI => format!("{:.2} KiB", size as f64 / KI as f64),
+        ..ME => format!("{:.2} MiB", size as f64 / ME as f64),
+        ..GI => format!("{:.2} GiB", size as f64 / GI as f64),
+        ..TE => format!("{:.2} TiB", size as f64 / TE as f64),
+        ..PE => format!("{:.2} PiB", size as f64 / PE as f64),
+        _ => format!("{:.2} EiB", size as f64 / EX as f64),
     }
+}
+
+pub fn num_cpus() -> usize {
+    std::thread::available_parallelism().map_or(1, |v| v.get())
 }
 
 fn get_probable_time<P: AsRef<Path>>(path: P) -> Option<NaiveDateTime> {

@@ -18,7 +18,7 @@ use chrono::NaiveDateTime;
 #[allow(unused_imports)]
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use config::Config;
-use utils::{get_backup_from_path, get_config_from_path};
+use utils::{get_backup_from_path, get_config_from_path, num_cpus};
 
 #[derive(Parser)]
 #[clap(version, about, long_about = None, propagate_version = true, term_width = 0)]
@@ -205,7 +205,7 @@ impl ArgConfig {
 }
 
 fn parse_cpu(s: &str) -> Result<u32, String> {
-    let cpus = num_cpus::get() as u32;
+    let cpus = num_cpus() as u32;
     if let Ok(i) = s.parse::<u32>() {
         if (1..=cpus).contains(&i) {
             return Ok(i);
