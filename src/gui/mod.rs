@@ -174,7 +174,7 @@ fn update(state: &mut ApplicationState, message: Message) {
     }
 }
 
-fn view(state: &ApplicationState) -> Element<Message> {
+fn view(state: &ApplicationState) -> Element<'_, Message> {
     match state {
         ApplicationState::Main(state) => state.view(),
         ApplicationState::Config(state) => state.view(),
@@ -233,7 +233,7 @@ impl MainState {
         Self {}
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         let column = presets::column_main(column![
             Space::with_height(Length::Fill),
             presets::text_title("simple_backup"),

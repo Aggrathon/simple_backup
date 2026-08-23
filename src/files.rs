@@ -140,7 +140,7 @@ impl FileInfo {
     }
 
     /// Returns the String version (with lazy conversion) without mutation
-    pub fn copy_string(&self) -> Cow<str> {
+    pub fn copy_string(&self) -> Cow<'_, str> {
         match self.string.as_ref() {
             Some(s) => Cow::Borrowed(s),
             None => self.path.as_ref().unwrap().to_string_lossy(),
@@ -156,7 +156,7 @@ impl FileInfo {
     }
 
     /// Returns the Pathbuf version (with lazy conversion) without mutation
-    pub fn copy_path(&self) -> Cow<PathBuf> {
+    pub fn copy_path(&self) -> Cow<'_, PathBuf> {
         match self.path.as_ref() {
             Some(s) => Cow::Borrowed(s),
             None => Cow::Owned(PathBuf::from(self.string.as_ref().unwrap())),

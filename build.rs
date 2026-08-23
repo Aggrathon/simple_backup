@@ -5,13 +5,13 @@ use tiny_skia::{Pixmap, Transform};
 use usvg::{Options, Tree};
 
 const ICON_SIZE: u32 = 64;
+#[allow(unused)]
 const ICON_SIZES: [u32; 5] = [16, 32, 64, 96, 128];
 
 fn main() {
     // Render the icon to a bitmap and store the raw bytes so that they can be included when the binary is compiled
     let input = Path::new("assets/icon.svg");
     let output_bytes = Path::new("target/icon.bytes");
-    let output_ico = Path::new("target\\icon.ico");
 
     let tree;
     let size;
@@ -39,6 +39,7 @@ fn main() {
     #[cfg(windows)]
     {
         // Create a ico file and embed it with resources in the Windows executable
+        let output_ico = Path::new("target\\icon.ico");
         let mut icon = ico::IconDir::new(ico::ResourceType::Icon);
         for icon_size in ICON_SIZES {
             let scale = (icon_size as f32) / size;

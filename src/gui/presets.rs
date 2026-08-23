@@ -23,7 +23,7 @@ const NAV_BUTTON_WIDTH: f32 = 64.0;
 const MAIN_BUTTON_WIDTH: f32 = 200.0;
 const MAIN_BUTTON_HEIGHT: f32 = 40.0;
 
-pub(crate) fn button(text: &str, action: Message) -> Element<Message> {
+pub(crate) fn button(text: &str, action: Message) -> Element<'_, Message> {
     let label = Text::new(text)
         .align_x(Horizontal::Center)
         .align_y(Vertical::Center);
@@ -34,7 +34,7 @@ pub(crate) fn button(text: &str, action: Message) -> Element<Message> {
         but.on_press(action).into()
     }
 }
-pub(crate) fn button_grey(text: &str, action: Message) -> Button<Message> {
+pub(crate) fn button_grey(text: &str, action: Message) -> Button<'_, Message> {
     let label = Text::new(text)
         .align_x(Horizontal::Center)
         .align_y(Vertical::Center);
@@ -46,7 +46,7 @@ pub(crate) fn button_grey(text: &str, action: Message) -> Button<Message> {
     }
 }
 
-pub(crate) fn button_group(text: &str, action: Message, selected: bool) -> Button<Message> {
+pub(crate) fn button_group(text: &str, action: Message, selected: bool) -> Button<'_, Message> {
     let label = Text::new(text)
         .align_x(Horizontal::Center)
         .align_y(Vertical::Center);
@@ -63,7 +63,7 @@ pub(crate) fn button_group(text: &str, action: Message, selected: bool) -> Butto
     }
 }
 
-pub(crate) fn button_nav(text: &str, action: Message, forward: bool) -> Element<Message> {
+pub(crate) fn button_nav(text: &str, action: Message, forward: bool) -> Element<'_, Message> {
     let label = Text::new(text)
         .width(Length::Fixed(NAV_BUTTON_WIDTH))
         .align_x(Horizontal::Center)
@@ -80,7 +80,7 @@ pub(crate) fn button_nav(text: &str, action: Message, forward: bool) -> Element<
     }
 }
 
-pub(crate) fn button_icon(text: &str, action: Message, negative: bool) -> Element<Message> {
+pub(crate) fn button_icon(text: &str, action: Message, negative: bool) -> Element<'_, Message> {
     let label = Text::new(text)
         .align_x(Horizontal::Center)
         .align_y(Vertical::Center);
@@ -118,7 +118,7 @@ pub(crate) fn space_hfill<'a>() -> Element<'a, Message> {
     Space::with_width(Length::Fill).into()
 }
 
-pub(crate) fn button_main(text: &str, alt: bool, action: Message) -> Element<Message> {
+pub(crate) fn button_main(text: &str, alt: bool, action: Message) -> Element<'_, Message> {
     let label = Text::new(text)
         .align_x(Horizontal::Center)
         .align_y(Vertical::Center);
@@ -221,7 +221,7 @@ pub(crate) fn text_center_error<'a, S: Into<Fragment<'a>>>(text: S) -> Element<'
 pub(crate) fn pane_grid<T, F>(
     state: &iced::widget::pane_grid::State<T>,
     view: F,
-) -> PaneGrid<Message>
+) -> PaneGrid<'_, Message>
 where
     F: Fn(Pane, &T, bool) -> iced::widget::pane_grid::Content<Message>,
 {
@@ -327,7 +327,7 @@ pub(crate) fn progress_bar2<'a>(current: usize, max: usize) -> ProgressBar<'a> {
         .style(theme::progressbar)
 }
 
-pub(crate) fn toggler<F>(state: bool, label: &str, on_change: F) -> Element<Message>
+pub(crate) fn toggler<F>(state: bool, label: &str, on_change: F) -> Element<'_, Message>
 where
     F: 'static + Fn(bool) -> Message,
 {
@@ -336,7 +336,7 @@ where
         .into()
 }
 
-pub(crate) fn toggler_comp<F>(state: bool, label: &str, on_change: F) -> Element<Message>
+pub(crate) fn toggler_comp<F>(state: bool, label: &str, on_change: F) -> Element<'_, Message>
 where
     F: 'static + Fn(bool) -> Message,
 {
@@ -345,7 +345,7 @@ where
         .into()
 }
 
-fn _toggler<F>(state: bool, label: &str, on_change: F) -> Toggler<Message>
+fn _toggler<F>(state: bool, label: &str, on_change: F) -> Toggler<'_, Message>
 where
     F: 'static + Fn(bool) -> Message,
 {
@@ -358,7 +358,7 @@ where
         .size(TOGGLER_SIZE)
 }
 
-pub(crate) fn checkbox<F>(state: bool, label: &str, on_change: F) -> Checkbox<Message>
+pub(crate) fn checkbox<F>(state: bool, label: &str, on_change: F) -> Checkbox<'_, Message>
 where
     F: 'static + Fn(bool) -> Message,
 {
@@ -371,7 +371,7 @@ pub(crate) fn pick_list<T, F>(
     options: &'_ [T],
     selected: Option<T>,
     on_change: F,
-) -> Element<Message>
+) -> Element<'_, Message>
 where
     T: ToString + Eq + Clone,
     F: 'static + Fn(T) -> Message,

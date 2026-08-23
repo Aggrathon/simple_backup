@@ -83,7 +83,7 @@ impl ConfigState {
         state
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<'_, Message> {
         let pane_grid = presets::pane_grid(&self.panes, |_, pane, _| pane.content());
         let bar = presets::row_bar(vec![
             presets::button_nav("Back", Message::MainView, false),
@@ -378,7 +378,7 @@ impl Pane {
         }
     }
 
-    fn content(&self) -> pane_grid::Content<Message> {
+    fn content(&self) -> pane_grid::Content<'_, Message> {
         let content = presets::column_list2(self.items.iter().map(|i| i.view()).collect());
         match self.content {
             ConfigPane::Files => presets::scroll_pane(
@@ -439,7 +439,7 @@ impl ListItem {
         Self::new(ListState::Filter, text, index, valid)
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         let row = presets::row_list();
         let row = match self.state {
             ListState::File => row.push(presets::space_icon()),
