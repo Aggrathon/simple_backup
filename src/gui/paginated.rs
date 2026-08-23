@@ -5,7 +5,7 @@ use std::cmp::min;
 use iced::widget::{Column, Space};
 use iced::{Element, Length};
 
-use super::{presets, Message};
+use super::{Message, presets};
 
 pub(crate) struct State {
     pub index: usize,
@@ -65,7 +65,7 @@ impl State {
         }
         if self.total > self.length {
             scroll = scroll.push(presets::row_list2(vec![
-                Space::with_width(Length::Fill).into(),
+                Space::new().width(Length::Fill).into(),
                 presets::button_grey(
                     "<<",
                     if self.index > 0 {
@@ -108,7 +108,7 @@ impl State {
                     },
                 )
                 .into(),
-                Space::with_width(Length::Fill).into(),
+                Space::new().width(Length::Fill).into(),
             ]));
         }
         scroll

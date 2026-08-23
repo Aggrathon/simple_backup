@@ -1,6 +1,7 @@
 #![cfg(feature = "gui")]
 /// This module contains the logic for running the program through a GUI
 use iced::widget::{Space, column, pane_grid, row};
+use iced::window::settings::PlatformSpecific;
 use iced::{Element, Length, Subscription};
 use rfd::{FileDialog, MessageDialog};
 use theme::theme;
@@ -43,9 +44,14 @@ pub fn gui(_hide_terminal: bool) {
     let icon = iced::window::icon::from_rgba(bytes, 64, 64).expect("Could not load icon");
     let settings = iced::window::settings::Settings {
         icon: Some(icon),
+        platform_specific: PlatformSpecific {
+            application_id: "simple_backup".into(),
+            ..Default::default()
+        },
         ..Default::default()
     };
-    iced::application(title, update, view)
+    iced::application(ApplicationState::default, update, view)
+        .title(title)
         .theme(theme)
         .window(settings)
         .subscription(subscription)
@@ -235,20 +241,20 @@ impl MainState {
 
     fn view(&self) -> Element<'_, Message> {
         let column = presets::column_main(column![
-            Space::with_height(Length::Fill),
+            Space::new().height(Length::Fill),
             presets::text_title("simple_backup"),
-            Space::with_height(Length::Shrink),
+            Space::new().height(Length::Shrink),
             presets::button_main("Create", false, Message::CreateConfig),
             presets::button_main("Edit", false, Message::EditConfig),
             presets::button_main("Backup", false, Message::BackupView),
             presets::button_main("Merge", true, Message::MergeView),
             presets::button_main("Restore", true, Message::RestoreView),
-            Space::with_height(Length::Fill),
+            Space::new().height(Length::Fill),
         ]);
         row![
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             column,
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
         ]
         .into()
     }

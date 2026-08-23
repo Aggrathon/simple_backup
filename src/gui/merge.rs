@@ -284,7 +284,7 @@ impl MergeState {
                 };
                 let brow = presets::row_bar(vec![
                     presets::button_nav("Back", Message::MainView, false),
-                    Space::with_width(Length::Fill).into(),
+                    Space::new().width(Length::Fill).into(),
                     presets::text("Compression:").into(),
                     presets::pick_list(
                         &self.compression_alt,
@@ -298,7 +298,7 @@ impl MergeState {
                     presets::toggler(self.all, "Deleted files", Message::All),
                     presets::space_large(),
                     presets::toggler_comp(self.delete, "Remove merged", Message::Delete),
-                    Space::with_width(Length::Fill).into(),
+                    Space::new().width(Length::Fill).into(),
                     presets::button_nav("Merge", mess, true),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());

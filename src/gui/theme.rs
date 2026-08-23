@@ -1,11 +1,11 @@
 #![cfg(feature = "gui")]
 
-use iced::theme::palette::{Background, Danger, Extended, Primary, Secondary, Success};
 use iced::theme::Palette;
+use iced::theme::palette::{Background, Danger, Extended, Primary, Secondary, Success, Warning};
 use iced::widget::{
     button, checkbox, container, pick_list, progress_bar, scrollable, text_input, toggler,
 };
-use iced::{border, Border, Color, Shadow, Theme, Vector};
+use iced::{Border, Color, Shadow, Theme, Vector, border};
 
 use super::ApplicationState;
 
@@ -28,6 +28,7 @@ pub fn theme(_state: &ApplicationState) -> Theme {
             primary: COLOR_LIGHT,
             success: COLOR_APP,
             danger: COLOR_COMP,
+            warning: COLOR_COMP,
         },
         |p| Extended {
             background: Background::new(p.background, p.text),
@@ -35,6 +36,7 @@ pub fn theme(_state: &ApplicationState) -> Theme {
             secondary: Secondary::generate(COLOR_GREY, p.text),
             success: Success::generate(p.success, p.background, p.text),
             danger: Danger::generate(p.danger, p.background, p.text),
+            warning: Warning::generate(p.danger, p.background, p.text),
             is_dark: false,
         },
     )
@@ -59,6 +61,7 @@ pub fn button_normal(theme: &Theme, status: button::Status) -> button::Style {
                 color: ext.success.weak.color,
                 ..Default::default()
             },
+            ..Default::default()
         },
         button::Status::Pressed => button::Style {
             background: Some(ext.success.strong.color.into()),
@@ -94,6 +97,7 @@ pub fn button_negative(theme: &Theme, status: button::Status) -> button::Style {
                 color: ext.danger.weak.color,
                 ..Default::default()
             },
+            ..Default::default()
         },
         button::Status::Pressed => button::Style {
             background: Some(ext.danger.strong.color.into()),
@@ -189,8 +193,8 @@ fn _toggle(theme: &Theme, status: toggler::Status, color: Color) -> toggler::Sty
     match status {
         toggler::Status::Active { is_toggled } | toggler::Status::Hovered { is_toggled } => {
             if is_toggled {
-                style.background = color;
-                style.foreground = palette.background.base.color;
+                style.background = color.into();
+                style.foreground = palette.background.base.color.into();
             }
         }
         _ => {}
@@ -228,7 +232,7 @@ pub fn dropdown(theme: &Theme, status: pick_list::Status) -> pick_list::Style {
                 width: BORDER_SMALL,
                 color: palette.background.base.text,
             },
-            pick_list::Status::Hovered | pick_list::Status::Opened => Border {
+            pick_list::Status::Hovered | pick_list::Status::Opened { is_hovered: _ } => Border {
                 radius: RADIUS_SMALL.into(),
                 width: BORDER_SMALL * 1.5,
                 color: palette.primary.base.color,

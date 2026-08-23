@@ -6,7 +6,7 @@ use regex::Regex;
 use rfd::FileDialog;
 
 use super::threads::ThreadWrapper;
-use super::{paginated, presets, Message};
+use super::{Message, paginated, presets};
 use crate::backup::{BackupError, BackupReader};
 use crate::files::FileInfo;
 
@@ -454,7 +454,7 @@ impl RestoreState {
                     } else {
                         "Restoration failed"
                     }),
-                    Space::with_width(Length::Fill).into(),
+                    Space::new().width(Length::Fill).into(),
                 ]);
                 let scroll = presets::scroll_border(scroll.into());
                 presets::column_root(vec![scroll, brow.into()]).into()

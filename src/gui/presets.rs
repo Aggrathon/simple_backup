@@ -7,12 +7,12 @@ use iced::font::Weight;
 use iced::widget::pane_grid::Pane;
 use iced::widget::text::Fragment;
 use iced::widget::{
-    tooltip, Button, Checkbox, Column, Container, PaneGrid, PickList, ProgressBar, Row, Scrollable,
-    Space, Text, TextInput, Toggler, Tooltip,
+    Button, Checkbox, Column, Container, PaneGrid, PickList, ProgressBar, Row, Scrollable, Space,
+    Text, TextInput, Toggler, Tooltip, tooltip,
 };
 use iced::{Element, Font, Length};
 
-use super::{theme, Message};
+use super::{Message, theme};
 
 const ICON_WIDTH_BUTTON: f32 = 30.0;
 const SPACING_INNER: f32 = 3.0;
@@ -99,23 +99,23 @@ pub(crate) fn button_icon(text: &str, action: Message, negative: bool) -> Elemen
 }
 
 pub(crate) fn space_icon<'a>() -> Element<'a, Message> {
-    Space::with_width(Length::Fixed(ICON_WIDTH_BUTTON)).into()
+    Space::new().width(Length::Fixed(ICON_WIDTH_BUTTON)).into()
 }
 
 pub(crate) fn space_scroll<'a>() -> Element<'a, Message> {
-    Space::with_width(Length::Shrink).into()
+    Space::new().width(Length::Shrink).into()
 }
 
 pub(crate) fn space_inner<'a>() -> Element<'a, Message> {
-    Space::with_height(Length::Fixed(SPACING_INNER)).into()
+    Space::new().height(Length::Fixed(SPACING_INNER)).into()
 }
 
 pub(crate) fn space_large<'a>() -> Element<'a, Message> {
-    Space::with_height(Length::Fixed(SPACING_LARGE)).into()
+    Space::new().height(Length::Fixed(SPACING_LARGE)).into()
 }
 
 pub(crate) fn space_hfill<'a>() -> Element<'a, Message> {
-    Space::with_width(Length::Fill).into()
+    Space::new().width(Length::Fill).into()
 }
 
 pub(crate) fn button_main(text: &str, alt: bool, action: Message) -> Element<'_, Message> {
@@ -237,7 +237,7 @@ pub(crate) fn pane_border<'a, S: Into<Fragment<'a>>>(
     content: Element<'a, Message>,
 ) -> iced::widget::pane_grid::Content<'a, Message> {
     let title = Row::with_children(vec![
-        Space::with_width(Length::Shrink).into(),
+        Space::new().width(Length::Shrink).into(),
         Text::new(title.into()).align_y(Vertical::Center).into(),
     ])
     .align_y(Vertical::Center)
@@ -317,13 +317,13 @@ where
 
 pub(crate) fn progress_bar<'a>(current: f32, max: f32) -> ProgressBar<'a> {
     ProgressBar::new(0.0..=max, current)
-        .width(Length::Fill)
+        .length(Length::Fill)
         .style(theme::progressbar)
 }
 
 pub(crate) fn progress_bar2<'a>(current: usize, max: usize) -> ProgressBar<'a> {
     ProgressBar::new(0.0..=max as f32, current as f32)
-        .width(Length::Fill)
+        .length(Length::Fill)
         .style(theme::progressbar)
 }
 
@@ -362,7 +362,8 @@ pub(crate) fn checkbox<F>(state: bool, label: &str, on_change: F) -> Checkbox<'_
 where
     F: 'static + Fn(bool) -> Message,
 {
-    Checkbox::new(label, state)
+    Checkbox::new(state)
+        .label(label)
         .on_toggle(on_change)
         .style(theme::checkbox_color)
 }
