@@ -1,5 +1,4 @@
 /// This module contains utility functions (such as getting backups and configs)
-use std::cmp::PartialOrd;
 use std::ffi::{OsStr, OsString};
 use std::fs::ReadDir;
 use std::path::{Path, PathBuf};
@@ -7,7 +6,7 @@ use std::path::{Path, PathBuf};
 use chrono::NaiveDateTime;
 use number_prefix::NumberPrefix;
 
-use crate::backup::{BackupError, BackupReader, BACKUP_FILE_EXTENSION, CONFIG_FILE_EXTENSION};
+use crate::backup::{BACKUP_FILE_EXTENSION, BackupError, BackupReader, CONFIG_FILE_EXTENSION};
 use crate::config::Config;
 use crate::parse_date::parse_backup_file_name;
 
@@ -18,21 +17,6 @@ macro_rules! try_some {
             Err(e) => return Some(Err(e)),
         }
     };
-}
-
-pub fn clamp<T>(value: T, min: T, max: T) -> T
-where
-    T: PartialOrd,
-{
-    if value > min {
-        if value < max {
-            value
-        } else {
-            max
-        }
-    } else {
-        min
-    }
 }
 
 #[allow(unused)]
@@ -104,7 +88,9 @@ impl BackupIterator {
     /// Get the latest backup based on the timestamp in the file name
     pub fn get_latest(&mut self) -> Option<PathBuf> {
         self.filter_map(|res| res.ok())
-            .max_by_key(|p| get_probable_time(p))
+            .map(|p| (get_probable_time(&p), p))
+            .max()
+            .map(|(_, p)| p)
     }
 
     /// Get the previous backup based on a file name
@@ -113,11 +99,7 @@ impl BackupIterator {
         self.filter_map(|res| res.ok())
             .filter_map(|p| {
                 let t2 = get_probable_time(&p);
-                if t2 < time {
-                    Some((p, t2))
-                } else {
-                    None
-                }
+                if t2 < time { Some((p, t2)) } else { None }
             })
             .max_by_key(|(_, t)| *t)
             .map(|(p, _)| p)
@@ -126,9 +108,11 @@ impl BackupIterator {
     /// Get a vec of backups in chronological order
     #[allow(unused)]
     pub fn get_all(&mut self) -> std::io::Result<Vec<PathBuf>> {
-        let mut vec = self.collect::<std::io::Result<Vec<PathBuf>>>()?;
-        vec.sort_by_key(|p| get_probable_time(p));
-        Ok(vec)
+        let mut vec = self
+            .map(|r| r.map(|p| (get_probable_time(&p), p)))
+            .collect::<std::io::Result<Vec<(Option<NaiveDateTime>, PathBuf)>>>()?;
+        vec.sort();
+        Ok(vec.into_iter().map(|(_, p)| p).collect())
     }
 }
 
@@ -268,10 +252,10 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        get_backup_from_path, get_config_from_path, strip_absolute_from_path, BackupIterator,
+        BackupIterator, get_backup_from_path, get_config_from_path, strip_absolute_from_path,
     };
-    use crate::backup::BackupError;
     use crate::Config;
+    use crate::backup::BackupError;
 
     #[test]
     fn try_macros() {
@@ -294,6 +278,7 @@ mod tests {
         File::create(&f3)?;
         File::create(&f4)?;
         File::create(&f5)?;
+        File::create(&f6)?;
         let bis = BackupIterator::dir(dir.path()).get_all()?;
         assert_eq!(bis, vec![f2.clone(), f3.clone(), f4.clone()]);
         let mut bi = BackupIterator::dir(dir.path());
@@ -305,8 +290,6 @@ mod tests {
         assert!(bi.next().is_none());
         let mut bi = BackupIterator::file(f2.clone());
         assert_eq!(bi.get_latest().unwrap(), f2);
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        File::create(&f6)?;
         let bis = BackupIterator::path(dir2.path().to_path_buf())?.get_all()?;
         assert_eq!(bis, vec![f5, f6.clone()]);
         let mut bi = BackupIterator::dir(dir2.path());
