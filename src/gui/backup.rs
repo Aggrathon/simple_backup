@@ -5,7 +5,7 @@ use iced::{Element, Length, Subscription};
 use rfd::FileDialog;
 
 use super::threads::ThreadWrapper;
-use super::{paginated, presets, Message};
+use super::{Message, paginated, presets};
 use crate::backup::{BackupError, BackupWriter};
 use crate::config::Config;
 use crate::files::FileInfo;
@@ -151,24 +151,21 @@ impl BackupState {
                     }
                 }
                 BackupStage::Cancelling(wrapper) => {
-                    if wrapper.try_cancel() {
-                        if let BackupStage::Cancelling(wrapper) =
+                    if wrapper.try_cancel()
+                        && let BackupStage::Cancelling(wrapper) =
                             std::mem::replace(&mut self.stage, BackupStage::Failed)
-                        {
-                            match wrapper.cancel() {
-                                Ok(writer) => {
-                                    if let Err(e) = writer.delete_file() {
-                                        self.error.push('\n');
-                                        self.error.push_str(&e.to_string());
-                                    }
-                                    self.current_count = 0;
-                                    self.stage = BackupStage::Cancelled
+                    {
+                        match wrapper.cancel() {
+                            Ok(writer) => {
+                                if let Err(e) = writer.delete_file() {
+                                    self.error.push('\n');
+                                    self.error.push_str(&e.to_string());
                                 }
-                                Err(_) => {
-                                    self.error.push_str("\nFailure when cancelling the backup")
-                                }
-                            };
-                        }
+                                self.current_count = 0;
+                                self.stage = BackupStage::Cancelled
+                            }
+                            Err(_) => self.error.push_str("\nFailure when cancelling the backup"),
+                        };
                     }
                 }
                 _ => {}
@@ -214,29 +211,26 @@ impl BackupState {
                 }
             }
             Message::Cancel => {
-                if let BackupStage::Performing(_) = &self.stage {
-                    if let BackupStage::Performing(wrapper) =
+                if let BackupStage::Performing(_) = &self.stage
+                    && let BackupStage::Performing(wrapper) =
                         std::mem::replace(&mut self.stage, BackupStage::Failed)
-                    {
-                        self.stage = BackupStage::Cancelling(wrapper);
-                    }
+                {
+                    self.stage = BackupStage::Cancelling(wrapper);
                 }
             }
             Message::Export => {
-                if let BackupStage::Viewing(writer) = &mut self.stage {
-                    if let Some(file) = FileDialog::new()
+                if let BackupStage::Viewing(writer) = &mut self.stage
+                    && let Some(file) = FileDialog::new()
                         .set_directory(self.config.get_output(true))
                         .set_title("Save list of files to backup")
                         .set_file_name("files.txt")
                         .add_filter("Text file", &["txt"])
                         .add_filter("Csv file", &["csv"])
                         .save_file()
-                    {
-                        if let Err(e) = writer.export_list(file, false) {
-                            self.error.push('\n');
-                            self.error.push_str(&e.to_string());
-                        }
-                    }
+                    && let Err(e) = writer.export_list(file, false)
+                {
+                    self.error.push('\n');
+                    self.error.push_str(&e.to_string());
                 }
             }
             Message::GoTo(index) => {

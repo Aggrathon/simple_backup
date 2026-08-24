@@ -75,15 +75,15 @@ impl From<&str> for FileInfo {
 
 impl PartialEq for FileInfo {
     fn eq(&self, other: &Self) -> bool {
-        if let Some(s1) = self.string.as_ref() {
-            if let Some(s2) = other.string.as_ref() {
-                return s1 == s2;
-            }
+        if let Some(s1) = self.string.as_ref()
+            && let Some(s2) = other.string.as_ref()
+        {
+            return s1 == s2;
         }
-        if let Some(p1) = self.path.as_ref() {
-            if let Some(p2) = other.path.as_ref() {
-                return p1 == p2;
-            }
+        if let Some(p1) = self.path.as_ref()
+            && let Some(p2) = other.path.as_ref()
+        {
+            return p1 == p2;
         }
         false
     }
@@ -92,15 +92,15 @@ impl PartialEq for FileInfo {
 #[allow(clippy::non_canonical_partial_ord_impl)]
 impl PartialOrd for FileInfo {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        if let Some(s1) = self.string.as_ref() {
-            if let Some(s2) = other.string.as_ref() {
-                return Some(s1.cmp(s2));
-            }
+        if let Some(s1) = self.string.as_ref()
+            && let Some(s2) = other.string.as_ref()
+        {
+            return Some(s1.cmp(s2));
         }
-        if let Some(p1) = self.path.as_ref() {
-            if let Some(p2) = other.path.as_ref() {
-                return Some(p1.cmp(p2));
-            }
+        if let Some(p1) = self.path.as_ref()
+            && let Some(p2) = other.path.as_ref()
+        {
+            return Some(p1.cmp(p2));
         }
         None
     }
@@ -156,7 +156,7 @@ impl FileInfo {
     }
 
     /// Returns the Pathbuf version (with lazy conversion) without mutation
-    pub fn copy_path(&self) -> Cow<'_, PathBuf> {
+    pub fn copy_path(&self) -> Cow<'_, Path> {
         match self.path.as_ref() {
             Some(s) => Cow::Borrowed(s),
             None => Cow::Owned(PathBuf::from(self.string.as_ref().unwrap())),
@@ -365,14 +365,16 @@ impl Iterator for FileCrawler {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(mut item) = self.stack.pop() {
-            let md = try_some!(item
-                .get_path()
-                .metadata()
-                .map_err(|e| FileAccessError::new(e, item.move_string())));
+            let md = try_some!(
+                item.get_path()
+                    .metadata()
+                    .map_err(|e| FileAccessError::new(e, item.move_string()))
+            );
             if md.is_file() {
-                item.time = Some(parse_date::system_to_naive(try_some!(md
-                    .modified()
-                    .map_err(|e| FileAccessError::new(e, item.move_string())))));
+                item.time = Some(parse_date::system_to_naive(try_some!(
+                    md.modified()
+                        .map_err(|e| FileAccessError::new(e, item.move_string()))
+                )));
                 item.size = md.len();
                 return Some(Ok(item));
             } else {
@@ -392,8 +394,7 @@ impl Iterator for FileCrawler {
                 }
                 if !self.temp.is_empty() {
                     // Sort the added items to preserve lexicographic ordering
-                    self.temp
-                        .sort_unstable_by(|a, b| a.1.file_name().cmp(&b.1.file_name()));
+                    self.temp.sort_unstable_by_key(|a| a.1.file_name());
                     // Check for items already on the stack
                     let mut count = self.stack.len();
                     let mut needs_sorting = false;

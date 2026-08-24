@@ -23,6 +23,7 @@ pub fn format_size(size: u64) -> String {
     const MT: u64 = 999 * (1 << 20);
     const GT: u64 = 999 * (1 << 30);
     const TT: u64 = 999 * (1 << 40);
+    #[allow(clippy::match_overlapping_arm)]
     match size {
         ..=KT => format!("{:.2} KiB", size as f64 / (1 << 10) as f64),
         ..=MT => format!("{:.2} MiB", size as f64 / (1 << 20) as f64),

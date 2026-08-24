@@ -176,8 +176,8 @@ impl BackupWriter {
         mut callback: impl FnMut(Result<&mut FileInfo, FileAccessError>) -> Result<(), BackupError>,
     ) -> Result<(), BackupError> {
         let all = all || self.prev_time.is_none();
-        if self.list.is_some() {
-            for (b, fi) in self.list.as_mut().unwrap().iter_mut() {
+        if let Some(l) = self.list.as_mut() {
+            for (b, fi) in l.iter_mut() {
                 if all || *b {
                     callback(Ok(fi))?
                 }
@@ -303,7 +303,7 @@ impl BackupReader {
     }
 
     pub fn get_decoder<'a>(&self) -> Result<CompressionDecoder<'a>, BackupError> {
-        CompressionDecoder::read(self.path.copy_path().as_path()).map_err(BackupError::ArchiveError)
+        CompressionDecoder::read(self.path.copy_path()).map_err(BackupError::ArchiveError)
     }
 
     /// Read a backup, but only return the embedded config
@@ -343,6 +343,7 @@ impl BackupReader {
 
     /// Get the config
     pub fn get_config(&mut self) -> Result<&mut Config, BackupError> {
+        #[allow(clippy::unnecessary_unwrap)]
         if self.config.is_none() {
             self.read_config()
         } else {
@@ -381,6 +382,7 @@ impl BackupReader {
     /// Get the embedded list of files
     #[allow(unused)]
     pub fn get_list(&mut self) -> Result<&FileListString, BackupError> {
+        #[allow(clippy::unnecessary_unwrap)]
         if self.list.is_none() {
             self.read_list()
         } else {
@@ -416,6 +418,7 @@ impl BackupReader {
 
     /// Get the embedded list of files
     pub fn get_meta(&mut self) -> Result<(&Config, &FileListString), BackupError> {
+        #[allow(clippy::unnecessary_unwrap)]
         if self.config.is_none() || self.list.is_none() {
             self.read_meta()
         } else {
@@ -576,10 +579,8 @@ impl BackupReader {
             }
         }
         if !not_found.is_empty() {
-            if recursive {
-                if let Some(mut bw) = self.get_previous()? {
-                    return bw.restore(not_found, path_transform, callback, overwrite, recursive);
-                }
+            if recursive && let Some(mut bw) = self.get_previous()? {
+                return bw.restore(not_found, path_transform, callback, overwrite, recursive);
             }
             for f in not_found.iter() {
                 callback(Err(std::io::Error::new(

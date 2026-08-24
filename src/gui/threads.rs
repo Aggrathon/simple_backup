@@ -143,12 +143,12 @@ impl ThreadWrapper<Result<FileInfo, BackupError>, BackupReader> {
         flatten: bool,
         output: Option<PathBuf>,
         batch_size: usize,
-    ) -> Result<Self, (BackupReader, BackupError)> {
+    ) -> Result<Self, Box<(BackupReader, BackupError)>> {
         if flatten && output.is_none() {
-            return Err((
+            return Err(Box::new((
                 reader,
                 BackupError::GenericError("The output must be given if flatten=true"),
-            ));
+            )));
         }
 
         let (send, queue) = std::sync::mpsc::channel();

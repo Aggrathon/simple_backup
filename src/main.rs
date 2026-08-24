@@ -206,19 +206,19 @@ impl ArgConfig {
 
 fn parse_cpu(s: &str) -> Result<u32, String> {
     let cpus = num_cpus() as u32;
-    if let Ok(i) = s.parse::<u32>() {
-        if (1..=cpus).contains(&i) {
-            return Ok(i);
-        }
+    if let Ok(i) = s.parse::<u32>()
+        && (1..=cpus).contains(&i)
+    {
+        return Ok(i);
     }
     Err(format!("Must be a number between 1-{}!", cpus))
 }
 
 fn parse_quality(s: &str) -> Result<i32, &'static str> {
-    if let Ok(i) = s.parse::<i32>() {
-        if (1..=22).contains(&i) {
-            return Ok(i);
-        }
+    if let Ok(i) = s.parse::<i32>()
+        && (1..=22).contains(&i)
+    {
+        return Ok(i);
     }
     Err("Must be a number between 1-22!")
 }

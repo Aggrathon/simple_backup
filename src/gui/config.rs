@@ -206,18 +206,18 @@ impl ConfigState {
             Message::FilterEdit(i, s) => {
                 let pane = self.panes.get_mut(self.filters).unwrap();
                 let mut refresh = false;
-                if let Some(item) = pane.items.get_mut(i) {
-                    if !item.text.eq(&s) {
-                        if Regex::new(&s).is_ok() {
-                            item.status = true;
-                            refresh = true;
-                            self.config.regex[i].replace_range(.., &s);
-                        } else {
-                            refresh = item.status;
-                            item.status = false;
-                        }
-                        item.text = s;
+                if let Some(item) = pane.items.get_mut(i)
+                    && !item.text.eq(&s)
+                {
+                    if Regex::new(&s).is_ok() {
+                        item.status = true;
+                        refresh = true;
+                        self.config.regex[i].replace_range(.., &s);
+                    } else {
+                        refresh = item.status;
+                        item.status = false;
                     }
+                    item.text = s;
                 }
                 if refresh {
                     self.refresh_files();

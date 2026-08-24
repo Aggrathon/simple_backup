@@ -191,11 +191,10 @@ fn _toggle(theme: &Theme, status: toggler::Status, color: Color) -> toggler::Sty
     let palette = theme.extended_palette();
     let mut style = toggler::default(theme, status);
     match status {
-        toggler::Status::Active { is_toggled } | toggler::Status::Hovered { is_toggled } => {
-            if is_toggled {
-                style.background = color.into();
-                style.foreground = palette.background.base.color.into();
-            }
+        toggler::Status::Active { is_toggled: true }
+        | toggler::Status::Hovered { is_toggled: true } => {
+            style.background = color.into();
+            style.foreground = palette.background.base.color.into();
         }
         _ => {}
     }

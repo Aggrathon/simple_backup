@@ -17,11 +17,8 @@ use crate::utils::{BackupIterator, format_size, strip_absolute_from_path};
 /// Backup files
 pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool) {
     let (mut bw, error) = BackupWriter::new(config);
-    if error.is_some() {
-        eprintln!(
-            "Could not get time from previous backup: {}",
-            error.unwrap()
-        );
+    if let Some(e) = error {
+        eprintln!("Could not get time from previous backup: {}", e);
     }
     if bw.path.exists() && !force {
         panic!(
@@ -34,11 +31,8 @@ pub fn backup(config: Config, verbose: bool, force: bool, dry: bool, quiet: bool
     let mut num_files = 0;
     let mut total_size = 0;
     if verbose {
-        if bw.config.time.is_some() {
-            eprintln!(
-                "Updated files to backup (since {}):",
-                bw.config.time.unwrap()
-            );
+        if let Some(t) = bw.config.time {
+            eprintln!("Updated files to backup (since {}):", t);
         } else {
             eprintln!("Files to backup:");
         }
@@ -229,7 +223,7 @@ pub fn restore<P: AsRef<Path>>(
                 let path = strip_absolute_from_path(&s);
                 bar.set_message(s);
                 let target = o.as_ref().join(&path).clean();
-                if !target.starts_with(&o) {
+                if !target.starts_with(o) {
                     bar.println(format!(
                         "Path would traverse outside output: '{}'",
                         target.display()

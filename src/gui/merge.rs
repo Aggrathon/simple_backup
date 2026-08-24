@@ -121,69 +121,66 @@ impl MergeState {
                     }
                 }
                 MergeStage::Cancelling(wrapper) => {
-                    if wrapper.try_cancel() {
-                        if let MergeStage::Cancelling(wrapper) =
+                    if wrapper.try_cancel()
+                        && let MergeStage::Cancelling(wrapper) =
                             std::mem::replace(&mut self.stage, MergeStage::Failed)
-                        {
-                            match wrapper.cancel() {
-                                Ok(merger) => {
-                                    if let Err(e) = merger.delete_file() {
-                                        self.error.push('\n');
-                                        self.error.push_str(&e.to_string());
-                                    }
-                                    self.current_count = 0;
-                                    self.stage = MergeStage::Cancelled;
+                    {
+                        match wrapper.cancel() {
+                            Ok(merger) => {
+                                if let Err(e) = merger.delete_file() {
+                                    self.error.push('\n');
+                                    self.error.push_str(&e.to_string());
                                 }
-                                Err(_) => {
-                                    self.error.push_str("\nFailure when cancelling the backup");
-                                }
-                            };
-                        }
+                                self.current_count = 0;
+                                self.stage = MergeStage::Cancelled;
+                            }
+                            Err(_) => {
+                                self.error.push_str("\nFailure when cancelling the backup");
+                            }
+                        };
                     }
                 }
                 _ => {}
             },
             Message::Merge => {
-                if let MergeStage::Selecting(_) = &self.stage {
-                    if let MergeStage::Selecting(list) =
+                if let MergeStage::Selecting(_) = &self.stage
+                    && let MergeStage::Selecting(list) =
                         std::mem::replace(&mut self.stage, MergeStage::Failed)
-                    {
-                        match BackupMerger::new(
-                            None,
-                            list,
-                            self.all,
-                            self.delete,
-                            true,
-                            self.quality,
-                            self.threads,
-                        ) {
-                            Ok(mut merger) => {
-                                if let Some(path) = select_output(&merger.path) {
-                                    merger.path = path;
-                                    self.current_count = merger.files.len();
-                                    self.stage = MergeStage::Performing(
-                                        ThreadWrapper::merge_backups(merger, 1000),
-                                    );
-                                } else {
-                                    self.stage = MergeStage::Selecting(merger.deconstruct());
-                                }
+                {
+                    match BackupMerger::new(
+                        None,
+                        list,
+                        self.all,
+                        self.delete,
+                        true,
+                        self.quality,
+                        self.threads,
+                    ) {
+                        Ok(mut merger) => {
+                            if let Some(path) = select_output(&merger.path) {
+                                merger.path = path;
+                                self.current_count = merger.files.len();
+                                self.stage = MergeStage::Performing(ThreadWrapper::merge_backups(
+                                    merger, 1000,
+                                ));
+                            } else {
+                                self.stage = MergeStage::Selecting(merger.deconstruct());
                             }
-                            Err((_, e)) => {
-                                self.error.push('\n');
-                                self.error.push_str(&e.to_string());
-                                self.stage = MergeStage::Error;
-                            }
+                        }
+                        Err((_, e)) => {
+                            self.error.push('\n');
+                            self.error.push_str(&e.to_string());
+                            self.stage = MergeStage::Error;
                         }
                     }
                 }
             }
             Message::Cancel => {
-                if let MergeStage::Performing(_) = &self.stage {
-                    if let MergeStage::Performing(wrapper) =
+                if let MergeStage::Performing(_) = &self.stage
+                    && let MergeStage::Performing(wrapper) =
                         std::mem::replace(&mut self.stage, MergeStage::Failed)
-                    {
-                        self.stage = MergeStage::Cancelling(wrapper);
-                    }
+                {
+                    self.stage = MergeStage::Cancelling(wrapper);
                 }
             }
             Message::IncludeRemove(i) => {

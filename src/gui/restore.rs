@@ -178,28 +178,25 @@ impl RestoreState {
                     }
                 }
                 RestoreStage::Cancelling(wrapper) => {
-                    if wrapper.try_cancel() {
-                        if let RestoreStage::Cancelling(wrapper) =
+                    if wrapper.try_cancel()
+                        && let RestoreStage::Cancelling(wrapper) =
                             std::mem::replace(&mut self.stage, RestoreStage::Failed)
-                        {
-                            match wrapper.cancel() {
-                                Ok(reader) => {
-                                    self.stage = RestoreStage::Cancelled(Box::new(reader))
-                                }
-                                Err(_) => self.error.push_str(if self.extract {
-                                    "\nFailure when cancelling the extraction"
-                                } else {
-                                    "\nFailure when cancelling the restoration"
-                                }),
-                            };
-                        }
+                    {
+                        match wrapper.cancel() {
+                            Ok(reader) => self.stage = RestoreStage::Cancelled(Box::new(reader)),
+                            Err(_) => self.error.push_str(if self.extract {
+                                "\nFailure when cancelling the extraction"
+                            } else {
+                                "\nFailure when cancelling the restoration"
+                            }),
+                        };
                     }
                 }
                 _ => {}
             },
             Message::Extract => {
-                if let RestoreStage::Viewing(reader, _) = &self.stage {
-                    if let Some(output) = FileDialog::new()
+                if let RestoreStage::Viewing(reader, _) = &self.stage
+                    && let Some(output) = FileDialog::new()
                         .set_directory(
                             reader
                                 .config
@@ -209,64 +206,59 @@ impl RestoreState {
                         )
                         .set_title("Select directory to extract to")
                         .pick_folder()
-                    {
-                        if let RestoreStage::Viewing(reader, list) =
-                            std::mem::replace(&mut self.stage, RestoreStage::Failed)
-                        {
-                            self.extract = true;
-                            self.stage = match ThreadWrapper::restore_files(
-                                *reader,
-                                list.into_iter()
-                                    .filter_map(|(b, s)| if b { Some(s) } else { None })
-                                    .collect(),
-                                self.flat,
-                                Some(output),
-                                1000,
-                            ) {
-                                Ok(w) => RestoreStage::Performing(w),
-                                Err((br, e)) => {
-                                    self.error.push('\n');
-                                    self.error.push_str(&e.to_string());
-                                    RestoreStage::Error(Box::new(br))
-                                }
-                            }
+                    && let RestoreStage::Viewing(reader, list) =
+                        std::mem::replace(&mut self.stage, RestoreStage::Failed)
+                {
+                    self.extract = true;
+                    self.stage = match ThreadWrapper::restore_files(
+                        *reader,
+                        list.into_iter()
+                            .filter_map(|(b, s)| if b { Some(s) } else { None })
+                            .collect(),
+                        self.flat,
+                        Some(output),
+                        1000,
+                    ) {
+                        Ok(w) => RestoreStage::Performing(w),
+                        Err(b) => {
+                            self.error.push('\n');
+                            self.error.push_str(&b.1.to_string());
+                            RestoreStage::Error(Box::new(b.0))
                         }
                     }
                 }
             }
             Message::Restore => {
-                if let RestoreStage::Viewing(..) = &self.stage {
-                    if let RestoreStage::Viewing(reader, list) =
+                if let RestoreStage::Viewing(..) = &self.stage
+                    && let RestoreStage::Viewing(reader, list) =
                         std::mem::replace(&mut self.stage, RestoreStage::Failed)
-                    {
-                        self.pagination.set_total(list.len());
-                        self.extract = false;
-                        self.stage = match ThreadWrapper::restore_files(
-                            *reader,
-                            list.into_iter()
-                                .filter_map(|(b, s)| if b { Some(s) } else { None })
-                                .collect(),
-                            false,
-                            None,
-                            1000,
-                        ) {
-                            Ok(w) => RestoreStage::Performing(w),
-                            Err((br, e)) => {
-                                self.error.push('\n');
-                                self.error.push_str(&e.to_string());
-                                RestoreStage::Error(Box::new(br))
-                            }
-                        };
-                    }
+                {
+                    self.pagination.set_total(list.len());
+                    self.extract = false;
+                    self.stage = match ThreadWrapper::restore_files(
+                        *reader,
+                        list.into_iter()
+                            .filter_map(|(b, s)| if b { Some(s) } else { None })
+                            .collect(),
+                        false,
+                        None,
+                        1000,
+                    ) {
+                        Ok(w) => RestoreStage::Performing(w),
+                        Err(b) => {
+                            self.error.push('\n');
+                            self.error.push_str(&b.1.to_string());
+                            RestoreStage::Error(Box::new(b.0))
+                        }
+                    };
                 }
             }
             Message::Cancel => {
-                if let RestoreStage::Performing(..) = &self.stage {
-                    if let RestoreStage::Performing(wrapper) =
+                if let RestoreStage::Performing(..) = &self.stage
+                    && let RestoreStage::Performing(wrapper) =
                         std::mem::replace(&mut self.stage, RestoreStage::Failed)
-                    {
-                        self.stage = RestoreStage::Cancelling(wrapper);
-                    }
+                {
+                    self.stage = RestoreStage::Cancelling(wrapper);
                 }
             }
             Message::Toggle(i) => {
@@ -279,22 +271,20 @@ impl RestoreState {
             }
             Message::Flat(b) => self.flat = b,
             Message::Export => {
-                if let RestoreStage::Viewing(reader, _) = &mut self.stage {
-                    if let Some(file) = FileDialog::new()
+                if let RestoreStage::Viewing(reader, _) = &mut self.stage
+                    && let Some(file) = FileDialog::new()
                         .set_directory(reader.path.get_path())
                         .set_title("Save the list of files in the backup")
                         .set_file_name("files.txt")
                         .add_filter("Text file", &["txt"])
                         .add_filter("Csv file", &["csv"])
                         .save_file()
-                    {
-                        if let Err(e) = reader.export_list(file) {
-                            self.error.push('\n');
-                            self.error.push_str(&e.to_string());
-                            self.pagination.set_total(0);
-                            self.try_view_error();
-                        }
-                    }
+                    && let Err(e) = reader.export_list(file)
+                {
+                    self.error.push('\n');
+                    self.error.push_str(&e.to_string());
+                    self.pagination.set_total(0);
+                    self.try_view_error();
                 }
             }
             Message::ToggleAll => {
