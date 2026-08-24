@@ -1,6 +1,6 @@
 /// This module contains the objects for handling compressed archive files
 use std::fmt::Debug;
-use std::fs::{create_dir_all, remove_file, File};
+use std::fs::{File, create_dir_all, remove_file};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
@@ -29,7 +29,7 @@ impl CompressionEncoder<'_> {
         Ok(CompressionEncoder(archive))
     }
 
-    /// Finnish compressing the archive and close the file
+    /// Finish compressing the archive and close the file
     pub fn close(self) -> std::io::Result<()> {
         self.0.into_inner()?.finish()?.sync_all()?;
         Ok(())

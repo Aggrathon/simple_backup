@@ -858,7 +858,7 @@ impl BackupMerger {
     #[allow(unused)]
     pub fn delete_file(&self) -> Result<(), std::io::Error> {
         if self.tmp_path.exists() {
-            std::fs::remove_file(&self.path)
+            std::fs::remove_file(&self.tmp_path)
         } else {
             Ok(())
         }

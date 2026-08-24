@@ -179,7 +179,7 @@ pub fn restore<P: AsRef<Path>>(
 
     if list.is_empty() {
         if !quiet {
-            eprintln!("No files to backup");
+            eprintln!("No files to restore");
         }
         return;
     }

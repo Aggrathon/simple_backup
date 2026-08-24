@@ -91,7 +91,7 @@ impl BackupIterator {
     }
 
     /// Get the latest backup based on the timestamp in the file name
-    pub fn get_latest(&mut self) -> Option<PathBuf> {
+    pub fn get_latest(self) -> Option<PathBuf> {
         self.filter_map(|res| res.ok())
             .map(|p| (get_probable_time(&p), p))
             .max()
@@ -99,7 +99,7 @@ impl BackupIterator {
     }
 
     /// Get the previous backup based on a file name
-    pub fn get_previous(&mut self, path: &PathBuf) -> Option<PathBuf> {
+    pub fn get_previous(self, path: &PathBuf) -> Option<PathBuf> {
         let time = get_probable_time(path);
         self.filter_map(|res| res.ok())
             .filter_map(|p| {
@@ -112,7 +112,7 @@ impl BackupIterator {
 
     /// Get a vec of backups in chronological order
     #[allow(unused)]
-    pub fn get_all(&mut self) -> std::io::Result<Vec<PathBuf>> {
+    pub fn get_all(mut self) -> std::io::Result<Vec<PathBuf>> {
         let mut vec = self
             .map(|r| r.map(|p| (get_probable_time(&p), p)))
             .collect::<std::io::Result<Vec<(Option<NaiveDateTime>, PathBuf)>>>()?;
@@ -287,18 +287,18 @@ mod tests {
         File::create(&f6)?;
         let bis = BackupIterator::dir(dir.path()).get_all()?;
         assert_eq!(bis, vec![f2.clone(), f3.clone(), f4.clone()]);
-        let mut bi = BackupIterator::dir(dir.path());
+        let bi = BackupIterator::dir(dir.path());
         assert_eq!(bi.get_latest().unwrap(), f4);
-        let mut bi = BackupIterator::dir(dir.path());
+        let bi = BackupIterator::dir(dir.path());
         assert_eq!(bi.get_previous(&f4).unwrap(), f3);
         let mut bi = BackupIterator::file(f2.clone());
         assert_eq!(bi.next().unwrap()?, f2);
         assert!(bi.next().is_none());
-        let mut bi = BackupIterator::file(f2.clone());
+        let bi = BackupIterator::file(f2.clone());
         assert_eq!(bi.get_latest().unwrap(), f2);
         let bis = BackupIterator::path(dir2.path().to_path_buf())?.get_all()?;
         assert_eq!(bis, vec![f5, f6.clone()]);
-        let mut bi = BackupIterator::dir(dir2.path());
+        let bi = BackupIterator::dir(dir2.path());
         assert_eq!(bi.get_latest().unwrap(), f6);
         Ok(())
     }

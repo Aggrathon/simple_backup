@@ -38,7 +38,7 @@ impl Config {
             regex: vec![],
             output: PathBuf::new(),
             incremental: true,
-            quality: 21,
+            quality: 20,
             local: false,
             threads: 4,
             time: None,
