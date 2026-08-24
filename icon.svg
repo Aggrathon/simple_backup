@@ -1,0 +1,6 @@
+<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100" height="100" rx="25" fill="#4e9b47"/>
+  <text x="50" y="47" dominant-baseline="central" text-anchor="middle"
+        font-family="Helvetica, Arial, system-ui, -apple-system, sans-serif"
+        font-size="75" fill="#ffffff">sb</text>
+</svg>

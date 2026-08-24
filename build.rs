@@ -10,7 +10,7 @@ const ICON_SIZES: [u32; 5] = [16, 32, 64, 96, 128];
 
 fn main() {
     // Render the icon to a bitmap and store the raw bytes so that they can be included when the binary is compiled
-    let input = Path::new("assets/icon.svg");
+    let input = Path::new("icon.svg");
     let output_bytes = Path::new("target/icon.bytes");
 
     let tree;
