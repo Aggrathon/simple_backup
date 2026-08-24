@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
+use path_clean::PathClean;
 use regex::RegexSet;
 
 use crate::backup::{BackupMerger, BackupReader, BackupWriter};
@@ -217,10 +218,9 @@ pub fn restore<P: AsRef<Path>>(
 
         if flatten {
             let output = output.expect("Output directory required for flattening!");
-            let output = output.as_ref();
             let path_transform = |mut fi: FileInfo| {
                 bar.set_message(fi.move_string());
-                FileInfo::from(output.join(fi.consume_path().file_name().unwrap()))
+                FileInfo::from(output.as_ref().join(fi.consume_path().file_name().unwrap()))
             };
             source.restore(list, path_transform, callback, force, !only_this)
         } else if let Some(o) = &output {
@@ -228,7 +228,15 @@ pub fn restore<P: AsRef<Path>>(
                 let s = fi.move_string();
                 let path = strip_absolute_from_path(&s);
                 bar.set_message(s);
-                FileInfo::from(o.as_ref().join(path))
+                let target = o.as_ref().join(&path).clean();
+                if !target.starts_with(&o) {
+                    bar.println(format!(
+                        "Path would traverse outside output: '{}'",
+                        target.display()
+                    ));
+                    return FileInfo::from(o.as_ref().join(target.file_name().unwrap()));
+                }
+                FileInfo::from(target)
             };
             source.restore(list, path_transform, callback, force, !only_this)
         } else {
