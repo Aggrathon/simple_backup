@@ -19,19 +19,16 @@ macro_rules! try_some {
 }
 
 pub fn format_size(size: u64) -> String {
-    const KI: u64 = 2 ^ 10;
-    const ME: u64 = 2 ^ 20;
-    const GI: u64 = 2 ^ 30;
-    const TE: u64 = 2 ^ 40;
-    const PE: u64 = 2 ^ 50;
-    const EX: u64 = 2 ^ 60;
+    const KT: u64 = 999 * (1 << 10);
+    const MT: u64 = 999 * (1 << 20);
+    const GT: u64 = 999 * (1 << 30);
+    const TT: u64 = 999 * (1 << 40);
     match size {
-        ..KI => format!("{:.2} KiB", size as f64 / KI as f64),
-        ..ME => format!("{:.2} MiB", size as f64 / ME as f64),
-        ..GI => format!("{:.2} GiB", size as f64 / GI as f64),
-        ..TE => format!("{:.2} TiB", size as f64 / TE as f64),
-        ..PE => format!("{:.2} PiB", size as f64 / PE as f64),
-        _ => format!("{:.2} EiB", size as f64 / EX as f64),
+        ..=KT => format!("{:.2} KiB", size as f64 / (1 << 10) as f64),
+        ..=MT => format!("{:.2} MiB", size as f64 / (1 << 20) as f64),
+        ..=GT => format!("{:.2} GiB", size as f64 / (1 << 30) as f64),
+        ..=TT => format!("{:.2} TiB", size as f64 / (1_u64 << 40) as f64),
+        _ => format!("{:.2} PiB", size as f64 / (1_u64 << 50) as f64),
     }
 }
 
@@ -260,7 +257,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        BackupIterator, get_backup_from_path, get_config_from_path, strip_absolute_from_path,
+        BackupIterator, format_size, get_backup_from_path, get_config_from_path,
+        strip_absolute_from_path,
     };
     use crate::Config;
     use crate::backup::BackupError;
@@ -334,5 +332,20 @@ mod tests {
             assert_eq!("server\\path", strip_absolute_from_path("\\\\server\\path"));
             assert_eq!("E\\path", strip_absolute_from_path("E:\\path"));
         }
+    }
+
+    #[test]
+    fn format_size_test() {
+        assert_eq!("0.00 KiB", format_size(0));
+        assert_eq!("0.01 KiB", format_size(8));
+        assert_eq!("1.00 KiB", format_size(1024));
+        assert_eq!("512.00 KiB", format_size(524_288));
+        assert_eq!("1.00 MiB", format_size(1_048_000));
+        assert_eq!("1.00 MiB", format_size(1_048_576));
+        assert_eq!("512.00 MiB", format_size(536_870_912));
+        assert_eq!("999.00 MiB", format_size(999 * 1_048_576));
+        assert_eq!("2.00 GiB", format_size(2_147_000_000));
+        assert_eq!("1.00 TiB", format_size(1_099_511_627_776));
+        assert_eq!("1.00 PiB", format_size(1_125_899_906_842_624));
     }
 }
