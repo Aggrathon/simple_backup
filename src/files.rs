@@ -227,9 +227,10 @@ impl FileAccessError {
 /// Iterator for crawling through files to backup
 pub struct FileCrawler {
     temp: Vec<(FileInfo, DirEntry)>,
-    stack: Vec<FileInfo>,
+    stack: Vec<(FileInfo, u32)>,
     regex: RegexSet,
     local: bool,
+    link_depth: u32,
 }
 
 impl FileCrawler {
@@ -247,13 +248,13 @@ impl FileCrawler {
         filter: VS3,
         local: bool,
     ) -> Result<Self, std::io::Error> {
-        let mut stack: Vec<FileInfo>;
+        let mut stack: Vec<(FileInfo, u32)>;
         let exc: Vec<String>;
         if local {
             stack = include
                 .as_ref()
                 .iter()
-                .map(|s| FileInfo::from(PathBuf::from(s.as_ref()).clean()))
+                .map(|s| (FileInfo::from(PathBuf::from(s.as_ref()).clean()), 0))
                 .collect();
             exc = exclude
                 .as_ref()
@@ -272,9 +273,9 @@ impl FileCrawler {
                 .map(|s| {
                     PathBuf::from(s.as_ref())
                         .absolutize()
-                        .map(|p| FileInfo::from(p.to_path_buf()))
+                        .map(|p| (FileInfo::from(p.to_path_buf()), 0))
                 })
-                .collect::<std::io::Result<Vec<FileInfo>>>()?;
+                .collect::<std::io::Result<Vec<(FileInfo, u32)>>>()?;
             exc = exclude
                 .as_ref()
                 .iter()
@@ -285,7 +286,7 @@ impl FileCrawler {
                 })
                 .collect::<std::io::Result<Vec<String>>>()?;
         }
-        stack.sort_unstable_by(|a, b| b.path.as_ref().unwrap().cmp(a.path.as_ref().unwrap()));
+        stack.sort_unstable_by(|a, b| b.0.path.as_ref().unwrap().cmp(a.0.path.as_ref().unwrap()));
 
         let regex = RegexSet::new(
             filter
@@ -302,6 +303,7 @@ impl FileCrawler {
             regex,
             temp: vec![],
             local,
+            link_depth: 1,
         })
     }
 
@@ -322,7 +324,7 @@ impl FileCrawler {
         };
         if self
             .stack
-            .binary_search_by(|fi| p.cmp(fi.path.as_ref().unwrap()))
+            .binary_search_by(|fi| p.cmp(fi.0.path.as_ref().unwrap()))
             .is_ok()
         {
             return true;
@@ -364,12 +366,21 @@ impl Iterator for FileCrawler {
     type Item = Result<FileInfo, FileAccessError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(mut item) = self.stack.pop() {
+        while let Some((mut item, depth)) = self.stack.pop() {
             let md = try_some!(
                 item.get_path()
                     .metadata()
                     .map_err(|e| FileAccessError::new(e, item.move_string()))
             );
+            if depth > self.link_depth {
+                return Some(Err(FileAccessError::new(
+                    std::io::Error::new(
+                        std::io::ErrorKind::TooManyLinks,
+                        "Maximum depth of symlinks reached",
+                    ),
+                    item.move_string(),
+                )));
+            }
             if md.is_file() {
                 item.time = Some(parse_date::system_to_naive(try_some!(
                     md.modified()
@@ -377,7 +388,7 @@ impl Iterator for FileCrawler {
                 )));
                 item.size = md.len();
                 return Some(Ok(item));
-            } else {
+            } else if md.is_dir() {
                 let string = item.move_string();
                 let path = item.consume_path();
                 let dir =
@@ -402,7 +413,7 @@ impl Iterator for FileCrawler {
                         count -= 1;
                         for (fi1, _) in self.temp.iter() {
                             // SAFETY: count is guaranteed to be between zero and self.stack.len()
-                            let fi2 = unsafe { self.stack.get_unchecked(count) };
+                            let fi2 = unsafe { &self.stack.get_unchecked(count).0 };
                             match fi1.path.as_ref().unwrap().cmp(fi2.path.as_ref().unwrap()) {
                                 std::cmp::Ordering::Less => {}
                                 std::cmp::Ordering::Equal => {
@@ -425,13 +436,19 @@ impl Iterator for FileCrawler {
                         }
                     }
                     // Add new items to the stack
-                    while let Some((fi, _)) = self.temp.pop() {
-                        self.stack.push(fi);
+                    while let Some((fi, entry)) = self.temp.pop() {
+                        if let Ok(ft) = entry.file_type()
+                            && ft.is_symlink()
+                        {
+                            self.stack.push((fi, depth + 1));
+                        } else {
+                            self.stack.push((fi, depth));
+                        }
                     }
                     // If the top of the stack is not sorted
                     if needs_sorting {
                         self.stack[count..].sort_unstable_by(|a, b| {
-                            b.path.as_ref().unwrap().cmp(a.path.as_ref().unwrap())
+                            b.0.path.as_ref().unwrap().cmp(a.0.path.as_ref().unwrap())
                         });
                     }
                 }
