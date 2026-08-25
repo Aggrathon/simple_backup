@@ -294,7 +294,11 @@ impl ConfigState {
                 ));
                 match self.current_dir.get_path().read_dir() {
                     Ok(rd) => {
-                        for (i, de) in rd.into_iter().enumerate() {
+                        let mut it: Vec<_> = rd.into_iter().collect();
+                        it.sort_unstable_by_key(|r| {
+                            r.as_ref().map(|d| d.file_name()).unwrap_or_default()
+                        });
+                        for (i, de) in it.into_iter().enumerate() {
                             match de {
                                 Ok(de) => match de.metadata() {
                                     Ok(md) => {
