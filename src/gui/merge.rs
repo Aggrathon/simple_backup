@@ -10,6 +10,7 @@ use rfd::FileDialog;
 use super::threads::ThreadWrapper;
 use super::{Message, presets};
 use crate::backup::{BACKUP_FILE_EXTENSION, BackupError, BackupMerger, BackupReader};
+use crate::config::QUALITY_RANGE;
 use crate::files::FileInfo;
 use crate::utils::{default_dir, default_dir_opt, num_cpus};
 
@@ -56,10 +57,10 @@ pub(crate) struct MergeState {
     current_count: usize,
     all: bool,
     delete: bool,
-    quality: Option<i32>,
+    quality: Option<u8>,
     threads: Option<u32>,
     thread_alt: Vec<u32>,
-    compression_alt: Vec<i32>,
+    compression_alt: Vec<u8>,
     stage: MergeStage,
 }
 
@@ -74,7 +75,7 @@ impl MergeState {
             quality: None,
             threads: None,
             thread_alt: (1..=num_cpus() as u32).collect(),
-            compression_alt: (1..=22).collect(),
+            compression_alt: QUALITY_RANGE.collect(),
             stage: MergeStage::Selecting(Vec::new()),
         }
     }

@@ -14,7 +14,7 @@ impl FileListVec {
     }
 
     pub fn crawl(crawler: FileCrawler, time: Option<NaiveDateTime>) -> Self {
-        let mut list: Vec<(bool, FileInfo)> = match time {
+        let list: Vec<(bool, FileInfo)> = match time {
             Some(prev) => crawler
                 .into_iter()
                 .filter_map(|fi| match fi {
@@ -30,8 +30,7 @@ impl FileListVec {
                 })
                 .collect(),
         };
-        list.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-        Self(list)
+        Self(list).sorted()
     }
 
     pub fn crawl_with_callback(
@@ -57,8 +56,7 @@ impl FileListVec {
                 Err(e) => callback(Err(e))?,
             }
         }
-        list.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-        Ok(Self(list))
+        Ok(Self(list).sorted())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &(bool, FileInfo)> {
@@ -74,7 +72,7 @@ impl FileListVec {
         self.0.len()
     }
 
-    #[allow(unused)]
+    #[inline]
     pub fn sort_unstable_by<F>(&mut self, mut f: F)
     where
         F: FnMut(&FileInfo, &FileInfo) -> Ordering,
@@ -82,9 +80,15 @@ impl FileListVec {
         self.0.sort_unstable_by(|a, b| f(&a.1, &b.1));
     }
 
-    #[allow(unused)]
+    #[inline]
     pub fn sort_unstable(&mut self) {
-        self.0.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+        self.sort_unstable_by(|a, b| a.cmp(&b));
+    }
+
+    #[inline]
+    pub fn sorted(mut self) -> Self {
+        self.sort_unstable();
+        self
     }
 }
 

@@ -298,7 +298,7 @@ pub fn merge(
     path: Option<PathBuf>,
     all: bool,
     delete: bool,
-    quality: Option<i32>,
+    quality: Option<u8>,
     threads: Option<u32>,
     verbose: bool,
     force: bool,

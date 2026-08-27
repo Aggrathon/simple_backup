@@ -162,6 +162,7 @@ impl BackupWriter {
                     &self.config.exclude,
                     &self.config.regex,
                     self.config.local,
+                    self.config.link_depth,
                 )?,
                 self.prev_time,
             ));
@@ -189,6 +190,7 @@ impl BackupWriter {
                     &self.config.exclude,
                     &self.config.regex,
                     self.config.local,
+                    self.config.link_depth,
                 )?,
                 self.prev_time,
                 all,
@@ -612,7 +614,7 @@ pub struct BackupMerger {
     pub files: FileListVec,
     delete: bool,
     overwrite: bool,
-    quality: Option<i32>,
+    quality: Option<u8>,
     threads: Option<u32>,
 }
 
@@ -625,7 +627,7 @@ impl BackupMerger {
         all: bool,
         delete: bool,
         overwrite: bool,
-        quality: Option<i32>,
+        quality: Option<u8>,
         threads: Option<u32>,
     ) -> Result<Self, (Vec<BackupReader>, BackupError)> {
         if readers.len() < 2 {

@@ -247,6 +247,7 @@ impl FileCrawler {
         exclude: VS2,
         filter: VS3,
         local: bool,
+        link_depth: u32,
     ) -> Result<Self, std::io::Error> {
         let mut stack: Vec<(FileInfo, u32)>;
         let exc: Vec<String>;
@@ -303,7 +304,7 @@ impl FileCrawler {
             regex,
             temp: vec![],
             local,
-            link_depth: 1,
+            link_depth,
         })
     }
 
@@ -473,6 +474,7 @@ mod tests {
             vec!["src/main.rs".to_string()],
             vec!["config.*".to_string()],
             false,
+            1,
         )
         .unwrap()
         .map(|fi| fi.unwrap().consume_path())
@@ -505,6 +507,7 @@ mod tests {
             vec![main_path.to_string_lossy()],
             vec!["config.*".to_string()],
             true,
+            1,
         )
         .unwrap()
         .map(|fi| fi.unwrap().consume_path())
@@ -534,6 +537,7 @@ mod tests {
             vec!["src/main.rs".to_string()],
             vec!["config.*".to_string()],
             false,
+            1,
         )?;
         let path = Path::new(".").absolutize()?;
         let path = path.as_ref();
@@ -556,6 +560,7 @@ mod tests {
             vec!["src/main.rs".to_string()],
             vec!["config.*".to_string()],
             true,
+            1,
         )?;
         assert!(!fc.check_path(&mut FileInfo::via_path("."), None));
         assert!(fc.check_path(&mut FileInfo::via_path("."), Some(true)));

@@ -1,6 +1,7 @@
 /// This module contains the config object (including serialisation, deserialisation, and parsing command line arguments)
 use std::fs::File;
 use std::io::{Error, ErrorKind};
+use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
@@ -12,18 +13,42 @@ use crate::parse_date;
 use crate::parse_date::{create_backup_file_name, naive_now};
 use crate::utils::{BackupIterator, default_dir, num_cpus};
 
+pub const QUALITY_RANGE: RangeInclusive<u8> = 0u8..=22;
+
+fn cpus_u32() -> u32 {
+    num_cpus() as u32
+}
+
+fn true_bool() -> bool {
+    true
+}
+
+fn twenty_u8() -> u8 {
+    20
+}
+
+fn one_u32() -> u32 {
+    1
+}
+
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Config {
     pub include: Vec<String>,
     pub exclude: Vec<String>,
     pub regex: Vec<String>,
     pub output: PathBuf,
+    #[serde(default = "true_bool")]
     pub incremental: bool,
-    pub quality: i32,
+    #[serde(default = "twenty_u8")]
+    pub quality: u8,
+    #[serde(default)]
     pub local: bool,
+    #[serde(default = "cpus_u32")]
     pub threads: u32,
-    #[serde(with = "parse_date")]
+    #[serde(with = "parse_date", default)]
     pub time: Option<NaiveDateTime>,
+    #[serde(default = "one_u32")]
+    pub link_depth: u32,
     #[serde(skip)]
     pub origin: PathBuf,
 }
@@ -43,17 +68,8 @@ impl Config {
             threads: num_cpus() as u32,
             time: None,
             origin: PathBuf::new(),
+            link_depth: 1,
         }
-    }
-
-    #[allow(unused)]
-    pub fn set_quality(&mut self, quality: i32) {
-        self.quality = i32::clamp(quality, 1, 22);
-    }
-
-    #[allow(unused)]
-    pub fn set_threads(&mut self, threads: u32) {
-        self.threads = u32::clamp(threads, 1, num_cpus() as u32);
     }
 
     pub fn get_output(&self, home: bool) -> PathBuf {
@@ -73,6 +89,12 @@ impl Config {
         let reader = File::open(&path)?;
         let mut conf: Config =
             serde_yaml::from_reader(reader).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
+        if !QUALITY_RANGE.contains(&conf.quality) {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "Compression Quality must be 0-22",
+            ));
+        };
         conf.origin = path;
         Ok(conf)
     }
@@ -204,7 +226,7 @@ mod tests {
     fn default_ignores() -> std::io::Result<()> {
         let mut config = Config::new();
         config.add_default_ignores();
-        let fc = FileCrawler::new(["src"], config.exclude, config.regex, false)?;
+        let fc = FileCrawler::new(["src"], config.exclude, config.regex, false, 1)?;
         assert!(fc.check_path(&mut FileInfo::from("src/cash"), Some(true)));
         assert!(!fc.check_path(&mut FileInfo::from("src/cache"), Some(true)));
         Ok(())

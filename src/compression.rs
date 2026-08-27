@@ -14,7 +14,7 @@ pub struct CompressionEncoder<'a>(Builder<Encoder<'a, File>>);
 
 impl CompressionEncoder<'_> {
     /// Create a compressed archive
-    pub fn create<P: AsRef<Path>>(path: P, quality: i32, threads: u32) -> std::io::Result<Self> {
+    pub fn create<P: AsRef<Path>>(path: P, quality: u8, threads: u32) -> std::io::Result<Self> {
         if let Some(p) = path.as_ref().parent() {
             create_dir_all(p)?;
         }
@@ -23,7 +23,7 @@ impl CompressionEncoder<'_> {
             remove_file(&path).unwrap_or_default();
             err
         };
-        let mut encoder = Encoder::new(file, quality).map_err(cleanup)?;
+        let mut encoder = Encoder::new(file, quality.into()).map_err(cleanup)?;
         encoder.multithread(threads).map_err(cleanup)?;
         let archive = Builder::new(encoder);
         Ok(CompressionEncoder(archive))

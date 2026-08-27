@@ -80,7 +80,7 @@ pub(crate) enum Message {
     MergeView,
     Incremental(bool),
     ThreadCount(u32),
-    CompressionQuality(i32),
+    CompressionQuality(u8),
     IncludeAdd(usize),
     IncludeRemove(usize),
     IncludeOpen(usize),

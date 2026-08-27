@@ -1,6 +1,6 @@
 // This file contains integration tests for backups and restoring
 
-use std::fs::{remove_file, File};
+use std::fs::{File, remove_file};
 use std::path::PathBuf;
 
 use path_absolutize::Absolutize;
@@ -10,6 +10,13 @@ use simple_backup::config::Config;
 use simple_backup::parse_date::naive_now;
 use simple_backup::utils::{extend_pathbuf, get_backup_from_path, strip_absolute_from_path};
 use tempfile::tempdir;
+
+fn base_config() -> Config {
+    let mut conf = Config::new();
+    conf.quality = 10;
+    conf.threads = 1;
+    conf
+}
 
 #[test]
 fn cli_test() {
@@ -27,15 +34,8 @@ fn cli_test() {
 
     let config = Config {
         include: vec![dir.path().to_string_lossy().to_string()],
-        exclude: vec![],
-        regex: vec![],
         output: dir3,
-        incremental: true,
-        quality: 11,
-        threads: 1,
-        local: false,
-        time: None,
-        origin: PathBuf::new(),
+        ..base_config()
     };
     let mut bw1 = BackupWriter::new(config).0;
     bw1.export_list(&f4, false).unwrap();
@@ -124,15 +124,9 @@ fn absolute_test() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let config = Config {
         include: vec![dir.path().to_string_lossy().to_string()],
-        exclude: vec![],
         regex: vec!["zst$".to_string()],
         output: dir.path().to_path_buf(),
-        incremental: true,
-        quality: 11,
-        local: false,
-        threads: 1,
-        time: None,
-        origin: PathBuf::new(),
+        ..base_config()
     };
     let mut bw1 = BackupWriter::new(config).0;
     bw1.write(|_, _| Ok(()), || ())?;
@@ -190,11 +184,8 @@ fn local_test() -> Result<(), Box<dyn std::error::Error>> {
         regex: vec![".*.md".to_string()],
         output: dir.path().to_path_buf(),
         incremental: false,
-        quality: 11,
         local: true,
-        threads: 1,
-        time: None,
-        origin: PathBuf::new(),
+        ..base_config()
     };
 
     let conf = Config::from_yaml(config.as_yaml()?)?;
@@ -233,15 +224,10 @@ fn flatten_test() -> Result<(), Box<dyn std::error::Error>> {
                 .to_string_lossy()
                 .to_string(),
         ],
-        exclude: vec![],
-        regex: vec![],
         output: dir.path().to_path_buf(),
         incremental: false,
-        quality: 11,
         local: true,
-        threads: 1,
-        time: None,
-        origin: PathBuf::new(),
+        ..base_config()
     };
     backup(config.clone(), false, false, false, true);
 
@@ -277,15 +263,10 @@ fn extract_test() -> Result<(), Box<dyn std::error::Error>> {
     ];
     let mut config = Config {
         include: inc.clone(),
-        exclude: vec![],
-        regex: vec![],
         output: dir.path().to_path_buf(),
         incremental: false,
-        quality: 11,
         local: true,
-        threads: 1,
-        time: None,
-        origin: PathBuf::new(),
+        ..base_config()
     };
     backup(config.clone(), false, false, false, true);
 
@@ -346,15 +327,9 @@ fn time_test() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config {
         include: vec![dir.path().to_string_lossy().to_string()],
-        exclude: vec![],
-        regex: vec![],
         output: dir.path().to_path_buf(),
-        incremental: true,
-        quality: 11,
-        threads: 1,
-        local: false,
         time: Some(naive_now()),
-        origin: PathBuf::new(),
+        ..base_config()
     };
 
     std::thread::sleep(std::time::Duration::from_millis(20));
@@ -370,15 +345,9 @@ fn time_test() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config {
         include: vec![dir.path().to_string_lossy().to_string()],
-        exclude: vec![],
-        regex: vec![],
         output: dir.path().to_path_buf(),
-        incremental: true,
-        quality: 11,
-        threads: 1,
-        local: false,
         time: Some(naive_now()),
-        origin: PathBuf::new(),
+        ..base_config()
     };
 
     restore::<PathBuf>(
@@ -410,15 +379,9 @@ fn longname_test() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut config = Config {
         include: vec![f1.to_string_lossy().to_string()],
-        exclude: vec![],
-        regex: vec![],
         output: dir.path().to_path_buf(),
         incremental: false,
-        quality: 11,
-        local: false,
-        threads: 1,
-        time: None,
-        origin: PathBuf::new(),
+        ..base_config()
     };
 
     let conf = Config::from_yaml(config.as_yaml()?)?;
@@ -458,15 +421,8 @@ fn merge_test() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut config = Config {
         include: vec![dir.path().to_string_lossy().to_string()],
-        exclude: vec![],
-        regex: vec![],
         output: b1.clone(),
-        incremental: true,
-        quality: 11,
-        threads: 1,
-        local: false,
-        time: None,
-        origin: PathBuf::new(),
+        ..base_config()
     };
 
     File::create(&f1)?;

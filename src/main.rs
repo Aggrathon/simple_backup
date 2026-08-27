@@ -20,6 +20,8 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use config::Config;
 use utils::{get_backup_from_path, get_config_from_path, num_cpus};
 
+use crate::config::QUALITY_RANGE;
+
 #[derive(Parser)]
 #[clap(version, about, long_about = None, propagate_version = true, term_width = 0)]
 struct Cli {
@@ -121,7 +123,7 @@ enum Commands {
         delete: bool,
         /// Compression quality (1-22)
         #[clap(short, long, value_parser = parse_quality, value_name = "NUM")]
-        quality: Option<i32>,
+        quality: Option<u8>,
         /// Number of worker threads (using threads requires more memory)
         #[clap(short='n', long, value_parser = parse_cpu, value_name = "NUM")]
         threads: Option<u32>,
@@ -177,10 +179,13 @@ struct ArgConfig {
     default: bool,
     /// Compression quality (1-22)
     #[clap(short, long, value_parser = parse_quality, default_value_t = 20, value_name = "NUM")]
-    quality: i32,
+    quality: u8,
     /// Number of worker threads (using threads requires more memory)
-    #[clap(short='n', long, value_parser = parse_cpu, default_value_t = 1, value_name = "NUM")]
+    #[clap(short = 'n', long, value_parser = parse_cpu, default_value_t = num_cpus() as u32, value_name = "NUM")]
     threads: u32,
+    /// Number of symlinks to follow
+    #[clap(short = 'k', long, default_value_t = 1, value_name = "DEPTH")]
+    links: u32,
 }
 
 impl ArgConfig {
@@ -196,6 +201,7 @@ impl ArgConfig {
             threads: self.threads,
             time,
             origin: PathBuf::new(),
+            link_depth: self.links,
         };
         if self.default {
             conf.add_default_ignores();
@@ -214,13 +220,13 @@ fn parse_cpu(s: &str) -> Result<u32, String> {
     Err(format!("Must be a number between 1-{}!", cpus))
 }
 
-fn parse_quality(s: &str) -> Result<i32, &'static str> {
-    if let Ok(i) = s.parse::<i32>()
-        && (1..=22).contains(&i)
+fn parse_quality(s: &str) -> Result<u8, &'static str> {
+    if let Ok(i) = s.parse::<u8>()
+        && QUALITY_RANGE.contains(&i)
     {
         return Ok(i);
     }
-    Err("Must be a number between 1-22!")
+    Err("Must be a number between 0-22!")
 }
 
 fn parse_time(s: &str) -> Result<NaiveDateTime, &'static str> {

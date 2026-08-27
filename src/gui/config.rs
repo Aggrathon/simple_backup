@@ -9,7 +9,7 @@ use rfd::{FileDialog, MessageDialog};
 
 use super::{Message, presets};
 use crate::backup::{CONFIG_DEFAULT_NAME, CONFIG_FILE_EXTENSION};
-use crate::config::Config;
+use crate::config::{Config, QUALITY_RANGE};
 use crate::files::{FileCrawler, FileInfo};
 use crate::utils::{default_dir, home_dir, num_cpus};
 
@@ -17,7 +17,7 @@ pub(crate) struct ConfigState {
     pub config: Config,
     panes: pane_grid::State<Pane>,
     thread_alt: Vec<u32>,
-    compression_alt: Vec<i32>,
+    compression_alt: Vec<u8>,
     files: pane_grid::Pane,
     includes: pane_grid::Pane,
     excludes: pane_grid::Pane,
@@ -57,7 +57,7 @@ impl ConfigState {
             config,
             panes,
             thread_alt: (1..=num_cpus() as u32).collect(),
-            compression_alt: (1..=22).collect(),
+            compression_alt: QUALITY_RANGE.collect(),
             files,
             includes,
             excludes,
@@ -104,7 +104,7 @@ impl ConfigState {
             presets::space_large(),
             presets::toggler(
                 self.config.incremental,
-                "Incremental backups:",
+                "Incremental backups",
                 Message::Incremental,
             ),
             presets::space_hfill(),
@@ -124,8 +124,8 @@ impl ConfigState {
             }
             Message::PaneDragged(_) => {}
             Message::Incremental(t) => self.config.incremental = t,
-            Message::ThreadCount(text) => self.config.set_threads(text),
-            Message::CompressionQuality(text) => self.config.set_quality(text),
+            Message::ThreadCount(num) => self.config.threads = num,
+            Message::CompressionQuality(num) => self.config.quality = num,
             Message::IncludeAdd(i) => {
                 let pane = self.panes.get_mut(self.files).unwrap();
                 if let Some(li) = pane.items.get_mut(i) {
@@ -283,6 +283,7 @@ impl ConfigState {
             &self.config.exclude,
             &self.config.regex,
             self.config.local,
+            1,
         ) {
             Ok(fc) => {
                 let parent = fc.check_path(&mut self.current_dir, None);
