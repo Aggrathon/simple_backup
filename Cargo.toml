@@ -1,6 +1,6 @@
 [package]
 name = "simple_backup"
-version = "2.2.2"
+version = "2.2.3"
 authors = ["Aggrathon <antonbjo@gmail.com>"]
 edition = "2024"
 description = "A minimal application for doing backups."
